@@ -1,0 +1,6 @@
+# qwen/qwen3.8-max as the model under test (no routing pin — default OpenRouter routing).
+# Run: /eval-run --config eval-profiles/openrouter-qwen3.8-max.yaml
+extends: openrouter.yaml
+models:
+  skill: openrouter:/qwen/qwen3.8-max-0902
+  subagent: openrouter:/qwen/qwen3.8-max-0902

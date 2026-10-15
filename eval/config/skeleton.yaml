@@ -87,6 +87,13 @@ models:
             order: [crusoe]
             allow_fallbacks: false
             quantizations: [bf16]
+          qwen/qwen3.8-max-0902:
+            order: [alibaba]
+            allow_fallbacks: false
+          nvidia/nemotron-3-ultra-550b-a55b:
+            order: [baseten, deepinfra]
+            allow_fallbacks: false
+            quantizations: [fp4]
           # moonshotai/kimi-k3 and qwen/qwen3.7-{plus,max} carry no pin. The proxy's
           # `sort: throughput` cannot be sent from Claude Code; use the `:nitro`
           # variant on the model id instead (openrouter:/moonshotai/kimi-k3:nitro).

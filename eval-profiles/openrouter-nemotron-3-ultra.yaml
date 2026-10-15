@@ -1,0 +1,6 @@
+# nvidia/nemotron-3-ultra as the model under test (no routing pin — default OpenRouter routing).
+# Run: /eval-run --config eval-profiles/openrouter-nemotron-3-ultra.yaml
+extends: openrouter.yaml
+models:
+  skill: openrouter:/nvidia/nemotron-3-ultra-550b-a55b
+  subagent: openrouter:/nvidia/nemotron-3-ultra-550b-a55b
