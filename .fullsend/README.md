@@ -12,19 +12,19 @@ makes use of the RFE Creator skills.
 To use this agent from another repository, add it to your configuration file with:
 
 ```bash
-fullsend agent add --fullsend-dir .fullsend https://github.com/opendatahub-io/rfe-creator/blob/main/.fullsend/rfe-creator/rfe-creator.yaml
+fullsend agent add --fullsend-dir .fullsend https://github.com/fullsend-ai/rfe-creator/blob/main/.fullsend/rfe-creator/rfe-creator.yaml
 ```
 
 This adds the following to your `.fullsend/config.yaml`:
 
 ```yaml
 agents:
-- source: https://raw.githubusercontent.com/opendatahub-io/rfe-creator/<SHA>/.fullsend/rfe-creator/rfe-creator.yaml#sha256=<SHA256>
+- source: https://raw.githubusercontent.com/fullsend-ai/rfe-creator/<SHA>/.fullsend/rfe-creator/rfe-creator.yaml#sha256=<SHA256>
   ref: main
 allowed_remote_resources:
   - https://raw.githubusercontent.com/fullsend-ai/fullsend/
   - https://raw.githubusercontent.com/fullsend-ai/agents/
-  - https://raw.githubusercontent.com/opendatahub-io/rfe-creator/
+  - https://raw.githubusercontent.com/fullsend-ai/rfe-creator/
 ```
 
 From a checkout of this repository, run it directly with
