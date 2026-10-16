@@ -166,6 +166,8 @@ You can auto-fix some skillsaw issues with `make skillsaw-fix`.
 
 RFE and Initiative are the two registered work item types. Each is described by a data-only descriptor, `types/<type>/type.yaml` (field reference in [types/README.md](types/README.md), provider guide in [docs/type-provider-guide.md](docs/type-provider-guide.md)), which `python3 scripts/validate_types.py` lints and `python3 scripts/type_registry.py` reads. Tests pin the descriptors to the per-type tables the scripts still carry; the scripts move to reading the registry in follow-up PRs.
 
+Running a type through rfe-autofixer in production — opt-in label, selection, stage dry run, schedule, what each run writes, how to narrow or stop — is [docs/operator-runbook.md](docs/operator-runbook.md).
+
 See [AGENTS.md](AGENTS.md) for architecture details and conventions.
 
 ## CI / Headless Mode
