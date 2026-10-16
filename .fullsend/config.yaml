@@ -35,7 +35,7 @@ agents:
 allowed_remote_resources:
     - https://raw.githubusercontent.com/fullsend-ai/fullsend/
     - https://raw.githubusercontent.com/fullsend-ai/agents/
-    - https://raw.githubusercontent.com/opendatahub-io/rfe-creator/
+    - https://raw.githubusercontent.com/fullsend-ai/rfe-creator/
 
 # fullsend fleet agents: same runtime and model selection as fullsend-ai/fullsend.
 runtime: claude
@@ -46,6 +46,13 @@ roles:
   - review
   - retro
   - prioritize
+# Same upstream target as the fullsend-managed configs in this batch: triage and
+# retro may file platform prerequisites on fullsend-ai/fullsend (this repo is
+# always implicitly allowed).
+create_issues:
+  allow_targets:
+    repos:
+      - fullsend-ai/fullsend
 status_notifications:
   reaction:
     start: enabled
