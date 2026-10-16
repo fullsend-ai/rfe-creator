@@ -71,8 +71,10 @@ Owners act with labels only; nothing else is needed from them.
 - **Opt in:** add the opt-in label (`initiative-autofix-opt-in`) to the item. It is picked up
   by the next run.
 - **Opt out:** remove that label, or add the opt-out label (`initiative-ignore`), which wins over
-  everything and also stops a run that is already selecting. Either takes effect from the next
-  run; a run in progress finishes its current items.
+  everything. Both act on the next run's fetch: the running job selected its items at its own
+  fetch, keeps that list, and does not re-read labels before the submit step, so an item already
+  selected is processed even if its label changes meanwhile. To intervene during a run, cancel
+  the pipeline before the log reaches `Submission plan:` (section 8).
 - **Quarantine:** `initiative-split-quarantine` is set by the tool when a split failed part-way.
   The item is left alone until a person removes the label, after checking the parent and any
   children the split created.
@@ -123,7 +125,9 @@ What to read afterwards, in this order:
    run ends with `No Initiatives to submit this run (0 changed/new); treating as success`.
 2. **The run report**, `initiative/<run id>/auto-fix-runs/initiative-run-<run id>.yaml` in the
    results repository, with its HTML companion next to it. `results` counts the run (passed,
-   failed, split, blocked, errors); each `per_rfe` entry carries the item's recommendation,
+   failed, split, blocked, errors); the per-item list is keyed by the type's
+   `reporting.item_key` (`per_initiative` for Initiatives, `per_rfe` for RFEs), and each entry
+   carries the item's recommendation,
    `before_score` and `after_score`, `auto_revised`, `needs_attention`, the feasibility and
    alignment verdicts, and a `blocked_reason` when a hold applied.
 3. **The per-item files** under `initiative/<run id>/initiative-reviews/` (scores, reasons,
@@ -166,9 +170,12 @@ What it does not write, by two switches the job always passes:
   finished is not published; the item gets the needs-attention label and one comment, counts as
   blocked in the run report, and is picked up again by the next run.
 - **A split is held** (`--hold-splits`): when the review recommends splitting, no child is
-  created and the parent is not closed; the parent gets one `Split held:` comment listing the
-  proposed children, the needs-attention label, and counts as blocked. Lifting the hold is a
-  policy change (decision D3), made by removing the switch from the job.
+  created and the parent is not closed; the parent gets the needs-attention label and one
+  `Split held:` comment listing the proposed children, and counts as blocked. The comment is
+  posted once per hold, and not at all when the parent already carried the needs-attention label
+  at fetch (the earlier reason stands); the proposed children are always in the run report entry
+  and the parent's review file under `initiative-reviews/`. Lifting the hold is a policy change
+  (decision D3), made by removing the switch from the job.
 
 **Status changes.** RHOAIENG's Initiative workflow has no `Approved` status (New, Backlog, In
 Progress, Review, Testing, Resolved, Closed). With `INITIATIVE_AUTO_APPROVE=true` the job would
@@ -211,8 +218,9 @@ next run diffs against. The RFE root and its `latest` are never touched by the I
   `Submission plan:`; before that point the run has written nothing to Jira. Cancelling during
   the submit step leaves the items it had not reached unprocessed, and the next run picks them
   up; the items it had reached are in whatever state the log shows.
-- **Take one item out now:** add `initiative-ignore` to it. It is excluded from the next
-  selection whatever else it carries.
+- **Take one item out:** add `initiative-ignore` to it. It is excluded from the next fetch
+  whatever else it carries; a run already past its fetch still processes it (cancel the run
+  before `Submission plan:` if that must not happen).
 - **Undo a write:** labels are removed by hand; a revised description's previous text is in
   Jira's history; a split is never executed during the trial.
 
