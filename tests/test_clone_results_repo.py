@@ -292,23 +292,23 @@ class TestSparsePatterns:
 
     def test_initiative_subtree(self):
         assert sparse_patterns(["initiative"]) == [
-            "/initiative/latest",
-            "/initiative/*/auto-fix-runs/initiative-snapshot-*.yaml",
+            "/initiative-rhoaieng/latest",
+            "/initiative-rhoaieng/*/auto-fix-runs/initiative-snapshot-*.yaml",
             "!/test-data/**",
         ]
-        assert INIT_SUBDIR == "initiative" and INIT_PREFIX == "initiative-snapshot-"
+        assert INIT_SUBDIR == "initiative-rhoaieng" and INIT_PREFIX == "initiative-snapshot-"
 
     def test_both_types_in_order_with_one_exclusion(self):
         assert sparse_patterns(["rfe", "initiative"]) == [
             "/latest",
             "/*/auto-fix-runs/issue-snapshot-*.yaml",
-            "/initiative/latest",
-            "/initiative/*/auto-fix-runs/initiative-snapshot-*.yaml",
+            "/initiative-rhoaieng/latest",
+            "/initiative-rhoaieng/*/auto-fix-runs/initiative-snapshot-*.yaml",
             "!/test-data/**",
         ]
         assert sparse_patterns(["initiative", "rfe"])[:-1] == [
-            "/initiative/latest",
-            "/initiative/*/auto-fix-runs/initiative-snapshot-*.yaml",
+            "/initiative-rhoaieng/latest",
+            "/initiative-rhoaieng/*/auto-fix-runs/initiative-snapshot-*.yaml",
             "/latest",
             "/*/auto-fix-runs/issue-snapshot-*.yaml",
         ]
@@ -378,13 +378,13 @@ class TestMainArgv:
                 "sparse-checkout",
                 "set",
                 "--no-cone",
-                "/initiative/latest",
-                "/initiative/*/auto-fix-runs/initiative-snapshot-*.yaml",
+                "/initiative-rhoaieng/latest",
+                "/initiative-rhoaieng/*/auto-fix-runs/initiative-snapshot-*.yaml",
                 "!/test-data/**",
             ],
             dest,
         )
-        assert os.path.isdir(os.path.join(dest, "initiative"))
+        assert os.path.isdir(os.path.join(dest, INIT_SUBDIR))
 
     def test_unknown_type_fails_before_any_git_call(self, monkeypatch, tmp_path, capsys):
         rec = _GitRecorder()
@@ -398,7 +398,7 @@ class TestMainArgv:
         assert "DATA_REPO_TYPES: unknown type 'bogus'" in capsys.readouterr().err
 
 
-# ── Sparse checkout of the shared layout (root = rfe, initiative/ = initiative) ─────
+# ── Sparse checkout of the shared layout (root = rfe, initiative-rhoaieng/ = initiative) ──
 
 
 def _snapshot(issues):
@@ -431,7 +431,7 @@ INIT_TASK = f"{INIT_SUBDIR}/{INIT_RUN}/initiatives/RHOAIENG-1.md"
 
 def _shared_layout_repo(tmp_path, with_initiative=True):
     """The production results repository after AISDLC-202: an rfe run and `latest` at
-    the root, an initiative run and `latest` under initiative/, plus test-data/."""
+    the root, an initiative run and `latest` under initiative-rhoaieng/, plus test-data/."""
     src = _init_source_repo(str(tmp_path / "source"))
     _commit_file(src, RFE_SNAP, _snapshot({"RHAIRFE-1": "abc123"}))
     _commit_file(src, f"{RFE_RUN}/auto-fix-runs/{RFE_RUN}.yaml", "rfe run report")
@@ -495,7 +495,7 @@ class TestSharedLayoutCheckout:
 
     def test_first_run_sees_an_empty_subtree_not_a_missing_path(self, tmp_path, capsys):
         """Before the first Initiative push nothing matches the subtree patterns; the
-        script still creates initiative/ so the fetch reads "no 'latest' symlink" (an
+        script still creates initiative-rhoaieng/ so the fetch reads "no 'latest' symlink" (an
         empty baseline) rather than "Data repo path not found" (a setup failure)."""
         src = _shared_layout_repo(tmp_path, with_initiative=False)
         dest = str(tmp_path / "clone")

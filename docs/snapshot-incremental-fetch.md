@@ -440,14 +440,15 @@ subtree name is the descriptor field `snapshot.results_subdir`
 | Type | `snapshot.results_subdir` | Runs | `latest` |
 |------|---------------------------|------|----------|
 | `rfe` | `""` — the root, grandfathered: the repository's history and the production `latest` live there | `<ts>/` | `latest` |
-| `initiative` | `initiative` | `initiative/<ts>/` | `initiative/latest` |
+| `initiative` | `initiative-rhoaieng` | `initiative-rhoaieng/<ts>/` | `initiative-rhoaieng/latest` |
 
-The read side here takes the subtree from
+A subtree is named `<type>-<project lowercased>`: the Jira project is part
+of the name because a second deployment of the same type against another
+project (AISDLC-8) must not share a `latest` with this one. The read side
+here takes the subtree from
 `python3 scripts/type_registry.py get <type> snapshot.results_subdir`; the
 write side (the autofixer's `push-results.py` / `restore-artifacts.sh`)
-will read the same field the same way once the rfe-autofixer MR "typed
-results scripts" (in review) lands — until then pushes still go to the
-repository root. On the read side:
+reads the same field the same way. On the read side:
 
 - **`clone_results_repo.py`** — the `--data-dir` clone the auto-fix job
   makes before the fetch — sparse-checks out, for every type named in
@@ -464,7 +465,7 @@ repository root. On the read side:
   subtree's `latest`, then walks its run directories backwards for the
   type's `<snapshot.prefix>*.yaml`. Only a name that parses as
   `YYYYMMDD-HHMMSS` is a run directory (the rule `bootstrap_snapshot.py`
-  applies too), so the rfe read at the root never enters `initiative/`,
+  applies too), so the rfe read at the root never enters `initiative-rhoaieng/`,
   `test-data/` or a hand-made `test-run/`, whatever they hold; the
   subtree-name grammar (a letter first) guarantees no subdir can parse
   as a run, and gate 1 refuses `latest`, `test-data` and `test-run` as
