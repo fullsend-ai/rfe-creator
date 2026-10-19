@@ -1,7 +1,8 @@
 # Work item type provider guide
 
 How a new work item type is added to rfe-creator, what the contract enforces, and where the
-authoritative text lives. Design: `design-proposals/work-item-types-unified.md` §3 (contract),
+authoritative text lives. Running the type in production afterwards is the operator's page,
+[operator-runbook.md](operator-runbook.md). Design: `design-proposals/work-item-types-unified.md` §3 (contract),
 §3.2.1 (binding override), §3.3 (gates), §3.4 (provider obligations), §3.5 (discovery), §3.7
 (cross-type chain).
 
