@@ -1,9 +1,11 @@
 # Work item type provider guide
 
 How a new work item type is added to rfe-creator, what the contract enforces, and where the
-authoritative text lives. Design: `design-proposals/work-item-types-unified.md` §3 (contract),
-§3.2.1 (binding override), §3.3 (gates), §3.4 (provider obligations), §3.5 (discovery), §3.7
-(cross-type chain).
+authoritative text lives. Running a type in production afterwards (its schedule, the stage dry
+run, what each run writes, how to narrow or stop it) is documented with the deployment, in the
+rfe-autofixer repository's operator runbook. Design:
+`design-proposals/work-item-types-unified.md` §3 (contract), §3.2.1 (binding override), §3.3
+(gates), §3.4 (provider obligations), §3.5 (discovery), §3.7 (cross-type chain).
 
 **Status (PR-3a): 28 scripts read the registry at import** — the "Adoption status" table in
 [`types/README.md`](../types/README.md) lists them and what is still pending. Since PR-2b the
