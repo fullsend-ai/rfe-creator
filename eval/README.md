@@ -1,12 +1,12 @@
 # Evaluation — rfe-speedrun
 
-Automated evaluation of the `rfe-speedrun` pipeline using the [agent-eval-harness](https://github.com/opendatahub-io/agent-eval-harness).
+Automated evaluation of the `rfe-speedrun` pipeline using the [agent-eval-harness](https://github.com/fullsend-ai/agent-eval-harness).
 
 ## Quick Start
 
 ### Setup
 
-Slash commands below (`/eval-setup`, `/eval-run`, etc.) require the [agent-eval-harness](https://github.com/opendatahub-io/agent-eval-harness) to be installed.
+Slash commands below (`/eval-setup`, `/eval-run`, etc.) require the [agent-eval-harness](https://github.com/fullsend-ai/agent-eval-harness) to be installed.
 
 ```bash
 # Install dependencies and configure environment
@@ -122,7 +122,7 @@ During evaluation, PreToolUse hooks:
 The same eval can put an open-weights model (GLM, DeepSeek, Kimi, Qwen, …) under test
 through [OpenRouter](https://openrouter.ai). The harness's direct transport
 (agent-eval-harness ≥ 1.53.1; see its
-[OpenRouter guide](https://opendatahub-io.github.io/agent-eval-harness/guides/openrouter/))
+[OpenRouter guide](https://fullsend-ai.github.io/agent-eval-harness/guides/openrouter/))
 does the routing: no proxy to start, no hook, nothing to reconcile afterwards.
 
 ### Run
@@ -151,7 +151,7 @@ the report's Judge Cost row is a real figure. They run two at a time with eight 
 20 requests a minute, and the harness's default of four concurrent calls with three retries
 can exhaust its retries inside one window. Anthropic also rejects a forced tool call
 (`tool_choice` `tool`/`any`) for Opus 5.5 through OpenRouter: a harness without
-[agent-eval-harness#250](https://github.com/opendatahub-io/agent-eval-harness/pull/250)
+[agent-eval-harness#250](https://github.com/fullsend-ai/agent-eval-harness/pull/250)
 fails every LLM judge on this profile with a 400 instead of stepping down to `auto`.
 Inspect a merged profile
 with `python3 -m agent_eval.config --print eval-profiles/openrouter-glm-5.2.yaml` (harness
@@ -250,7 +250,7 @@ that promotes it to the default.
 
 # Evaluation — rfe-speedrun --type initiative
 
-Automated evaluation of the `rfe-speedrun --type initiative` pipeline using the [agent-eval-harness](https://github.com/opendatahub-io/agent-eval-harness).
+Automated evaluation of the `rfe-speedrun --type initiative` pipeline using the [agent-eval-harness](https://github.com/fullsend-ai/agent-eval-harness).
 
 ## Quick Start
 

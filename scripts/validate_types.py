@@ -880,7 +880,7 @@ def cross_type_findings(registry, env):
     #     (CWE-345); it needs bootstrap support (a checkout per repo) first — and
     #     (6b) descriptors sharing that repo must pin the same commit. Repositories
     #     are compared by canonical identity (canonical_rubric_repo), so
-    #     `opendatahub-io/assess-rfe`, `https://github.com/opendatahub-io/assess-rfe`
+    #     `fullsend-ai/assess-rfe`, `https://github.com/fullsend-ai/assess-rfe`
     #     and `...assess-rfe.git` are one repo, and only the canonical key is ever
     #     printed (a URL's userinfo is dropped from it). Only well-formed refs take
     #     part in 6b (a malformed one is already a per-type finding); the D3

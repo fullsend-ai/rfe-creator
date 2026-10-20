@@ -3,7 +3,7 @@
 # against types/_schema/type.schema.json only — its paths are epic-creator-relative, so validate_types
 # gate 1 (referenced files exist) does not apply to it.
 # Purpose (design R1, §3.7, §10 item 1): the third data point for the reserved vocabulary, written with
-# the reserved keys ONLY. Every value is measured on opendatahub-io/epic-creator (origin/main 5c46fd9;
+# the reserved keys ONLY. Every value is measured on fullsend-ai/epic-creator (origin/main 5c46fd9;
 # scripts/submit.py, artifact_utils.py and fetch_strategy.py are byte-identical on branch
 # add-epic-decompose-eval @ 22dee66, whose eval/ supplies the eval block; file:line cite that tree).
 # Where the reserved vocabulary cannot express a measured fact the entry says
