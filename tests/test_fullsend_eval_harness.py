@@ -107,12 +107,28 @@ def test_eval_sets_only_the_listed_keys():
     )
     assert set(child["env"]) == {"sandbox", "runner"}
     assert set(child["openshell"]) == {"profiles"}
+    # The lists replace only the jira entries: nothing else may ride along.
+    assert child["providers"] == ["rfe-creator/jira-provider-eval.yaml"]
+    assert child["openshell"]["profiles"] == ["rfe-creator/jira-profile-eval.yaml"]
 
 
 def test_composed_eval_differs_from_production_only_in_listed_keys():
     base = _load(PRODUCTION)
     composed = _compose(base, _load(EVAL))
     assert _diff(base, composed) == EXPECTED_DIFF
+
+
+def test_composed_lists_swap_only_the_jira_entries():
+    base = _load(PRODUCTION)
+    composed = _compose(base, _load(EVAL))
+    # EXPECTED_DIFF allows `providers` and `openshell.profiles` to differ as whole lists, so pin
+    # their contents: the base entries minus `jira`, plus the eval `jira` entry, nothing else.
+    base_providers = [p for p in base["providers"] if _identity(p, "name") != "jira"]
+    assert composed["providers"] == base_providers + ["rfe-creator/jira-provider-eval.yaml"]
+    base_profiles = [p for p in base["openshell"]["profiles"] if _identity(p, "id") != "jira"]
+    assert composed["openshell"]["profiles"] == base_profiles + [
+        "rfe-creator/jira-profile-eval.yaml"
+    ]
 
 
 def test_eval_values():
