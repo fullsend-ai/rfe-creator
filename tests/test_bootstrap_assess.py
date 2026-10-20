@@ -1112,4 +1112,4 @@ class TestRubricPin:
                 assert registry == awk, (name, field, registry, awk)
                 values[field] = registry
             assert re.fullmatch(r"[0-9a-f]{40}", values["ref"]), (name, values)
-            assert values["repo"] == "https://github.com/opendatahub-io/assess-rfe", (name, values)
+            assert values["repo"] == "https://github.com/fullsend-ai/assess-rfe", (name, values)

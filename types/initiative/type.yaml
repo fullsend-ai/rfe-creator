@@ -100,7 +100,7 @@ pipeline:
       condition: { frontmatter_field: parent_key, prefix: "RHAISTRAT-" }   # pipeline_state.py:143-144 _has_rhaistrat_parent; the engine's closed name is "has_rhaistrat_parent" (:149/:208). Also what makes fetch_issue.py --fetch-all request Jira's parent and record a RHAISTRAT- one as parent_key (Descriptor.condition_prefixes, AISDLC-280)
       skip_stub: { result: not_assessed, reason: "skipped by pipeline (no RHAISTRAT parent)" }   # pipeline_state.py:161-162 _write_poll_stub writes BOTH keys (§8.2 shows one)
   rubric:
-    repo: https://github.com/opendatahub-io/assess-rfe  # bootstrap.sh:45 (verbatim URL; shared)
+    repo: https://github.com/fullsend-ai/assess-rfe     # bootstrap.sh:45 (verbatim URL; shared)
     ref: "d8391ae379fba0497164550e3a33495bc2007aa2"            # same commit as rfe (one shared checkout; validate_types cross rule 6): the assess-rfe PR #10 merge that brought skills/assess-initiative onto main. bootstrap.sh checks it out and verifies it unless ASSESS_RFE_REF overrides. Quoted: a digits-only ref would parse as a number
     path: skills/assess-initiative/scripts/agent_prompt.md   # bootstrap.sh:51 INITIATIVE_RUBRIC; pipeline_state.py:113 == ".context/assess-rfe/" + path (gate 2, Q24)
     export: null                                        # nothing exports an initiative rubric: bootstrap.sh:103 runs export-rubric (rfe only); "initiative-rubric.md" occurs nowhere in the repo

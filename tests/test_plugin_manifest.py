@@ -54,7 +54,7 @@ class TestManifests:
         assert claude["name"] == "rfe-creator"
         assert re.fullmatch(r"\d+\.\d+\.\d+", claude["version"])
         assert claude["skills"] == "./.claude/skills/"
-        assert claude["repository"] == "https://github.com/opendatahub-io/rfe-creator"
+        assert claude["repository"] == "https://github.com/fullsend-ai/rfe-creator"
         assert claude["author"]["name"]
 
     @pytest.mark.parametrize("manifest", [CLAUDE_MANIFEST, CODEX_MANIFEST], ids=["claude", "codex"])

@@ -250,7 +250,7 @@ def test_routing_table_is_generated_once_and_shared_by_both_configs():
 def test_routing_table_is_agent_path_only_with_bare_slugs_and_provider_slugs():
     block = _load(REPO / "eval.yaml")["models"]["providers"]["openrouter"]
     assert block["api_key_env"] == "OPENROUTER_API_KEY"
-    assert block["attribution"]["referer"] == "https://github.com/opendatahub-io/rfe-creator"
+    assert block["attribution"]["referer"] == "https://github.com/fullsend-ai/rfe-creator"
     routing = block["routing"]
     # Enforcement is chosen in the shared profile, next to budget.run_usd: a base that said
     # key-guardrail without a run_usd would fail every consumer of eval.yaml at load.

@@ -243,7 +243,7 @@ else
   if [ -n "$ASSESS_REPO" ]; then
     REPO_SOURCE="types/$PIPELINE_TYPE/type.yaml pipeline.rubric.repo"
   else
-    ASSESS_REPO="https://github.com/opendatahub-io/assess-rfe"
+    ASSESS_REPO="https://github.com/fullsend-ai/assess-rfe"
     REPO_SOURCE="built-in default"
   fi
 fi
@@ -252,7 +252,7 @@ case "$ASSESS_REPO" in
   *) ASSESS_REPO="https://github.com/$ASSESS_REPO" ;;
 esac
 # Scripts now live under each skill dir (assess-rfe moved them out of the repo
-# root in opendatahub-io/assess-rfe#5 "move-scripts-to-skill-dirs").
+# root in fullsend-ai/assess-rfe#5 "move-scripts-to-skill-dirs").
 RUBRIC_FILE="$CONTEXT_DIR/skills/assess-rfe/scripts/agent_prompt.md"
 # Mirrors PIPELINE_TYPES["initiative"] rubric_path/scorer_type in
 # scripts/pipeline_state.py; tests/test_bootstrap_assess.py pins them together.
