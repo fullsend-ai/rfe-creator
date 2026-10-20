@@ -1,6 +1,5 @@
-# GitHub Actions workflow to add to opendatahub-io/rfe-creator.
-#
-# Place this file at: .github/workflows/rfe-creator-eval.yml
+# Runs the rfe-creator eval against a pull request in this repository, by
+# triggering the pipeline in gitlab.com/redhat/rhel-ai/agentic-ci/rfe-creator-eval.
 #
 # Required GitHub secrets (Settings → Secrets and variables → Actions):
 #   GITLAB_TRIGGER_TOKEN  — GitLab pipeline trigger token
@@ -10,9 +9,21 @@
 # number to evaluate and the work item type (default rfe). Only users with
 # write access can run this workflow.
 #
-# The GitLab pipeline posts eval results back to the PR as a comment.
-# GITHUB_TOKEN is used by the GitLab pipeline for posting — it is configured
-# as a GitLab CI/CD variable and is NOT passed into the OpenShell sandbox.
+# The steps below can fail this job: an unreadable PR, an unknown work item
+# type, or a GitLab trigger endpoint that rejects the request (the curl uses
+# --fail-with-body, so a bad token or URL goes red here). But once GitLab
+# accepts the trigger, this job exits and never learns the outcome — a green
+# run means only that the pipeline was created, not that the eval ran,
+# succeeded, or reported back. For that, check the GitLab pipeline.
+#
+# The GitLab pipeline posts the results to the PR as a comment, authenticating
+# as the `eval-pr-importer` GitHub App (owned by fullsend-ai): GITHUB_APP_ID
+# plus a private-key Secure File, both held on the GitLab side. No GitHub token
+# is sent to GitLab — the variables in the trigger step below are everything
+# this passes, and `github.token` is used only here, to read PR metadata and to
+# check for a type descriptor at the PR head. The App credentials are
+# deliberately withheld from the OpenShell sandbox that runs the eval, so only
+# the outer CI job can write back to GitHub.
 
 name: rfe-creator-eval
 
@@ -63,9 +74,9 @@ jobs:
 
       # The type is free text, and a GitLab job that fails on an unknown type
       # never posts to the PR, so a typo would otherwise end in a green run and
-      # no comment. This reads the PR's file list through the API and checks
-      # out no PR code. rfe is not checked: a PR older than types/ has no
-      # descriptors and rfe-creator-eval runs eval.yaml for it.
+      # no comment. This probes for the single descriptor file through the
+      # contents API and checks out no PR code. rfe is not checked: a PR older
+      # than types/ has no descriptors and rfe-creator-eval runs eval.yaml for it.
       - name: Check the work item type
         env:
           GH_TOKEN: ${{ github.token }}
