@@ -98,7 +98,7 @@ The same skills run the pipeline for Initiatives targeting the RHOAIENG Jira pro
 
 ### Strategy Pipeline
 
-The strategy skills live in a dedicated repo: [opendatahub-io/strat-creator](https://github.com/opendatahub-io/strat-creator). This plugin no longer ships copies of its reviewer skills.
+The strategy skills live in a dedicated repo: [fullsend-ai/strat-creator](https://github.com/fullsend-ai/strat-creator). This plugin no longer ships copies of its reviewer skills.
 
 ## Pipeline Steps
 
@@ -121,7 +121,7 @@ All artifacts are written to `artifacts/`. You can edit any file between steps:
 
 ## assess-rfe Integration
 
-Skills automatically bootstrap the [assess-rfe](https://github.com/opendatahub-io/assess-rfe) plugin from GitHub on first use:
+Skills automatically bootstrap the [assess-rfe](https://github.com/fullsend-ai/assess-rfe) plugin from GitHub on first use:
 
 - **During creation**: The rubric is exported to `artifacts/rfe-rubric.md` and used to guide clarifying questions.
 - **During review**: `/rfe-review` invokes assess-rfe for rubric scoring.
