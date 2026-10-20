@@ -9,9 +9,12 @@
 # number to evaluate and the work item type (default rfe). Only users with
 # write access can run this workflow.
 #
-# This job fires the trigger and exits. It never learns the outcome, so it goes
-# green whether or not the eval runs, succeeds, or manages to report back —
-# check the GitLab pipeline, not this run.
+# The steps below can fail this job: an unreadable PR, an unknown work item
+# type, or a GitLab trigger endpoint that rejects the request (the curl uses
+# --fail-with-body, so a bad token or URL goes red here). But once GitLab
+# accepts the trigger, this job exits and never learns the outcome — a green
+# run means only that the pipeline was created, not that the eval ran,
+# succeeded, or reported back. For that, check the GitLab pipeline.
 #
 # The GitLab pipeline posts the results to the PR as a comment, authenticating
 # as the `eval-pr-importer` GitHub App (owned by fullsend-ai): GITHUB_APP_ID
