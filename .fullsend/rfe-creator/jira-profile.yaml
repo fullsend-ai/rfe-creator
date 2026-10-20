@@ -3,6 +3,11 @@ id: jira
 display_name: Jira
 description: Jira
 category: data
+credentials:
+  - name: api_token
+    description: Jira API token
+    env_vars: [JIRA_TOKEN]
+    required: true
 endpoints:
   - host: "redhat.atlassian.net"
     port: 443
