@@ -17,9 +17,10 @@
 # as the `eval-pr-importer` GitHub App (owned by fullsend-ai): GITHUB_APP_ID
 # plus a private-key Secure File, both held on the GitLab side. No GitHub token
 # is sent to GitLab — the variables in the trigger step below are everything
-# this passes, and `github.token` is used only here, to read the PR's head and
-# file list. The App credentials are deliberately withheld from the OpenShell
-# sandbox that runs the eval, so only the outer CI job can write back to GitHub.
+# this passes, and `github.token` is used only here, to read PR metadata and to
+# check for a type descriptor at the PR head. The App credentials are
+# deliberately withheld from the OpenShell sandbox that runs the eval, so only
+# the outer CI job can write back to GitHub.
 
 name: rfe-creator-eval
 
@@ -70,9 +71,9 @@ jobs:
 
       # The type is free text, and a GitLab job that fails on an unknown type
       # never posts to the PR, so a typo would otherwise end in a green run and
-      # no comment. This reads the PR's file list through the API and checks
-      # out no PR code. rfe is not checked: a PR older than types/ has no
-      # descriptors and rfe-creator-eval runs eval.yaml for it.
+      # no comment. This probes for the single descriptor file through the
+      # contents API and checks out no PR code. rfe is not checked: a PR older
+      # than types/ has no descriptors and rfe-creator-eval runs eval.yaml for it.
       - name: Check the work item type
         env:
           GH_TOKEN: ${{ github.token }}
