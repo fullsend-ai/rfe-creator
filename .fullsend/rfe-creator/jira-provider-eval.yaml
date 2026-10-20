@@ -1,0 +1,8 @@
+---
+# Eval variant of jira-provider.yaml (rfe-creator-eval.yaml): same name and
+# type, so it replaces the production provider, with a literal placeholder
+# credential so the host needs no JIRA_TOKEN.
+name: jira
+type: jira
+credentials:
+  JIRA_TOKEN: "eval-no-jira"

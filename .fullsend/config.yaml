@@ -8,6 +8,7 @@
 version: "1"
 agents:
   - source: rfe-creator/rfe-creator.yaml
+  - source: rfe-creator/rfe-creator-eval.yaml
   - name: code
     runtime: claude
     model: opus

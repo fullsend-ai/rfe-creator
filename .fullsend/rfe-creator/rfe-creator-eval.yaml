@@ -1,0 +1,42 @@
+---
+# Eval variant of rfe-creator.yaml: same prompt, scripts, image, policy, gates
+# (the validation loop's DONE gate, pre-script, post-script), but no Jira access
+# and the models under evaluation injected from outside. fullsend composes this
+# file over its base (internal/harness/compose.go): non-empty scalars override,
+# env.sandbox / env.runner merge with these keys winning, and providers /
+# openshell.profiles entries replace the base entry with the same provider name /
+# profile id. Entries cannot be removed, so "no Jira" is an override here.
+#
+# `model` is not set: `fullsend run --model` passes the model under evaluation.
+# tests/test_fullsend_eval_harness.py pins this file to the keys below.
+#
+# fullsend resolves `base` relative to this file's directory, unlike the
+# fullsend-dir-relative paths below (rfe-creator/rfe-creator.yaml would look for
+# .fullsend/rfe-creator/rfe-creator/rfe-creator.yaml).
+base: rfe-creator.yaml
+
+# Below the eval's execution.timeout (10800 s); the full 26-case batch took
+# 105-110 minutes under claude-code.
+timeout_minutes: 170
+
+env:
+  sandbox:
+    # Literals: the base reads ${JIRA_SERVER}/${JIRA_USER}, which would
+    # otherwise be required on the host.
+    JIRA_SERVER: "https://redhat.atlassian.net"
+    JIRA_USER: "eval"
+    # Exported by the eval runner; the base pins a literal.
+    CLAUDE_CODE_SUBAGENT_MODEL: "${AGENT_EVAL_SUBAGENT_MODEL}"
+  runner:
+    # Literals, so a host without Jira credentials passes env validation.
+    JIRA_SERVER: "https://redhat.atlassian.net"
+    JIRA_USER: "eval"
+    JIRA_TOKEN: "eval-no-jira"
+
+openshell:
+  profiles:
+    # Replaces the read-only Jira profile (id: jira): no Atlassian egress.
+    - rfe-creator/jira-profile-eval.yaml
+providers:
+  # Replaces the production provider (name: jira) with a literal credential.
+  - rfe-creator/jira-provider-eval.yaml
