@@ -48,7 +48,7 @@ JIRA_TOKEN="<token>"
 Then run it with:
 
 ```bash
-git clone https://github.com/opendatahub-io/rfe-creator.git --branch main 
+git clone https://github.com/fullsend-ai/rfe-creator.git --branch main 
 cd rfe-creator
 fullsend run rfe-creator --fullsend-dir .fullsend --target-repo . --env-file .env
 ```
