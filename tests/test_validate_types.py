@@ -1071,24 +1071,33 @@ class TestCrossTypeGate:
 
     def test_duplicate_results_subdir(self, types_copy):
         """AISDLC-202: two types in one results subtree would read and move each other's
-        `latest`; a second type reusing 'initiative' is a cross-type finding."""
+        `latest`; a second type reusing 'initiative-rhoaieng' is a cross-type finding."""
         _mutate(
             types_copy,
             "rfe",
-            lambda d: d["snapshot"].__setitem__("results_subdir", "initiative"),
+            lambda d: d["snapshot"].__setitem__("results_subdir", "initiative-rhoaieng"),
         )
         hits = _assert_finding(
             _validate(types_copy),
-            "duplicate snapshot.results_subdir 'initiative' shared by types: initiative, rfe",
+            "duplicate snapshot.results_subdir 'initiative-rhoaieng' "
+            "shared by types: initiative, rfe",
             "*",
         )
         assert hits[0].types == frozenset({"rfe", "initiative"})
 
     def test_shipped_results_subdirs(self):
-        """The decision record: rfe at the root (grandfathered), initiative under initiative/."""
+        """The decision record: rfe at the root (grandfathered); every other type under
+        `<type>-<project lowercased>`, so a second deployment of the type against another Jira
+        project (AISDLC-8) never shares a subtree — initiative under initiative-rhoaieng/."""
         reg = type_registry.load(root=TYPES_ROOT, extra_roots=[], env={})
         assert reg.get("rfe").get("snapshot.results_subdir") == ""
-        assert reg.get("initiative").get("snapshot.results_subdir") == "initiative"
+        assert reg.get("initiative").get("snapshot.results_subdir") == "initiative-rhoaieng"
+        for name in reg.names():
+            if name == "rfe":
+                continue
+            desc = reg.get(name)
+            project = desc.binding(env={})["project"].lower()
+            assert desc.get("snapshot.results_subdir") == f"{name}-{project}", name
 
     @pytest.mark.parametrize("value", ["20260101-000000", "Initiative", "-initiative", "a/b"])
     def test_results_subdir_grammar(self, types_copy, value):

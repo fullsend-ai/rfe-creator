@@ -602,7 +602,7 @@ class TestLoadSnapshotFromDir:
     # ── the shared layout (AISDLC-202): root = rfe, <results_subdir>/ = initiative ──
 
     def test_subtree_read_follows_its_own_latest(self, tmp_path, capsys):
-        """--data-dir <clone>/initiative with the initiative prefix follows initiative/latest
+        """--data-dir <clone>/initiative-rhoaieng with the initiative prefix follows its `latest`
         (the older run), not the newest directory, in a tree that also holds rfe runs."""
         _root, sub = _shared_layout(tmp_path)
         data = load_snapshot_from_dir(sub, prefix=_INIT_PREFIX)

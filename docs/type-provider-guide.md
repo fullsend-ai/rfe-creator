@@ -1,9 +1,11 @@
 # Work item type provider guide
 
 How a new work item type is added to rfe-creator, what the contract enforces, and where the
-authoritative text lives. Design: `design-proposals/work-item-types-unified.md` §3 (contract),
-§3.2.1 (binding override), §3.3 (gates), §3.4 (provider obligations), §3.5 (discovery), §3.7
-(cross-type chain).
+authoritative text lives. Running a type in production afterwards (its schedule, the stage dry
+run, what each run writes, how to narrow or stop it) is documented with the deployment, in the
+rfe-autofixer repository's operator runbook. Design:
+`design-proposals/work-item-types-unified.md` §3 (contract), §3.2.1 (binding override), §3.3
+(gates), §3.4 (provider obligations), §3.5 (discovery), §3.7 (cross-type chain).
 
 **Status (PR-3a): 28 scripts read the registry at import** — the "Adoption status" table in
 [`types/README.md`](../types/README.md) lists them and what is still pending. Since PR-2b the
@@ -149,12 +151,13 @@ Rules that are easy to trip:
   what it did before.
 - **A type picks its results subtree.** `snapshot.results_subdir` names the type's subtree of
   the shared results repository (`<subdir>/<run>/` and `<subdir>/latest`; `''` is the root,
-  grandfathered for `rfe`) — gate 1 requires it next to `prefix` / `report_prefix`, keeps
-  non-empty values unique and refuses the reserved names `latest`, `test-data` and `test-run`;
-  `clone_results_repo.py` reads it for every type named in `DATA_REPO_TYPES`, and the
-  autofixer's push / restore scripts will read it through `type_registry.py get` once the
-  rfe-autofixer MR "typed results scripts" (in review) lands — until then pushes still go to
-  the repository root (`docs/snapshot-incremental-fetch.md` "Results repository layout").
+  grandfathered for `rfe`). Name it `<type>-<project lowercased>` (`initiative-rhoaieng`): the
+  Jira project is part of the name so that a second deployment of the type against another
+  project gets a subtree of its own. Gate 1 requires the field next to `prefix` /
+  `report_prefix`, keeps non-empty values unique and refuses the reserved names `latest`,
+  `test-data` and `test-run`; `clone_results_repo.py` reads it for every type named in
+  `DATA_REPO_TYPES`, and the autofixer's push / restore scripts read it through
+  `type_registry.py get` (`docs/snapshot-incremental-fetch.md` "Results repository layout").
 - **Submit facts are read at import, for every type.** `submit.TYPE_CONFIGS` and
   `split_submit.SPLIT_CONFIG` read `identity.jira.{project,issue_type,key_prefixes}`,
   `identity.{id_field,local_prefix}`, `dirs.{tasks,reviews,originals}`,
