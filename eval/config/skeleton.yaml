@@ -40,7 +40,7 @@ models:
     openrouter:
       api_key_env: OPENROUTER_API_KEY     # NAME of the variable holding the key, never a value
       attribution:
-        referer: https://github.com/opendatahub-io/rfe-creator
+        referer: https://github.com/fullsend-ai/rfe-creator
         title: rfe-creator eval
       # The pinned provider SET per model, keyed by the bare OpenRouter slug; `order`
       # values are provider SLUGS. Claude Code cannot put routing in a request, so the

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/opendatahub-io/rfe-creator/types/_schema/eval-fragment.schema.json",
+  "$id": "https://github.com/fullsend-ai/rfe-creator/types/_schema/eval-fragment.schema.json",
   "title": "Work item type eval fragment",
   "description": "types/<type>/eval/fragment.yaml: the typed prose scripts/generate_eval_config.py splices into eval/config/skeleton.yaml to produce the type's committed eval config (design work-item-types-unified.md section 4.5). Every key is a slot the skeleton references as ${fragment.<dotted>}; identity, dirs, score fields and thresholds are read from type.yaml, never restated here. A `line` is one line of prose; a `block` is a multi-line text inserted at the slot's indentation (an empty block removes the slot line).",
   "type": "object",

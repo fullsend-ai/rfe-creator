@@ -639,10 +639,10 @@ class TestPerTypeGate:
     @pytest.mark.parametrize(
         "spelling",
         [
-            "opendatahub-io/assess-rfe",
-            "https://github.com/OpenDataHub-io/Assess-RFE",
-            "https://github.com/opendatahub-io/assess-rfe.git",
-            "opendatahub-io/assess-rfe.git",
+            "fullsend-ai/assess-rfe",
+            "https://github.com/FullSend-ai/Assess-RFE",
+            "https://github.com/fullsend-ai/assess-rfe.git",
+            "fullsend-ai/assess-rfe.git",
         ],
     )
     def test_shared_repo_rule_canonicalizes_the_repo_spelling(self, types_copy, spelling):
@@ -657,7 +657,7 @@ class TestPerTypeGate:
         assert _validate(types_copy).ok, _validate(types_copy).lines()
         _mutate(types_copy, "rfe", lambda d: d["pipeline"]["rubric"].__setitem__("ref", "a" * 40))
         report = _validate(types_copy)
-        hits = _assert_finding(report, "sharing rubric repo 'opendatahub-io/assess-rfe'", "*")
+        hits = _assert_finding(report, "sharing rubric repo 'fullsend-ai/assess-rfe'", "*")
         assert len(hits) == 1 and len(report.findings) == 1, report.lines()
 
     def test_two_external_rubric_repos_are_a_cross_finding(self, types_copy):
@@ -675,7 +675,7 @@ class TestPerTypeGate:
         hits = _assert_finding(report, "external rubric repositories differ across types", "*")
         assert len(hits) == 1 and len(report.findings) == 1, report.lines()
         assert hits[0].types == frozenset({"rfe", "initiative"})
-        assert "opendatahub-io/assess-rfe (initiative)" in hits[0].message
+        assert "fullsend-ai/assess-rfe (initiative)" in hits[0].message
         assert "other-org/other-rubrics (rfe)" in hits[0].message
         assert "needs bootstrap support" in hits[0].message
 
@@ -688,7 +688,7 @@ class TestPerTypeGate:
             types_copy,
             "rfe",
             lambda d: d["pipeline"]["rubric"].__setitem__(
-                "repo", f"https://alice:{token}@github.com/opendatahub-io/assess-rfe.git"
+                "repo", f"https://alice:{token}@github.com/fullsend-ai/assess-rfe.git"
             ),
         )
         report = _validate(types_copy)
@@ -712,18 +712,18 @@ class TestPerTypeGate:
     @pytest.mark.parametrize(
         "repo, key",
         [
-            ("opendatahub-io/assess-rfe", "opendatahub-io/assess-rfe"),
+            ("fullsend-ai/assess-rfe", "fullsend-ai/assess-rfe"),
             (
-                "https://alice:token@github.com/opendatahub-io/assess-rfe.git",
-                "opendatahub-io/assess-rfe",
+                "https://alice:token@github.com/fullsend-ai/assess-rfe.git",
+                "fullsend-ai/assess-rfe",
             ),
             (
                 "https://alice:token@gitlab.example.com/Group/Rubrics.git",
                 "https://gitlab.example.com/group/rubrics",
             ),
-            ("https://github.com/OpenDataHub-IO/Assess-RFE.git/", "opendatahub-io/assess-rfe"),
-            ("git@github.com:opendatahub-io/assess-rfe.git", "opendatahub-io/assess-rfe"),
-            ("ssh://git@github.com/opendatahub-io/assess-rfe", "opendatahub-io/assess-rfe"),
+            ("https://github.com/FullSend-AI/Assess-RFE.git/", "fullsend-ai/assess-rfe"),
+            ("git@github.com:fullsend-ai/assess-rfe.git", "fullsend-ai/assess-rfe"),
+            ("ssh://git@github.com/fullsend-ai/assess-rfe", "fullsend-ai/assess-rfe"),
             (
                 "https://gitlab.example.com/Group/Rubrics.git/",
                 "https://gitlab.example.com/group/rubrics",
