@@ -25,7 +25,7 @@
 # deliberately withheld from the OpenShell sandbox that runs the eval, so only
 # the outer CI job can write back to GitHub.
 
-name: rfe-creator-eval
+name: Eval
 
 on:
   workflow_dispatch:
