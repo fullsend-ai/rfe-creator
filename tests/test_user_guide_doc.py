@@ -58,3 +58,32 @@ def test_is_linked_from_the_readme_and_the_generic_skills():
     for stage in GENERIC_SKILLS:
         skill = REPO_ROOT / ".claude" / "skills" / f"rfe-{stage}" / "SKILL.md"
         assert DOC_REL in skill.read_text(encoding="utf-8"), stage
+
+
+def _section(text, heading):
+    """The body of a ``## <heading>`` section, up to the next ``## `` heading (subsections
+    stay inside it)."""
+    start = text.index(f"## {heading}")
+    rest = text[start + len(heading) + 3 :]
+    match = re.search(r"^## ", rest, flags=re.MULTILINE)
+    return rest[: match.start()] if match else rest
+
+
+def test_documents_the_resolution_rules_in_the_registry_order():
+    """AISDLC-226: the page's "How the type is chosen" section names every rule the registry
+    can print after ``TYPE RESOLVED:`` (``type_registry.RESOLVE_RUNGS``), in the registry's
+    order of precedence, in one sentence; its numbered ladder opens with ``--type`` and closes
+    with the grandfathered default type. A new rung, a renamed rung or a reordered ladder in
+    the code fails here until the page says the same."""
+    section = _section(_text(), "How the type is chosen")
+    rungs = type_registry.RESOLVE_RUNGS
+    sentences = [s for s in re.split(r"(?<=\.)\s", section) if all(f"`{r}`" in s for r in rungs)]
+    assert sentences, f"no sentence names every rule {rungs}"
+    first = [sentences[0].index(f"`{r}`") for r in rungs]
+    assert first == sorted(first), (rungs, sentences[0])
+    items = re.findall(r"^\d+\. \*\*(.+?)\*\*", section, flags=re.MULTILINE)
+    assert len(items) >= 2, items
+    assert "--type" in items[0], items[0]
+    default = type_registry.load(extra_roots=[], env={}).get(type_registry.LEGACY_DEFAULT_TYPE)
+    last_item = section[section.index(items[-1]) :]
+    assert default.get("display.entity") in last_item.split("\n\n")[0], items[-1]
