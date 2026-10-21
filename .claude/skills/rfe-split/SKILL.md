@@ -1,6 +1,6 @@
 ---
 name: rfe-split
-description: Split oversized work items of any registered type — RFEs and Initiatives — into smaller, right-sized ones. Takes one or more IDs of items already in the workspace (fetched by /rfe-review or written by /rfe-create; e.g. /rfe-split RHAIRFE-1234 RHAIRFE-5678, /rfe-split --type initiative INIT-001) and skips an ID with no local task file. Runs non-interactively — decomposes, generates new items, reviews them, self-corrects, and checks coverage.
+description: "Split oversized work items into smaller, right-sized ones. Works for every registered type: RFEs by default, Initiatives with --type initiative. Takes one or more IDs of items already in the workspace (fetched by /rfe-review or written by /rfe-create; e.g. /rfe-split RHAIRFE-1234 RHAIRFE-5678, /rfe-split --type initiative INIT-001) and skips an ID with no local task file. Runs non-interactively — decomposes, generates new items, reviews them, self-corrects, and checks coverage."
 user-invocable: true
 allowed-tools: Bash, Agent, Skill, AskUserQuestion
 ---

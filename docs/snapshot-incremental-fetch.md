@@ -487,7 +487,8 @@ Two consequences worth knowing:
   `bootstrap_snapshot.py` takes the subtree as its results directory:
   `python3 scripts/bootstrap_snapshot.py "<jql>" --type initiative --results-dir <full clone>/initiative-rhoaieng`.
   Its partial-clone probe (`_run_dir_has_snapshots`) is rfe-prefixed for
-  every type (grandfathered, see the adoption table in `types/README.md`),
+  every type (grandfathered, see the adoption table in
+  `docs/work-item-types-development.md`),
   so a sparse clone of another type's subtree is not recognised as
   partial — clone the repository in full before bootstrapping.
 

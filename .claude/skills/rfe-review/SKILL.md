@@ -1,6 +1,6 @@
 ---
 name: rfe-review
-description: Review and improve work items of any registered type — RFEs (RHAIRFE) and Initiatives (RHOAIENG, /rfe-review --type initiative). Accepts one or more Jira keys to fetch and review existing items, or reviews local artifacts from /rfe-create. Runs rubric scoring and the type's review dimensions (technical feasibility, strategic alignment), then auto-revises the issues it finds.
+description: "Review and improve work items — RFEs (RHAIRFE) and Initiatives (RHOAIENG). Works for every registered type: RFEs by default, Initiatives with --type initiative. Accepts one or more Jira keys to fetch and review existing items, or reviews local artifacts from /rfe-create. Runs rubric scoring and the type's review dimensions (technical feasibility, strategic alignment), then auto-revises the issues it finds."
 user-invocable: true
 allowed-tools: Bash, Agent, AskUserQuestion
 ---

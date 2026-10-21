@@ -1047,8 +1047,9 @@ class TestDocs:
 
     def test_readme_command_list_unchanged(self):
         """PR1-31: the README command lists are part of the byte-stable surface. PR-5c (plan
-        D11) is the one change: the six generic `rfe-*` names, one `--type initiative` line
-        per pipeline, no legacy `rfe.*` / `initiative-*` name."""
+        D11) moved them to the six generic `rfe-*` names with no legacy `rfe.*` /
+        `initiative-*` name; AISDLC-225 put each `--type initiative` example beside its RFE
+        twin, so every example after the skill list comes as an RFE / Initiative pair."""
         quick_start = _read("README.md").split("## Quick Start", 1)[1].split("```", 2)[1]
         commands = re.findall(r"^/[\w.-]+", quick_start, re.MULTILINE)
         assert commands == [
@@ -1058,16 +1059,27 @@ class TestDocs:
             "/rfe-submit",
             "/rfe-speedrun",
             "/rfe-auto-fix",
+            "/rfe-create",
+            "/rfe-create",
             "/rfe-review",
+            "/rfe-review",
+            "/rfe-split",
             "/rfe-split",
             "/rfe-speedrun",
             "/rfe-speedrun",
             "/rfe-speedrun",
-            "/rfe-auto-fix",
-            "/rfe-auto-fix",
-            "/rfe-create",
             "/rfe-speedrun",
+            "/rfe-speedrun",
+            "/rfe-auto-fix",
+            "/rfe-auto-fix",
+            "/rfe-auto-fix",
             "/rfe-auto-fix",
             "/rfe-creator.update-deps",
         ]
         assert not re.search(r"^/(rfe\.|initiative-)", quick_start, re.MULTILINE)
+        initiative_lines = [
+            ln
+            for ln in quick_start.splitlines()
+            if ln.startswith("/") and "--type initiative" in ln
+        ]
+        assert len(initiative_lines) == 7, initiative_lines
