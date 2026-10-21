@@ -870,6 +870,21 @@ class TestClearAddressedAttention:
         for field in ("needs_attention_source", "needs_attention_dimension"):
             assert after.get(field) == before.get(field)
 
+    def test_keeps_a_feasibility_flag_when_alignment_is_weak(self, tmp_path, t):
+        # A feasibility-sourced flag may hide a simultaneous weak alignment (the producer
+        # records one source only); weak alignment always needs a human, so it is kept.
+        if t != "initiative":
+            pytest.skip("alignment is an Initiative review field")
+        item_id, review = _setup_flagged(tmp_path, t, alignment="weak")
+        result = _clear_run(tmp_path, t, item_id, "--clear-addressed-attention")
+        assert result.returncode == 0, result.stderr
+        assert "CLEARED_ATTENTION=\n" in result.stdout
+        fm = _read_frontmatter(review)
+        assert fm["needs_attention"] is True
+        assert fm["needs_attention_reason"] == _FEASIBILITY_REASON
+        assert fm["needs_attention_source"] == "feasibility"
+        assert fm["alignment"] == "weak"
+
     def test_keeps_the_flag_when_the_task_was_not_revised(self, tmp_path, t):
         # The diff-based fixup lowers auto_revised first; an unrevised item is never cleared.
         item_id, review = _setup_flagged(tmp_path, t, revised=False, auto_revised=True)
@@ -927,6 +942,7 @@ class TestFeasibilityFlagAddressed:
             {"feasibility": "infeasible"},
             {"feasibility": "indeterminate"},
             {"feasibility": None},
+            {"alignment": "weak"},  # weak alignment always needs a human
         ],
     )
     def test_not_addressed(self, change):

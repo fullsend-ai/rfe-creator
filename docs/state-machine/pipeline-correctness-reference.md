@@ -416,7 +416,7 @@ These scripts exist but are not part of the normal pipeline flow:
 | N3 | false | true | Split refused (too many children) | exit code 2 | update_frontmatter() | submit.py:200-201 |
 | N4 | false | true | Split refused (Jira conflict) | exit code 3 | update_frontmatter() | submit.py:234-235 |
 | N5 | false | true | Submit failed | Jira API exception | update_frontmatter() (best-effort) | submit.py:599-600 |
-| N8 | true | false | REASSESS_FIXUP (`check_revised.py --batch --clear-addressed-attention`, AISDLC-442) | After the auto_revised update: no `error`, `auto_revised` and `pass` both true, `feasibility: feasible` (an infeasible or indeterminate verdict keeps the flag), a non-empty removed-context companion next to the task, `needs_attention_source: feasibility`, and the reassessed score of `needs_attention_dimension` is the criterion maximum (2). Feasibility is not re-run on the revised text (invariant 4.2/5.4), so its note describes the original; the reassessed rubric score is the evidence the revision addressed it | `write_frontmatter()` sets `needs_attention=false`, `needs_attention_reason=null` and removes `needs_attention_source` / `needs_attention_dimension`; prints `CLEARED_ATTENTION=<ids>`. Idempotent (the loop back through REASSESS_CHECK may rerun it). Not run at FIXUP / SPLIT_FIXUP, whose scores still describe the flagged text | check_revised.py `clear_addressed_attention` |
+| N8 | true | false | REASSESS_FIXUP (`check_revised.py --batch --clear-addressed-attention`, AISDLC-442) | After the auto_revised update: no `error`, `auto_revised` and `pass` both true, `feasibility: feasible` (an infeasible or indeterminate verdict keeps the flag), a non-empty removed-context companion next to the task, an `alignment` verdict other than `weak` (weak alignment always needs a human), `needs_attention_source: feasibility`, and the reassessed score of `needs_attention_dimension` is the criterion maximum (2). Feasibility is not re-run on the revised text (invariant 4.2/5.4), so its note describes the original; the reassessed rubric score is the evidence the revision addressed it | `write_frontmatter()` sets `needs_attention=false`, `needs_attention_reason=null` and removes `needs_attention_source` / `needs_attention_dimension`; prints `CLEARED_ATTENTION=<ids>`. Idempotent (the loop back through REASSESS_CHECK may rerun it). Not run at FIXUP / SPLIT_FIXUP, whose scores still describe the flagged text | check_revised.py `clear_addressed_attention` |
 | N6 | true | (not cleared by pipeline, except N8) | -- | -- | Persists until human resolution or fresh review | -- |
 
 ### 2.5 Error Field Transitions
@@ -882,7 +882,9 @@ persists until human resolution or a completely fresh review pass.
 
 The one exception is N8 (AISDLC-442): REASSESS_FIXUP clears a flag the review agent
 sourced to feasibility (`needs_attention_source: feasibility`) when the revision passed
-with that flag's `needs_attention_dimension` at its maximum. Without it, a revision that
+with that flag's `needs_attention_dimension` at its maximum, the `feasibility` verdict is
+`feasible`, the `alignment` verdict is not `weak`, and a non-empty removed-context companion
+sits next to the task (see the N8 row for the full list). Without it, a revision that
 fixed the prescriptive HOW feasibility complained about ended the run flagged, with a
 reason describing the pre-revision text. A flag with any other source, or none, is kept.
 

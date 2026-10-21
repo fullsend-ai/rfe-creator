@@ -494,6 +494,45 @@ judges:
           len(errors) == 0,
           "; ".join(errors[:5]) if errors else f"{checked} reviews: auto_revised matches evidence",
       )
+  - name: needs_attention_expectation
+    description: |
+      Compare each final review's needs_attention with the case's
+      expected_needs_attention annotation (the flag at the end of the run,
+      after any revision). A case without the annotation, or with a null
+      one, is not checked.
+    check: |
+      import yaml
+
+      ann = outputs.get("annotations")
+      expected = ann.get("expected_needs_attention") if isinstance(ann, dict) else None
+      if not isinstance(expected, bool):
+          return (True, "no expected_needs_attention annotation")
+      files = outputs.get("files", {})
+      reviews = {k: v for k, v in files.items() if k.endswith("-review.md")}
+      if not reviews:
+          return (False, "No review files to check")
+      errors = []
+      for fname, content in sorted(reviews.items()):
+          # Frontmatter is the leading ---...--- block; split on the closing fence
+          # only, so a literal --- inside a field value cannot truncate it.
+          if not content.startswith("---"):
+              continue
+          end = content.find("\n---", 3)
+          if end == -1:
+              continue
+          try:
+              fm = yaml.safe_load(content[3:end]) or {}
+          except yaml.YAMLError:
+              continue
+          if not isinstance(fm, dict):
+              continue
+          actual = fm.get("needs_attention") is True
+          if actual != expected:
+              errors.append(f"{fname}: needs_attention={actual}, expected {expected}")
+      return (
+          len(errors) == 0,
+          "; ".join(errors[:5]) if errors else f"{len(reviews)} reviews: needs_attention={expected} as expected",
+      )
   - name: revision_coverage
     description: |
       Verify the run exercised the revise/reassess path. When every draft passes
@@ -987,6 +1026,8 @@ thresholds:
   recommendation_consistency:
     min_pass_rate: 1.0
   revision_flag_consistency:
+    min_pass_rate: 1.0
+  needs_attention_expectation:
     min_pass_rate: 1.0
   # revision_coverage: with 21 cases of which 7 are tagged revision-expected (case-007, case-013
   # and case-017 to case-021, each carrying a gap the create step cannot

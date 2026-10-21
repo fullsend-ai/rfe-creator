@@ -127,7 +127,10 @@ def feasibility_flag_addressed(data, score_fields, removed_context):
     the feasibility verdict is ``feasible`` (an ``infeasible`` or ``indeterminate`` verdict is
     a concern about the objective, not the wording, and keeps the flag);
     ``removed_context`` is true (the revision left a removed-context record, the evidence that
-    content was removed); ``needs_attention_source`` is ``feasibility``;
+    content was removed); the ``alignment`` verdict is not ``weak`` (strategic misalignment
+    always needs a human, whatever source the producer recorded: it records one source only
+    and a feasibility concern may have won over a simultaneous weak alignment);
+    ``needs_attention_source`` is ``feasibility``;
     ``needs_attention_dimension`` names one of the type's score fields; and that field's
     reassessed score is ``CRITERION_MAX``.
     Feasibility is deliberately not re-run on the revised text (invariant 4.2/5.4), so a
@@ -140,6 +143,8 @@ def feasibility_flag_addressed(data, score_fields, removed_context):
     if data.get("auto_revised") is not True or data.get("pass") is not True:
         return False
     if data.get("feasibility") != "feasible" or not removed_context:
+        return False
+    if data.get("alignment") == "weak":
         return False
     if data.get("needs_attention_source") != "feasibility":
         return False

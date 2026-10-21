@@ -129,6 +129,7 @@ eval:
     run_report_exists: { min_pass_rate: 1.0 }
     recommendation_consistency: { min_pass_rate: 1.0 }
     revision_flag_consistency: { min_pass_rate: 1.0 }
+    needs_attention_expectation: { min_pass_rate: 1.0 }
     revision_coverage: { min_pass_rate: 0.92 }
     pipeline_flow: { min_pass_rate: 1.0 }
     architecture_context_used: { min_pass_rate: 1.0 }

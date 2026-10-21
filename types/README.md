@@ -590,7 +590,7 @@ stays byte-identical:
 Consumer: REASSESS_FIXUP runs `check_revised.py --batch --clear-addressed-attention`, which clears
 the flag (`needs_attention=false`, `needs_attention_reason=null`, both fields removed) when the
 review has no `error`, `auto_revised` and `pass` are true, the `feasibility` verdict is `feasible`,
-a non-empty removed-context companion sits next to the task, the source is `feasibility`, and the
+a non-empty removed-context companion sits next to the task, the `alignment` verdict is not `weak`, the source is `feasibility`, and the
 reassessed score of the dimension is the criterion maximum (2; the descriptor declares no
 per-criterion maximum). Feasibility is not re-run on the revised text, so its note describes the
 original wording. An infeasible or indeterminate verdict, an unset or other source is never
