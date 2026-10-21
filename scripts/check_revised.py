@@ -110,13 +110,26 @@ CRITERION_MAX = 2
 _ATTENTION_SOURCE_FIELDS = ("needs_attention_source", "needs_attention_dimension")
 
 
-def feasibility_flag_addressed(data, score_fields):
+def has_removed_context(tasks_dir, rfe_id):
+    """True when a non-empty removed-context companion sits next to the task ``rfe_id``."""
+    for suffix in REMOVED_CONTEXT_SUFFIXES:
+        path = os.path.join(tasks_dir, f"{rfe_id}{suffix}")
+        if os.path.isfile(path) and os.path.getsize(path) > 0:
+            return True
+    return False
+
+
+def feasibility_flag_addressed(data, score_fields, removed_context):
     """True when ``data``'s needs_attention flag is a feasibility note a passing revision fixed.
 
     All of: the flag is set; the review carries no ``error`` (agent failures, stalls and holds
     raise the flag with an error and keep it); ``auto_revised`` and ``pass`` are both true;
-    ``needs_attention_source`` is ``feasibility``; ``needs_attention_dimension`` names one of
-    the type's score fields; and that field's reassessed score is ``CRITERION_MAX``.
+    the feasibility verdict is ``feasible`` (an ``infeasible`` or ``indeterminate`` verdict is
+    a concern about the objective, not the wording, and keeps the flag);
+    ``removed_context`` is true (the revision left a removed-context record, the evidence that
+    content was removed); ``needs_attention_source`` is ``feasibility``;
+    ``needs_attention_dimension`` names one of the type's score fields; and that field's
+    reassessed score is ``CRITERION_MAX``.
     Feasibility is deliberately not re-run on the revised text (invariant 4.2/5.4), so a
     feasibility note about the wording — prescriptive HOW above all — still describes the
     original after the revision removed it; the rubric score on the revised text is the
@@ -125,6 +138,8 @@ def feasibility_flag_addressed(data, score_fields):
     if not data.get("needs_attention") or data.get("error"):
         return False
     if data.get("auto_revised") is not True or data.get("pass") is not True:
+        return False
+    if data.get("feasibility") != "feasible" or not removed_context:
         return False
     if data.get("needs_attention_source") != "feasibility":
         return False
@@ -138,8 +153,10 @@ def feasibility_flag_addressed(data, score_fields):
     return isinstance(score, int) and not isinstance(score, bool) and score == CRITERION_MAX
 
 
-def clear_addressed_attention(review, schema, score_fields):
+def clear_addressed_attention(review, schema, score_fields, tasks_dir, rfe_id):
     """Clear the needs_attention flag of ``review`` when ``feasibility_flag_addressed`` holds.
+
+    The removed-context record is looked up in ``tasks_dir`` under ``rfe_id``.
 
     Sets ``needs_attention: false`` and ``needs_attention_reason: null`` and removes
     ``needs_attention_source`` / ``needs_attention_dimension``. Idempotent: a cleared review
@@ -147,7 +164,7 @@ def clear_addressed_attention(review, schema, score_fields):
     or None when the review was left untouched.
     """
     data, _ = read_frontmatter(review)
-    if not feasibility_flag_addressed(data, score_fields):
+    if not feasibility_flag_addressed(data, score_fields, has_removed_context(tasks_dir, rfe_id)):
         return None
     dimension = data["needs_attention_dimension"]
     for field in _ATTENTION_SOURCE_FIELDS:
@@ -273,7 +290,7 @@ def batch_mode(
                 print(f"{rfe_id}: auto_revised={current} (correct)")
             if clear_addressed:
                 dimension = clear_addressed_attention(
-                    review, tc["review_schema"], tc["score_fields"]
+                    review, tc["review_schema"], tc["score_fields"], tasks_dir, rfe_id
                 )
                 if dimension:
                     cleared.append(rfe_id)

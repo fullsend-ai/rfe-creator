@@ -47,13 +47,7 @@ python3 scripts/frontmatter.py set {REVIEWS_DIR}/{ID}-review.md \
     {SCORE_SET}{REVIEW_EXTRA_SET}
 ```
 
-If you set `needs_attention=true`, also record its source by the rules in `{RULES_PATH}` (the dimension only for a `feasibility` or `rubric` source):
-
-```bash
-python3 scripts/frontmatter.py set {REVIEWS_DIR}/{ID}-review.md \
-    needs_attention_source=<feasibility/alignment/rubric/agent> \
-    needs_attention_dimension=<score field>
-```
+If you set `needs_attention=true`, record its source by the rules in `{RULES_PATH}` in that same command, as two more arguments appended to it (the dimension only for a `feasibility` or `rubric` source): `needs_attention_source=<feasibility/alignment/rubric/agent> needs_attention_dimension=<score field>`. Never set them in a second `frontmatter.py set` call: the score is what marks the review complete, and a reader that runs between the two calls would see the flag without its source and keep it.
 
 If first pass ({FIRST_PASS}=true), also set before_score and before_scores.* with the same values:
 

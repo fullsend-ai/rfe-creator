@@ -742,13 +742,14 @@ _FEASIBILITY_REASON = (
 )
 
 
-def _setup_flagged(tmp_path, t, *, revised=True, **overrides):
+def _setup_flagged(tmp_path, t, *, revised=True, removed_context=True, **overrides):
     """A reassessed item of type ``t`` whose review carries a feasibility needs_attention flag.
 
     Defaults are the clear case: the task differs from its original, the review says
     auto_revised and pass, the flag is sourced to feasibility on open_to_how, and
-    open_to_how scored 2/2 on the revised text. ``overrides`` replace review fields; a value
-    of None removes the field.
+    open_to_how scored 2/2 on the revised text, the verdict is feasible and the revise agent
+    left a removed-context record (``removed_context=False`` omits it). ``overrides`` replace
+    review fields; a value of None removes the field.
     """
     from artifact_utils import write_frontmatter
 
@@ -762,6 +763,10 @@ def _setup_flagged(tmp_path, t, *, revised=True, **overrides):
     (art / dirs["tasks"] / f"{item_id}.md").write_text(
         "---\ntitle: Test\n---\n" + ("Revised text.\n" if revised else "Original text.\n")
     )
+    if removed_context:
+        (art / dirs["tasks"] / f"{item_id}-removed-context.yaml").write_text(
+            "- type: unclassified\n  text: Prescribed technology stack.\n"
+        )
     scores = {f: 2 for f in desc.score_fields}
     scores[desc.score_fields[0]] = 1  # 9/10: a pass that is not a perfect score
     data = {
@@ -846,9 +851,14 @@ class TestClearAddressedAttention:
                 id="not-passing",
             ),
             pytest.param({"error": "revise_stalled"}, id="error-set"),
+            pytest.param({"feasibility": "infeasible"}, id="feasibility-infeasible"),
+            pytest.param({"feasibility": "indeterminate"}, id="feasibility-indeterminate"),
+            pytest.param({"removed_context": False}, id="no-removed-context-record"),
         ],
     )
     def test_keeps_every_other_flag(self, tmp_path, t, overrides):
+        # A rubric-passing review (pass, open_to_how 2) that still has a feasibility blocker,
+        # or no record that content was removed, keeps its flag.
         item_id, review = _setup_flagged(tmp_path, t, **overrides)
         before = _read_frontmatter(review)
         result = _clear_run(tmp_path, t, item_id, "--clear-addressed-attention")
@@ -895,13 +905,14 @@ class TestFeasibilityFlagAddressed:
         "needs_attention": True,
         "auto_revised": True,
         "pass": True,
+        "feasibility": "feasible",
         "needs_attention_source": "feasibility",
         "needs_attention_dimension": "open_to_how",
         "scores": {"what": 2, "why": 1, "open_to_how": 2, "not_a_task": 2, "right_sized": 2},
     }
 
     def test_addressed(self):
-        assert check_revised.feasibility_flag_addressed(dict(self.BASE), self.FIELDS)
+        assert check_revised.feasibility_flag_addressed(dict(self.BASE), self.FIELDS, True)
 
     @pytest.mark.parametrize(
         "change",
@@ -913,7 +924,14 @@ class TestFeasibilityFlagAddressed:
             {"needs_attention_dimension": "scope"},  # not a score field of this type
             {"scores": {"open_to_how": True}},  # a bool is not a score
             {"scores": None},
+            {"feasibility": "infeasible"},
+            {"feasibility": "indeterminate"},
+            {"feasibility": None},
         ],
     )
     def test_not_addressed(self, change):
-        assert not check_revised.feasibility_flag_addressed({**self.BASE, **change}, self.FIELDS)
+        data = {**self.BASE, **change}
+        assert not check_revised.feasibility_flag_addressed(data, self.FIELDS, True)
+
+    def test_not_addressed_without_removed_context(self):
+        assert not check_revised.feasibility_flag_addressed(dict(self.BASE), self.FIELDS, False)
