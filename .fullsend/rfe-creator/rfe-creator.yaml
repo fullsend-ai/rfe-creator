@@ -3,7 +3,8 @@ agent: rfe-creator/prompt.md
 # Keep claude-opus-4-6: the harness was evaluated on it, and the eval configs
 # pin it for both the skill and its subagents. Revisit the model once the
 # replacement has been evaluated on this pipeline, changing both this line and
-# CLAUDE_CODE_SUBAGENT_MODEL below together.
+# CLAUDE_CODE_SUBAGENT_MODEL below together. tests/test_fullsend_harness.py
+# pins both to models.skill / models.subagent in eval/config/skeleton.yaml.
 model: claude-opus-4-6
 effort: high
 image: ghcr.io/fullsend-ai/fullsend-sandbox@sha256:259605fea321353552fdefd3a6a55e8b5c260998dfc5a622ed143e41a429995a
