@@ -47,6 +47,14 @@ python3 scripts/frontmatter.py set {REVIEWS_DIR}/{ID}-review.md \
     {SCORE_SET}{REVIEW_EXTRA_SET}
 ```
 
+If you set `needs_attention=true`, also record its source by the rules in `{RULES_PATH}` (the dimension only for a `feasibility` or `rubric` source):
+
+```bash
+python3 scripts/frontmatter.py set {REVIEWS_DIR}/{ID}-review.md \
+    needs_attention_source=<feasibility/alignment/rubric/agent> \
+    needs_attention_dimension=<score field>
+```
+
 If first pass ({FIRST_PASS}=true), also set before_score and before_scores.* with the same values:
 
 ```bash

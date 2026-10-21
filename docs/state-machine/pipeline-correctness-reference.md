@@ -47,6 +47,8 @@ rather than requiring a specific status.
 | `auto_revised` | `true` / `false` | Content was modified by the revise agent (corrected by check_revised.py) | `artifact_utils.py:99` |
 | `needs_attention` | `true` / `false` | Human escalation flag; set by review agent, revise agent, or pipeline infrastructure | `artifact_utils.py:119` |
 | `needs_attention_reason` | `null` / string | Concise explanation of why needs_attention is true | `artifact_utils.py:122-126` |
+| `needs_attention_source` | absent / `feasibility` / `alignment` / `rubric` / `agent` | Where the flag came from (AISDLC-442). Written by the review agent with `needs_attention=true`; scripts that raise the flag themselves leave it absent. No schema default: a review without it gains no key. Read by the REASSESS_FIXUP clear (N8); an absent source is never cleared | `artifact_utils.py` `_review_schema` |
+| `needs_attention_dimension` | absent / one of the type's score fields | The score dimension a `feasibility` or `rubric` flag concerns (prescriptive HOW: `open_to_how`). No schema default | `artifact_utils.py` `_review_schema` |
 | `error` | `null` / string | Machine-readable failure category | `artifact_utils.py:116` |
 | `feasibility` | `feasible` / `infeasible` / `indeterminate` | Architecture feasibility assessment | `artifact_utils.py:89` |
 | `scores` | dict: `{what, why, open_to_how, not_a_task, right_sized}` (each 0-2) | Per-criterion rubric scores; drives recommendation logic | `artifact_utils.py:101-111` |
@@ -414,7 +416,8 @@ These scripts exist but are not part of the normal pipeline flow:
 | N3 | false | true | Split refused (too many children) | exit code 2 | update_frontmatter() | submit.py:200-201 |
 | N4 | false | true | Split refused (Jira conflict) | exit code 3 | update_frontmatter() | submit.py:234-235 |
 | N5 | false | true | Submit failed | Jira API exception | update_frontmatter() (best-effort) | submit.py:599-600 |
-| N6 | true | (not cleared by pipeline) | -- | -- | Persists until human resolution or fresh review | -- |
+| N8 | true | false | REASSESS_FIXUP (`check_revised.py --batch --clear-addressed-attention`, AISDLC-442) | After the auto_revised update: no `error`, `auto_revised` and `pass` both true, `needs_attention_source: feasibility`, and the reassessed score of `needs_attention_dimension` is the criterion maximum (2). Feasibility is not re-run on the revised text (invariant 4.2/5.4), so its note describes the original; the reassessed rubric score is the evidence the revision addressed it | `write_frontmatter()` sets `needs_attention=false`, `needs_attention_reason=null` and removes `needs_attention_source` / `needs_attention_dimension`; prints `CLEARED_ATTENTION=<ids>`. Idempotent (the loop back through REASSESS_CHECK may rerun it). Not run at FIXUP / SPLIT_FIXUP, whose scores still describe the flagged text | check_revised.py `clear_addressed_attention` |
+| N6 | true | (not cleared by pipeline, except N8) | -- | -- | Persists until human resolution or fresh review | -- |
 
 ### 2.5 Error Field Transitions
 
@@ -876,6 +879,12 @@ The pipeline never explicitly clears `needs_attention`. A fresh review cycle may
 write `needs_attention=false` as a side effect of creating a new review file, but
 there is no dedicated clear operation. This is intentional: needs_attention
 persists until human resolution or a completely fresh review pass.
+
+The one exception is N8 (AISDLC-442): REASSESS_FIXUP clears a flag the review agent
+sourced to feasibility (`needs_attention_source: feasibility`) when the revision passed
+with that flag's `needs_attention_dimension` at its maximum. Without it, a revision that
+fixed the prescriptive HOW feasibility complained about ended the run flagged, with a
+reason describing the pre-revision text. A flag with any other source, or none, is kept.
 
 ### 5.2 filter_for_revision Includes Split-Recommended IDs
 

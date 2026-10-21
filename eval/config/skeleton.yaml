@@ -126,6 +126,8 @@ dataset:
       - expected_pass (nullable bool)
       - expected_recommendation (nullable string: submit/revise/split/reject)
       - expected_feasibility (nullable string)
+      - expected_needs_attention (nullable bool): the review's needs_attention
+        at the end of the run (after any revision), not at the first review
       ${gen.annotations_extra}
       - known_issues (list)
       - score_tolerance (int, default 1)
@@ -179,6 +181,8 @@ outputs:
           (feasible/infeasible/indeterminate), auto_revised (bool),
           ${gen.review_extra_fields}
           needs_attention (bool), needs_attention_reason,
+          needs_attention_source (feasibility/alignment/rubric/agent, optional),
+          needs_attention_dimension (a score field, optional),
           scores.${gen.score_fields_slash} (each 0-2),
           before_score, before_scores (pre-revision scores).
         ${fragment.outputs.review_files}

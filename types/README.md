@@ -576,6 +576,25 @@ parent_key - ...`, never fatal) and left in Jira:
   (`RHAISTRAT-x`).** Not written; the schema would refuse the latter and fail the whole fetch.
 - **A parent object without a key.** Not written.
 
+### Needs-attention source (AISDLC-442)
+
+Every `<type>-review` schema carries two optional fields after `before_scores`, shared by all
+types, declared without a `default` (as `type` / `tracker_ref`), so a review that never sets them
+stays byte-identical:
+
+| Field | Values | Written by |
+|---|---|---|
+| `needs_attention_source` | `feasibility`, `alignment`, `rubric`, `agent` | The review agent, whenever it sets `needs_attention=true` (`.claude/skills/rfe-review/prompts/review-agent.md` Step 4, rules in `types/<t>/prompts/review-rules.md`). Scripts that raise the flag themselves (`pipeline_state.py`, `verify_phase.py`, `reconcile_reviews.py`, `submit.py` holds) leave it unset |
+| `needs_attention_dimension` | one of the type's `schema.review.score_fields` (the schema enum follows the descriptor) | The review agent, when the source is `feasibility` or `rubric`; a prescriptive-HOW feasibility note is `open_to_how` |
+
+Consumer: REASSESS_FIXUP runs `check_revised.py --batch --clear-addressed-attention`, which clears
+the flag (`needs_attention=false`, `needs_attention_reason=null`, both fields removed) when the
+review has no `error`, `auto_revised` and `pass` are true, the source is `feasibility`, and the
+reassessed score of the dimension is the criterion maximum (2; the descriptor declares no
+per-criterion maximum). Feasibility is not re-run on the revised text, so its note describes the
+original wording. An unset or other source is never cleared — see N8 in
+`docs/state-machine/pipeline-correctness-reference.md`.
+
 ## Generated eval configs (§4.5, PR-4)
 
 `eval.yaml` and `eval-initiative.yaml` are the one piece of generated data in the repo — do not

@@ -1757,10 +1757,14 @@ class TestPipelineTypes:
                 assert phase["post_verify"].startswith(
                     f"python3 scripts/verify_phase.py --type {ctx.t} --phase {base} "
                 )
-        for name in ("FIXUP", "REASSESS_FIXUP", "SPLIT_FIXUP"):
+        for name in ("FIXUP", "SPLIT_FIXUP"):
             assert (
                 cfg[name]["command"] == f"python3 scripts/check_revised.py --batch --type {ctx.t}"
             )
+        # AISDLC-442: only the reassess fixup clears an addressed feasibility flag.
+        assert cfg["REASSESS_FIXUP"]["command"] == (
+            f"python3 scripts/check_revised.py --batch --type {ctx.t} --clear-addressed-attention"
+        )
         for name, script in (
             ("REASSESS_SAVE", "reassess_save"),
             ("SPLIT_COLLECT", "split_collect"),

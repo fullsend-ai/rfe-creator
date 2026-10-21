@@ -731,3 +731,189 @@ class TestPerIdIsolation:
         assert result.returncode == 0
         assert "UPDATED=0" in result.stdout
         assert "SKIPPED=\n" in result.stdout
+
+
+# ---------- AISDLC-442: clear an addressed feasibility flag at REASSESS_FIXUP ----------
+
+_CLEAR_IDS = {"rfe": "RHAIRFE-4400", "initiative": "RHOAIENG-4400"}
+_FEASIBILITY_REASON = (
+    "Feasibility review identified prescriptive technology framing that contradicts the"
+    " assessor's Open to HOW score; human review needed."
+)
+
+
+def _setup_flagged(tmp_path, t, *, revised=True, **overrides):
+    """A reassessed item of type ``t`` whose review carries a feasibility needs_attention flag.
+
+    Defaults are the clear case: the task differs from its original, the review says
+    auto_revised and pass, the flag is sourced to feasibility on open_to_how, and
+    open_to_how scored 2/2 on the revised text. ``overrides`` replace review fields; a value
+    of None removes the field.
+    """
+    from artifact_utils import write_frontmatter
+
+    desc = type_registry.load(extra_roots=[], env={}).get(t)
+    dirs = desc.dirs(form="bare")
+    item_id = _CLEAR_IDS[t]
+    art = tmp_path / "artifacts"
+    for d in ("originals", "tasks", "reviews"):
+        (art / dirs[d]).mkdir(parents=True, exist_ok=True)
+    (art / dirs["originals"] / f"{item_id}.md").write_text("Original text.\n")
+    (art / dirs["tasks"] / f"{item_id}.md").write_text(
+        "---\ntitle: Test\n---\n" + ("Revised text.\n" if revised else "Original text.\n")
+    )
+    scores = {f: 2 for f in desc.score_fields}
+    scores[desc.score_fields[0]] = 1  # 9/10: a pass that is not a perfect score
+    data = {
+        desc.id_field: item_id,
+        "score": sum(scores.values()),
+        "pass": True,
+        "recommendation": "submit",
+        "feasibility": "feasible",
+        "auto_revised": revised,
+        "needs_attention": True,
+        "scores": scores,
+        "needs_attention_reason": _FEASIBILITY_REASON,
+        "needs_attention_source": "feasibility",
+        "needs_attention_dimension": "open_to_how",
+    }
+    for key, value in overrides.items():
+        if value is None:
+            data.pop(key, None)
+        elif key.startswith("scores."):
+            data["scores"][key.split(".", 1)[1]] = value
+        else:
+            data[key] = value
+    review = art / dirs["reviews"] / f"{item_id}-review.md"
+    write_frontmatter(str(review), data, f"{t}-review")
+    with open(review, "a") as f:
+        f.write("## Review\n\nBody kept as written.\n")
+    return item_id, review
+
+
+def _clear_run(tmp_path, t, item_id, *flags):
+    return subprocess.run(
+        ["python3", SCRIPT, "--type", t, "--batch", *flags, item_id],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        env={**os.environ, "PYTHONPATH": os.path.dirname(SCRIPT)},
+    )
+
+
+@pytest.mark.parametrize("t", ["rfe", "initiative"])
+class TestClearAddressedAttention:
+    """REASSESS_FIXUP's --clear-addressed-attention: a needs_attention flag the review agent
+    sourced to feasibility is cleared once the revision passes with that dimension at its
+    maximum (feasibility is not re-run on the revised text). Every other flag is kept."""
+
+    def test_clears_a_feasibility_flag_the_revision_addressed(self, tmp_path, t):
+        item_id, review = _setup_flagged(tmp_path, t)
+        result = _clear_run(tmp_path, t, item_id, "--clear-addressed-attention")
+        assert result.returncode == 0, result.stderr
+        assert f"CLEARED_ATTENTION={item_id}\n" in result.stdout
+        assert f"{item_id}: needs_attention True -> False" in result.stdout
+        fm = _read_frontmatter(review)
+        assert fm["needs_attention"] is False
+        assert fm["needs_attention_reason"] is None
+        assert "needs_attention_source" not in fm
+        assert "needs_attention_dimension" not in fm
+        # Nothing else moves: scores, pass and the revision flag stay as reassessed.
+        assert fm["pass"] is True and fm["auto_revised"] is True
+        assert fm["scores"]["open_to_how"] == 2
+        assert review.read_text().endswith("## Review\n\nBody kept as written.\n")
+
+    def test_idempotent(self, tmp_path, t):
+        item_id, review = _setup_flagged(tmp_path, t)
+        _clear_run(tmp_path, t, item_id, "--clear-addressed-attention")
+        first = review.read_text()
+        result = _clear_run(tmp_path, t, item_id, "--clear-addressed-attention")
+        assert result.returncode == 0
+        assert "CLEARED_ATTENTION=\n" in result.stdout
+        assert review.read_text() == first
+
+    @pytest.mark.parametrize(
+        "overrides",
+        [
+            pytest.param({"needs_attention_source": "alignment"}, id="source-alignment"),
+            pytest.param({"needs_attention_source": "rubric"}, id="source-rubric"),
+            pytest.param({"needs_attention_source": "agent"}, id="source-agent"),
+            pytest.param({"needs_attention_source": None}, id="source-unset"),
+            pytest.param({"needs_attention_dimension": None}, id="dimension-unset"),
+            pytest.param({"scores.open_to_how": 1}, id="dimension-below-max"),
+            pytest.param(
+                {"pass": False, "recommendation": "revise", "scores.open_to_how": 0},
+                id="not-passing",
+            ),
+            pytest.param({"error": "revise_stalled"}, id="error-set"),
+        ],
+    )
+    def test_keeps_every_other_flag(self, tmp_path, t, overrides):
+        item_id, review = _setup_flagged(tmp_path, t, **overrides)
+        before = _read_frontmatter(review)
+        result = _clear_run(tmp_path, t, item_id, "--clear-addressed-attention")
+        assert result.returncode == 0, result.stderr
+        assert "CLEARED_ATTENTION=\n" in result.stdout
+        after = _read_frontmatter(review)
+        assert after["needs_attention"] is True
+        assert after["needs_attention_reason"] == _FEASIBILITY_REASON
+        for field in ("needs_attention_source", "needs_attention_dimension"):
+            assert after.get(field) == before.get(field)
+
+    def test_keeps_the_flag_when_the_task_was_not_revised(self, tmp_path, t):
+        # The diff-based fixup lowers auto_revised first; an unrevised item is never cleared.
+        item_id, review = _setup_flagged(tmp_path, t, revised=False, auto_revised=True)
+        result = _clear_run(tmp_path, t, item_id, "--clear-addressed-attention")
+        assert result.returncode == 0, result.stderr
+        assert "CLEARED_ATTENTION=\n" in result.stdout
+        fm = _read_frontmatter(review)
+        assert fm["auto_revised"] is False
+        assert fm["needs_attention"] is True
+        assert fm["needs_attention_reason"] == _FEASIBILITY_REASON
+
+    def test_plain_fixup_never_clears(self, tmp_path, t):
+        # FIXUP / SPLIT_FIXUP: the scores still describe the text the flag was raised on.
+        item_id, review = _setup_flagged(tmp_path, t)
+        result = _clear_run(tmp_path, t, item_id)
+        assert result.returncode == 0, result.stderr
+        assert "CLEARED_ATTENTION=" not in result.stdout
+        assert _read_frontmatter(review)["needs_attention"] is True
+
+    def test_ignored_with_lower_only(self, tmp_path, t):
+        item_id, review = _setup_flagged(tmp_path, t)
+        result = _clear_run(tmp_path, t, item_id, "--lower-only", "--clear-addressed-attention")
+        assert result.returncode == 0, result.stderr
+        assert "CLEARED_ATTENTION=" not in result.stdout
+        assert _read_frontmatter(review)["needs_attention"] is True
+
+
+class TestFeasibilityFlagAddressed:
+    """The pure predicate, over a plain dict (no files)."""
+
+    FIELDS = ["what", "why", "open_to_how", "not_a_task", "right_sized"]
+    BASE = {
+        "needs_attention": True,
+        "auto_revised": True,
+        "pass": True,
+        "needs_attention_source": "feasibility",
+        "needs_attention_dimension": "open_to_how",
+        "scores": {"what": 2, "why": 1, "open_to_how": 2, "not_a_task": 2, "right_sized": 2},
+    }
+
+    def test_addressed(self):
+        assert check_revised.feasibility_flag_addressed(dict(self.BASE), self.FIELDS)
+
+    @pytest.mark.parametrize(
+        "change",
+        [
+            {"needs_attention": False},
+            {"auto_revised": False},
+            {"pass": False},
+            {"error": "reconcile_failed"},
+            {"needs_attention_dimension": "scope"},  # not a score field of this type
+            {"scores": {"open_to_how": True}},  # a bool is not a score
+            {"scores": None},
+        ],
+    )
+    def test_not_addressed(self, change):
+        assert not check_revised.feasibility_flag_addressed({**self.BASE, **change}, self.FIELDS)

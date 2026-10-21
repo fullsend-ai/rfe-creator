@@ -193,6 +193,27 @@
           "required": true
         }
       }
+    },
+    "needs_attention_source": {
+      "type": "string",
+      "required": false,
+      "enum": [
+        "feasibility",
+        "alignment",
+        "rubric",
+        "agent"
+      ]
+    },
+    "needs_attention_dimension": {
+      "type": "string",
+      "required": false,
+      "enum": [
+        "what",
+        "why",
+        "open_to_how",
+        "not_a_task",
+        "right_sized"
+      ]
     }
   },
   "initiative-task": {
@@ -378,6 +399,27 @@
           "required": true
         }
       }
+    },
+    "needs_attention_source": {
+      "type": "string",
+      "required": false,
+      "enum": [
+        "feasibility",
+        "alignment",
+        "rubric",
+        "agent"
+      ]
+    },
+    "needs_attention_dimension": {
+      "type": "string",
+      "required": false,
+      "enum": [
+        "what",
+        "why",
+        "scope",
+        "open_to_how",
+        "right_sized"
+      ]
     },
     "alignment": {
       "type": "string",
