@@ -95,6 +95,11 @@ def resolve_ids(positional, ids_file):
 _STATUS_ENUM = ["Draft", "Ready", "Submitted", "Archived"]
 _RECOMMENDATION_ENUM = ["submit", "revise", "split", "reject", "autorevise_reject"]
 _FEASIBILITY_ENUM = ["feasible", "infeasible", "indeterminate"]
+# Where a review's needs_attention flag came from (AISDLC-442). The review agent records it
+# with the flag; check_revised.py --clear-addressed-attention reads it to clear a feasibility
+# flag a passing revision addressed. Scripts that raise the flag themselves leave it unset or
+# write "agent"; an unset source is never cleared.
+_NEEDS_ATTENTION_SOURCE_ENUM = ["feasibility", "alignment", "rubric", "agent"]
 
 # The descriptor fields a type must declare to get a task and a review schema. Both shipped
 # types declare them all (validate_types.py gate 1 and tests/test_schemas_golden.py hold that).
@@ -268,7 +273,8 @@ def _task_schema(desc):
 
 def _review_schema(desc):
     """The ``<type>-review`` schema. Field order: id, local_id, type, tracker_ref, the shared
-    review fields (scores / before_scores nested over ``schema.review.score_fields``), then
+    review fields (scores / before_scores nested over ``schema.review.score_fields``; the
+    needs_attention_source / needs_attention_dimension pair closes them), then
     the type's extra fields appended last (initiative: alignment, whose default is the
     string "not_assessed" so an item with no RHAISTRAT parent reads the same here as in
     its alignment file)."""
@@ -295,6 +301,20 @@ def _review_schema(desc):
                 "required": False,
                 "default": None,
                 "fields": copy.deepcopy(scores),
+            },
+            # AISDLC-442: the source of a needs_attention flag and, for a feasibility or
+            # rubric flag, the score dimension it concerns. No `default` key (as type /
+            # tracker_ref): apply_defaults never writes them, so an existing review stays
+            # byte-identical until a writer sets them.
+            "needs_attention_source": {
+                "type": "string",
+                "required": False,
+                "enum": list(_NEEDS_ATTENTION_SOURCE_ENUM),
+            },
+            "needs_attention_dimension": {
+                "type": "string",
+                "required": False,
+                "enum": list(desc.score_fields),
             },
         }
     )

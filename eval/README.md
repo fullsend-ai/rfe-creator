@@ -281,7 +281,7 @@ The evaluation runs the `rfe-speedrun` skill with `--type initiative` headlessly
 | File | Purpose |
 |------|---------|
 | `input.yaml` | Skill input: `prompt`, `priority`, `clarifying_context` |
-| `annotations.yaml` | Expected scores, feasibility/recommendation/alignment expectations, test tags |
+| `annotations.yaml` | Expected scores, feasibility/recommendation/alignment expectations, test tags; optionally `expected_needs_attention`, the flag at the end of the run (`case-007` and `case-018`, whose only flaw is a prescriptive stack a revision can reframe, expect `false`: a flag feasibility raised on Open to HOW is cleared once the revision passes with Open to HOW 2/2 — AISDLC-442) |
 
 One case (`case-012`, tagged `sparse-input`) provides minimal context to test sparse-input handling.
 

@@ -514,7 +514,14 @@ def _build_phase_config(pipeline_type):
         },
         "REASSESS_FIXUP": {
             "type": "script",
-            "command": fixup_cmd,
+            # --clear-addressed-attention (AISDLC-442): feasibility is not re-run on the
+            # revised text (invariant 4.2/5.4), so REASSESS_REVIEW reads the original's
+            # feasibility note. A flag the review agent sourced to feasibility on a score
+            # dimension is cleared once the revision passes with that dimension at its
+            # maximum; every other flag is kept. Here only: at FIXUP / SPLIT_FIXUP the
+            # scores still describe the text the flag was raised against. Idempotent, so
+            # the loop back through REASSESS_CHECK may run it again.
+            "command": f"{fixup_cmd} --clear-addressed-attention",
             # The reassess file, not the revise file. REASSESS_REVIEW recreates
             # every re-reviewed item's review file, which resets auto_revised to
             # the schema default (false); REASSESS_RESTORE then narrows the

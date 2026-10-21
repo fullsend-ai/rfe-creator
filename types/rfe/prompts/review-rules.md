@@ -10,3 +10,7 @@ Determine recommendation:
 Do NOT recommend split when capabilities are delivery-coupled.
 
 Set `needs_attention=true` when the RFE needs human review despite its score — e.g., feasibility is indeterminate/infeasible, references non-existent components, or has concerns the rubric doesn't capture. When true, also set `needs_attention_reason` to a concise explanation (1-2 sentences) of what needs human attention. When false, set `needs_attention_reason=null`.
+
+Whenever you set `needs_attention=true`, also record where the flag comes from: `needs_attention_source` is `feasibility` (a concern from the feasibility file), `rubric` (a concern about a rubric criterion) or `agent` (anything else); when the source is `feasibility` or `rubric`, set `needs_attention_dimension` to the score field the concern is about (`what`, `why`, `open_to_how`, `not_a_task` or `right_sized`) — a feasibility note that the RFE prescribes its implementation is about `open_to_how`. Leave both fields unset when `needs_attention=false`. When several concerns apply at once, record the source that cannot be cleared automatically: `rubric` or `agent` take precedence over `feasibility` (only a `feasibility` flag is ever cleared after a revision).
+
+In a reassessment after a revision (First pass is false), a feasibility note about prescriptive implementation detail counts as addressed when the reassessed `open_to_how` scores 2 and the removed-context record (`<ID>-removed-context.yaml` next to the task file) shows the content was removed; do not raise `needs_attention` for it.

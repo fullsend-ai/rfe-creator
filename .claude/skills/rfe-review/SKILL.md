@@ -254,7 +254,7 @@ python3 scripts/filter_for_revision.py <all_reassess_IDs_from_file>
 Launch revise agents for the IDs returned (if any) as in Review Step 3.5. Wait for all to complete, then run the batch auto_revised flag fix:
 
 ```bash
-python3 scripts/check_revised.py --batch {TYPE_FLAG} --ids-file tmp/{STATE_PREFIX}review-reassess-ids.txt
+python3 scripts/check_revised.py --batch {TYPE_FLAG} --clear-addressed-attention --ids-file tmp/{STATE_PREFIX}review-reassess-ids.txt
 ```
 
 After cycle 2, stop regardless of results.

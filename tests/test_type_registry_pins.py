@@ -1757,10 +1757,14 @@ class TestPipelineTypes:
                 assert phase["post_verify"].startswith(
                     f"python3 scripts/verify_phase.py --type {ctx.t} --phase {base} "
                 )
-        for name in ("FIXUP", "REASSESS_FIXUP", "SPLIT_FIXUP"):
+        for name in ("FIXUP", "SPLIT_FIXUP"):
             assert (
                 cfg[name]["command"] == f"python3 scripts/check_revised.py --batch --type {ctx.t}"
             )
+        # AISDLC-442: only the reassess fixup clears an addressed feasibility flag.
+        assert cfg["REASSESS_FIXUP"]["command"] == (
+            f"python3 scripts/check_revised.py --batch --type {ctx.t} --clear-addressed-attention"
+        )
         for name, script in (
             ("REASSESS_SAVE", "reassess_save"),
             ("SPLIT_COLLECT", "split_collect"),
@@ -3064,7 +3068,7 @@ class TestEvalConfigs:
             ctx.ev["thresholds"],
             eval_config(ctx)["thresholds"],
         )
-        assert len(ctx.ev["thresholds"]) == 10
+        assert len(ctx.ev["thresholds"]) == 11
         assert ctx.ev["thresholds"]["revision_coverage"] == {"min_pass_rate": 0.92}
 
     def test_shared_two_type_judges(self, ctx):

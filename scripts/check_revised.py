@@ -14,6 +14,12 @@ Modes:
     --lower-only: the last-reader guard (REPORT transition, submit.py
     start-up) — a set flag on a task whose body still equals its original
     is lowered; nothing is ever raised. Prints LOWERED=<ids>.
+    --clear-addressed-attention: REASSESS_FIXUP only (AISDLC-442) — after the
+    auto_revised update, a review whose needs_attention flag came from the
+    feasibility dimension and whose revision then passed with that dimension at
+    its maximum is cleared (feasibility is not re-run on the revised text, so its
+    note describes the pre-revision wording). Every other flag is kept. Prints
+    CLEARED_ATTENTION=<ids>. Ignored with --lower-only.
     --artifacts-dir DIR: resolve the bare type dirs under DIR, not ./artifacts.
     Every id given (argument or --ids-file entry) must be a plain file-name
     stem: a path-shaped id exits 2 before any file is touched.
@@ -23,6 +29,7 @@ Usage:
     python3 scripts/check_revised.py --batch
     python3 scripts/check_revised.py --batch RHAIRFE-1504 RHAIRFE-1510
     python3 scripts/check_revised.py --type initiative --batch --ids-file tmp/ids.txt
+    python3 scripts/check_revised.py --batch --clear-addressed-attention RHAIRFE-1504
     python3 scripts/check_revised.py --batch --lower-only --artifacts-dir /path/artifacts
 
 An unregistered --type exits 2 with the registered type list.
@@ -33,7 +40,13 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import type_registry
-from artifact_utils import find_review_file, read_frontmatter, read_ids_file, update_frontmatter
+from artifact_utils import (
+    find_review_file,
+    read_frontmatter,
+    read_ids_file,
+    update_frontmatter,
+    write_frontmatter,
+)
 from preserve_review_state import validate_item_id
 
 _TYPES = type_registry.load()
@@ -87,19 +100,113 @@ def remove_stale_companions(tasks_dir, rfe_id):
     return removed
 
 
+# Every score field of every registered type is a rubric criterion scored 0-2 (the "scored
+# 0/2" vocabulary of reconcile_reviews.py and the reports); the descriptor declares no
+# per-dimension maximum, so the one value lives here.
+CRITERION_MAX = 2
+
+# The review fields a cleared flag drops: the two source fields are removed outright rather
+# than nulled, so the cleared review reads like one that was never flagged.
+_ATTENTION_SOURCE_FIELDS = ("needs_attention_source", "needs_attention_dimension")
+
+
+def has_removed_context(tasks_dir, rfe_id):
+    """True when a non-empty removed-context companion sits next to the task ``rfe_id``."""
+    for suffix in REMOVED_CONTEXT_SUFFIXES:
+        path = os.path.join(tasks_dir, f"{rfe_id}{suffix}")
+        if os.path.isfile(path) and os.path.getsize(path) > 0:
+            return True
+    return False
+
+
+def feasibility_flag_addressed(data, score_fields, removed_context):
+    """True when ``data``'s needs_attention flag is a feasibility note a passing revision fixed.
+
+    All of: the flag is set; the review carries no ``error`` (agent failures, stalls and holds
+    raise the flag with an error and keep it); ``auto_revised`` and ``pass`` are both true;
+    the feasibility verdict is ``feasible`` (an ``infeasible`` or ``indeterminate`` verdict is
+    a concern about the objective, not the wording, and keeps the flag);
+    ``removed_context`` is true (the revision left a removed-context record, the evidence that
+    content was removed); the ``alignment`` verdict is not ``weak`` (strategic misalignment
+    always needs a human, whatever source the producer recorded: it records one source only
+    and a feasibility concern may have won over a simultaneous weak alignment);
+    ``needs_attention_source`` is ``feasibility``;
+    ``needs_attention_dimension`` names one of the type's score fields; and that field's
+    reassessed score is ``CRITERION_MAX``.
+    Feasibility is deliberately not re-run on the revised text (invariant 4.2/5.4), so a
+    feasibility note about the wording — prescriptive HOW above all — still describes the
+    original after the revision removed it; the rubric score on the revised text is the
+    evidence it was addressed. An unset or other source is never addressed here.
+    """
+    if not data.get("needs_attention") or data.get("error"):
+        return False
+    if data.get("auto_revised") is not True or data.get("pass") is not True:
+        return False
+    if data.get("feasibility") != "feasible" or not removed_context:
+        return False
+    if data.get("alignment") == "weak":
+        return False
+    if data.get("needs_attention_source") != "feasibility":
+        return False
+    dimension = data.get("needs_attention_dimension")
+    if dimension not in score_fields:
+        return False
+    scores = data.get("scores")
+    if not isinstance(scores, dict):
+        return False
+    score = scores.get(dimension)
+    return isinstance(score, int) and not isinstance(score, bool) and score == CRITERION_MAX
+
+
+def clear_addressed_attention(review, schema, score_fields, tasks_dir, rfe_id):
+    """Clear the needs_attention flag of ``review`` when ``feasibility_flag_addressed`` holds.
+
+    The removed-context record is looked up in ``tasks_dir`` under ``rfe_id``.
+
+    Sets ``needs_attention: false`` and ``needs_attention_reason: null`` and removes
+    ``needs_attention_source`` / ``needs_attention_dimension``. Idempotent: a cleared review
+    no longer carries the flag, so a second call is a no-op. Returns the dimension cleared,
+    or None when the review was left untouched.
+    """
+    data, _ = read_frontmatter(review)
+    if not feasibility_flag_addressed(data, score_fields, has_removed_context(tasks_dir, rfe_id)):
+        return None
+    dimension = data["needs_attention_dimension"]
+    for field in _ATTENTION_SOURCE_FIELDS:
+        data.pop(field, None)
+    data["needs_attention"] = False
+    data["needs_attention_reason"] = None
+    write_frontmatter(review, data, schema)
+    return dimension
+
+
 # Bare dir form: this script joins onto artifacts_dir itself (Q13).
 _TYPE_CONFIG = {
     name: {
         "originals_dir": _TYPES.get(name).dirs(form="bare")["originals"],
         "tasks_dir": _TYPES.get(name).dirs(form="bare")["tasks"],
         "review_schema": f"{name}-review",
+        "score_fields": list(_TYPES.get(name).score_fields),
     }
     for name in _TYPES.names()
 }
 
 
-def batch_mode(ids, artifacts_dir="artifacts", pipeline_type="rfe", lower_only=False):
+def batch_mode(
+    ids,
+    artifacts_dir="artifacts",
+    pipeline_type="rfe",
+    lower_only=False,
+    clear_addressed=False,
+):
     """Compare originals to tasks and set auto_revised in review frontmatter.
+
+    ``clear_addressed`` (REASSESS_FIXUP, AISDLC-442; ignored with ``lower_only``): after the
+    auto_revised update, ``clear_addressed_attention`` lowers a feasibility needs_attention
+    flag the passing revision addressed, and the id is reported on the
+    ``CLEARED_ATTENTION=<ids>`` line. Only REASSESS_FIXUP passes it: there the scores are the
+    reassessment of the revised text, while at FIXUP / SPLIT_FIXUP they still describe the
+    text the flag was raised against.
 
     ``lower_only`` is the last-reader guard (the REPORT transition and submit.py start-up):
     a set flag on a task whose body still equals its original is lowered, and nothing is
@@ -148,6 +255,7 @@ def batch_mode(ids, artifacts_dir="artifacts", pipeline_type="rfe", lower_only=F
 
     changed = 0
     lowered = []
+    cleared = []
     stale = []
     skipped = []
     for rfe_id in sorted(ids):
@@ -185,12 +293,25 @@ def batch_mode(ids, artifacts_dir="artifacts", pipeline_type="rfe", lower_only=F
                 print(f"{rfe_id}: auto_revised {current} -> {revised}")
             else:
                 print(f"{rfe_id}: auto_revised={current} (correct)")
+            if clear_addressed:
+                dimension = clear_addressed_attention(
+                    review, tc["review_schema"], tc["score_fields"], tasks_dir, rfe_id
+                )
+                if dimension:
+                    cleared.append(rfe_id)
+                    print(
+                        f"{rfe_id}: needs_attention True -> False (feasibility flag on"
+                        f" {dimension} addressed: revision passed with {dimension}"
+                        f" {CRITERION_MAX}/{CRITERION_MAX})"
+                    )
         except Exception as exc:  # one bad item must not abort the batch
             skipped.append(rfe_id)
             print(f"check_revised: skipped {rfe_id} ({type(exc).__name__})", file=sys.stderr)
 
     if lower_only:
         print(f"LOWERED={','.join(lowered)}")
+    elif clear_addressed:
+        print(f"CLEARED_ATTENTION={','.join(cleared)}")
     print(f"STALE_COMPANIONS={','.join(stale)}")
     print(f"SKIPPED={','.join(skipped)}")
     print(f"UPDATED={changed}")
@@ -262,13 +383,16 @@ def main():
         rest, file_ids = _extract_ids_file(argv)
         rest, artifacts_dir = _extract_option(rest, "--artifacts-dir")
         lower_only = "--lower-only" in rest
-        args = [a for a in rest if a not in ("--batch", "--lower-only")]
+        clear_addressed = "--clear-addressed-attention" in rest
+        flags = ("--batch", "--lower-only", "--clear-addressed-attention")
+        args = [a for a in rest if a not in flags]
         try:
             batch_mode(
                 args + file_ids,
                 artifacts_dir=artifacts_dir or "artifacts",
                 pipeline_type=pipeline_type,
                 lower_only=lower_only,
+                clear_addressed=clear_addressed,
             )
         except ValueError as exc:  # a path-shaped id: nothing was read or written
             print(f"ERROR: {exc}", file=sys.stderr)

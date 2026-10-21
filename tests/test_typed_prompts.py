@@ -215,6 +215,18 @@ _allow_command(
     f"{LEGACY}/rfe/review.md",
     "python3 scripts/type_registry.py get rfe pipeline.rubric.path",
 )
+# AISDLC-442: Review Step 4e's batch check_revised.py call gained --clear-addressed-attention; the
+# legacy invocation is a strict subset of the rendered one.
+_allow_command(
+    "rfe",
+    f"{LEGACY}/rfe/review.md",
+    "python3 scripts/check_revised.py --batch --ids-file tmp/review-reassess-ids.txt",
+)
+_allow_command(
+    "initiative",
+    f"{LEGACY}/initiative/review.md",
+    "python3 scripts/check_revised.py --batch --ids-file tmp/initiative-review-reassess-ids.txt",
+)
 _allow("initiative", f"{LEGACY}/initiative/split.md", *_RESPLIT_INIT)
 # AISDLC-280: the fetch skeleton's MCP fallback requests Jira's parent for a type whose dimension
 # conditions read parent_key (PARENT_FIELD renders `,"parent"` for initiative), so the legacy

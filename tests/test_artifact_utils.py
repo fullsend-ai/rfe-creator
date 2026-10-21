@@ -121,6 +121,48 @@ class TestSchemas:
         assert spec["default"] is False
 
 
+class TestNeedsAttentionSourceFields:
+    """AISDLC-442: the optional source / dimension of a needs_attention flag."""
+
+    @pytest.mark.parametrize("t", ["rfe", "initiative"])
+    def test_dimension_enum_is_the_types_score_fields(self, t):
+        spec = SCHEMAS[f"{t}-review"]["needs_attention_dimension"]
+        assert spec["enum"] == list(_TYPES.get(t).score_fields)
+        assert spec["required"] is False
+
+    @pytest.mark.parametrize("t", ["rfe", "initiative"])
+    def test_source_enum(self, t):
+        spec = SCHEMAS[f"{t}-review"]["needs_attention_source"]
+        assert spec["enum"] == ["feasibility", "alignment", "rubric", "agent"]
+        assert spec["required"] is False
+
+    @pytest.mark.parametrize("t", ["rfe", "initiative"])
+    def test_no_default_so_existing_reviews_gain_no_keys(self, t):
+        for field in ("needs_attention_source", "needs_attention_dimension"):
+            assert "default" not in SCHEMAS[f"{t}-review"][field]
+        data = apply_defaults({**VALID_REVIEW_FM}, "rfe-review")
+        assert "needs_attention_source" not in data
+        assert "needs_attention_dimension" not in data
+
+    def test_valid_values_accepted(self):
+        data = {
+            **VALID_REVIEW_FM,
+            "needs_attention": True,
+            "needs_attention_source": "feasibility",
+            "needs_attention_dimension": "open_to_how",
+        }
+        assert validate(data, "rfe-review") == []
+
+    def test_unknown_source_rejected(self):
+        data = {**VALID_REVIEW_FM, "needs_attention_source": "someone"}
+        assert any("needs_attention_source" in e for e in validate(data, "rfe-review"))
+
+    def test_other_types_dimension_rejected(self):
+        # `scope` is an initiative score field, not an rfe one.
+        data = {**VALID_REVIEW_FM, "needs_attention_dimension": "scope"}
+        assert any("needs_attention_dimension" in e for e in validate(data, "rfe-review"))
+
+
 class TestValidate:
     def test_valid_review_data(self):
         errors = validate(VALID_REVIEW_FM, "rfe-review")

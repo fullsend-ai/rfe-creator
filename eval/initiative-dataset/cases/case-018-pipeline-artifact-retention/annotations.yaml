@@ -1,6 +1,7 @@
 difficulty: hard
 expected_alignment: not_assessed
 expected_feasibility: null
+expected_needs_attention: false
 expected_pass: false
 expected_recommendation: revise
 expected_scores:
