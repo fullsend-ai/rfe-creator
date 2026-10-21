@@ -20,8 +20,12 @@ the artifact helpers act on is the effective one — `binding()` after `resolve`
 `assert_registered_binding()` ("Resolution" and "Effective binding in the writers" below) — and
 with no override set every effective value equals the descriptor value, so a stock deployment is
 byte-identical. Several tables are built at import for **every** registered type (the artifact
-schemas, the poll phase table, the snapshot tables, the Jira write tables), so a drop-in that
-lacks a key one of them reads fails the import with a `KeyError` naming the type and the field;
+schemas, the poll phase table, the snapshot tables, the Jira write tables). A drop-in that lacks
+a key the artifact schemas or the poll phase table read is skipped by
+`artifact_utils._declares_schemas` and `check_review_progress` — it is registered but gets no
+schemas and no poll rows (only a type shipped under `types/` fails there) — whereas one that
+lacks a key the snapshot tables or the Jira write tables read fails the import with a `KeyError`
+naming the type and the field;
 "Rules that are easy to trip" in `docs/type-provider-guide.md` lists those keys, and copying
 `types/rfe/` keeps them all. A script that does not read the registry yet carries a per-type
 table that `tests/test_type_registry_pins.py` pins to its descriptor projection.
