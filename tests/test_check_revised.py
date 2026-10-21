@@ -837,6 +837,46 @@ class TestClearAddressedAttention:
         assert "CLEARED_ATTENTION=\n" in result.stdout
         assert review.read_text() == first
 
+    def test_clears_a_flag_rewritten_after_a_clear(self, tmp_path, t):
+        # A late review-agent write can re-raise the feasibility flag after a clear; a second
+        # run clears it again when the conditions still hold and keeps it when they do not.
+        from artifact_utils import update_frontmatter
+
+        item_id, review = _setup_flagged(tmp_path, t)
+        _clear_run(tmp_path, t, item_id, "--clear-addressed-attention")
+        assert _read_frontmatter(review)["needs_attention"] is False
+
+        def late_write(scores=None):
+            updates = {
+                "needs_attention": True,
+                "needs_attention_reason": _FEASIBILITY_REASON,
+                "needs_attention_source": "feasibility",
+                "needs_attention_dimension": "open_to_how",
+            }
+            if scores is not None:
+                updates["scores"] = scores
+            update_frontmatter(str(review), updates, f"{t}-review")
+
+        late_write()
+        result = _clear_run(tmp_path, t, item_id, "--clear-addressed-attention")
+        assert result.returncode == 0, result.stderr
+        assert f"CLEARED_ATTENTION={item_id}\n" in result.stdout
+        fm = _read_frontmatter(review)
+        assert fm["needs_attention"] is False
+        assert fm["needs_attention_reason"] is None
+        assert "needs_attention_source" not in fm
+        assert "needs_attention_dimension" not in fm
+
+        # The same late write, but the dimension is no longer at its maximum: kept.
+        late_write(scores={**fm["scores"], "open_to_how": 1})
+        result = _clear_run(tmp_path, t, item_id, "--clear-addressed-attention")
+        assert result.returncode == 0, result.stderr
+        assert "CLEARED_ATTENTION=\n" in result.stdout
+        fm = _read_frontmatter(review)
+        assert fm["needs_attention"] is True
+        assert fm["needs_attention_reason"] == _FEASIBILITY_REASON
+        assert fm["needs_attention_source"] == "feasibility"
+
     @pytest.mark.parametrize(
         "overrides",
         [
