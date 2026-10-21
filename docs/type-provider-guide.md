@@ -229,8 +229,7 @@ field.
     `python3 scripts/generate_eval_config.py --type <name>` and commit the result. A copied
     `rfe_quality` threshold is renamed `<name>_quality`.
 - [ ] **The pytest pins that read the registry** — `python3 -m pytest tests/test_user_guide_doc.py
-  tests/test_readme_doc.py tests/test_type_registry_pins.py` (`tests/test_readme_doc.py` where
-  present). Each iterates `type_registry.load().names()`, so registering the type is enough to
+  tests/test_readme_doc.py tests/test_type_registry_pins.py`. Each iterates `type_registry.load().names()`, so registering the type is enough to
   enrol it.
   - `tests/test_user_guide_doc.py` fails with `AssertionError: ('<name>', '<Display name>')`
     (then the Jira project, the issue type, `--type <name>`) when

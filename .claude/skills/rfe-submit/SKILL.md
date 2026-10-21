@@ -1,6 +1,6 @@
 ---
 name: rfe-submit
-description: Submit or update work items of any registered type in Jira — new RHAIRFE tickets for new RFEs, RHOAIENG Initiative tickets for Initiatives (/rfe-submit --type initiative), or updates to existing tickets fetched from Jira. Use after /rfe-review.
+description: "Submit or update work items in Jira — new RHAIRFE tickets for new RFEs, RHOAIENG Initiative tickets for Initiatives, or updates to existing tickets fetched from Jira. Works for every registered type: RFEs by default, Initiatives with --type initiative. Use after /rfe-review."
 user-invocable: true
 allowed-tools: Read, Write, Edit, Bash
 ---

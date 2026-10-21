@@ -111,7 +111,7 @@ pin.
 - **The extension points.** The acceptance test that the `rfe` ↔ `initiative` diff is exactly the
   extension points is PR1-32 in `tests/test_type_registry_pins.py`. `snapshot.results_subdir`
   joined the Layout group with AISDLC-202. `conventions.labels.opt_in` came with the Initiative
-  production trial, AISDLC-205; rfe-autofixer reads it through `type_registry.py get` from MR !22
+  production trial, AISDLC-205; rfe-autofixer reads it through `type_registry.py get`
   when its job variable is empty, and strat-creator's intake is planned to read it under
   AISDLC-301.
 - **Reserved vocabulary.** The `schema.task.priority.enum` beside the reserved `map_to_tracker`
@@ -158,8 +158,8 @@ pin.
   takes the prose fallback only when no transcript was captured, and `revision_coverage` treats a
   decorated placeholder ("None (first pass).") as empty history — replayed over six eval runs, the
   first two changed no verdict and the third removed exactly two false positives.
-- **Lint gates.** Gate 3 (`--verify --type <t>`) is wired into the pipeline SETUP by PR-8
-  (design §10).
+- **Lint gates.** Gate 3 (`--verify --type <t>`) is not wired into the pipeline SETUP yet: the
+  SETUP wiring (`validate_types.py --verify` before the first wave) is planned, AISDLC-194.
 
 ## Where the descriptors deliberately differ from the design text
 

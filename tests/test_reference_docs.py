@@ -24,7 +24,14 @@ DEVELOPMENT = REPO_ROOT / DEVELOPMENT_REL
 TYPE_SENTENCE = (
     "Works for every registered type: RFEs by default, Initiatives with --type initiative."
 )
-GENERIC_SKILLS = ("rfe-create", "rfe-review", "rfe-split", "rfe-auto-fix", "rfe-speedrun")
+GENERIC_SKILLS = (
+    "rfe-create",
+    "rfe-review",
+    "rfe-split",
+    "rfe-auto-fix",
+    "rfe-speedrun",
+    "rfe-submit",
+)
 MANIFESTS = (".claude-plugin/plugin.json", ".codex-plugin/plugin.json")
 
 ADOPTION_HEADING = re.compile(r"^#+ Adoption status\s*$", re.MULTILINE)
