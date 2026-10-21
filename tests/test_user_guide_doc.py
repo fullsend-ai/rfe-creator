@@ -58,3 +58,80 @@ def test_is_linked_from_the_readme_and_the_generic_skills():
     for stage in GENERIC_SKILLS:
         skill = REPO_ROOT / ".claude" / "skills" / f"rfe-{stage}" / "SKILL.md"
         assert DOC_REL in skill.read_text(encoding="utf-8"), stage
+
+
+def _section(text, heading):
+    """The body of a ``## <heading>`` section, up to the next ``## `` heading (subsections
+    stay inside it)."""
+    start = text.index(f"## {heading}")
+    rest = text[start + len(heading) + 3 :]
+    match = re.search(r"^## ", rest, flags=re.MULTILINE)
+    return rest[: match.start()] if match else rest
+
+
+def _last_item_first_sentence(section):
+    """The last numbered item's text up to its first period: the sentence that says what the
+    run is when nothing decided the type."""
+    last = list(re.finditer(r"^\d+\. ", section, flags=re.MULTILINE))[-1]
+    return section[last.end() :].split(".")[0]
+
+
+def _names(sentence, entity):
+    # A letter before the name would make it part of a longer word (RHAIRFE is not an RFE).
+    return re.search(rf"(?<![A-Za-z]){re.escape(entity)}", sentence) is not None
+
+
+def default_sentence_problem(sentence, registry, default_type):
+    """Why ``sentence`` does not name exactly the default type, or None when it does."""
+    for name in registry.names():
+        entity = registry.get(name).get("display.entity")
+        if name == default_type and not _names(sentence, entity):
+            return f"does not name the default type {entity}"
+        if name != default_type and _names(sentence, entity):
+            return f"also names {entity}"
+    return None
+
+
+def test_documents_the_resolution_rules_in_the_registry_order():
+    """AISDLC-226: the page's "How the type is chosen" section names every rule the registry
+    can print after ``TYPE RESOLVED:`` (``type_registry.RESOLVE_RUNGS``), in the registry's
+    order of precedence, in one sentence; its numbered ladder opens with ``--type`` and closes
+    with the grandfathered default type. A new rung, a renamed rung or a reordered ladder in
+    the code fails here until the page says the same."""
+    section = _section(_text(), "How the type is chosen")
+    rungs = type_registry.RESOLVE_RUNGS
+    sentences = [s for s in re.split(r"(?<=\.)\s", section) if all(f"`{r}`" in s for r in rungs)]
+    assert sentences, f"no sentence names every rule {rungs}"
+    first = [sentences[0].index(f"`{r}`") for r in rungs]
+    assert first == sorted(first), (rungs, sentences[0])
+    items = re.findall(r"^\d+\. \*\*(.+?)\*\*", section, flags=re.MULTILINE)
+    assert len(items) >= 2, items
+    assert "--type" in items[0], items[0]
+    registry = type_registry.load(extra_roots=[], env={})
+    sentence = _last_item_first_sentence(section)
+    problem = default_sentence_problem(sentence, registry, type_registry.LEGACY_DEFAULT_TYPE)
+    assert problem is None, (problem, sentence)
+
+
+def test_default_sentence_check_rejects_a_sentence_that_names_another_type():
+    registry = type_registry.load(extra_roots=[], env={})
+    default = type_registry.LEGACY_DEFAULT_TYPE
+    entities = {n: registry.get(n).get("display.entity") for n in registry.names()}
+    assert len(entities) >= 2, entities
+    good = f"**Nothing at all**: the run is an {entities[default]} run. Then more text."
+    assert (
+        default_sentence_problem(_last_item_first_sentence(f"1. {good}"), registry, default) is None
+    )
+    for name, entity in entities.items():
+        if name == default:
+            continue
+        both = f"**Nothing at all**: the run is an {entities[default]} run, not an {entity} run."
+        assert default_sentence_problem(both, registry, default) == f"also names {entity}"
+        # Naming the other type in a later sentence of the item is fine: only the first counts.
+        later = f"**Nothing at all**: the run is an {entities[default]} run. Not an {entity} run."
+        assert (
+            default_sentence_problem(_last_item_first_sentence(f"1. {later}"), registry, default)
+            is None
+        )
+        wrong = f"**Nothing at all**: the run is an {entity} run."
+        assert default_sentence_problem(wrong, registry, default) is not None
