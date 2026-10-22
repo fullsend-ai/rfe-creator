@@ -49,6 +49,7 @@ rather than requiring a specific status.
 | `needs_attention_reason` | `null` / string | Concise explanation of why needs_attention is true | `artifact_utils.py:122-126` |
 | `needs_attention_source` | absent / `feasibility` / `alignment` / `rubric` / `agent` | Where the flag came from (AISDLC-442). Written by the review agent with `needs_attention=true`; scripts that raise the flag themselves leave it absent. No schema default: a review without it gains no key. Read by the REASSESS_FIXUP clear (N8); an absent source is never cleared | `artifact_utils.py` `_review_schema` |
 | `needs_attention_dimension` | absent / one of the type's score fields | The score dimension a `feasibility` or `rubric` flag concerns (prescriptive HOW: `open_to_how`). No schema default | `artifact_utils.py` `_review_schema` |
+| `auto_revised_cycle` | absent / int ≥ 0 | The revise pass whose agent completed (AISDLC-275): `0` for REVISE / SPLIT_REVISE, the reassess cycle for REASSESS_REVISE (the `REVISE_CYCLE` launch var). Written only by the revise agent, in the same `frontmatter.py set` as `auto_revised=true`; carried through re-reviews by `preserve_review_state.py` (raised only, to the value saved from the agent's write). `check_revised.py` never touches it. No schema default. Read by the submit hold (§5.12) | `artifact_utils.py` `_review_schema` |
 | `error` | `null` / string | Machine-readable failure category | `artifact_utils.py:116` |
 | `feasibility` | `feasible` / `infeasible` / `indeterminate` | Architecture feasibility assessment | `artifact_utils.py:89` |
 | `scores` | dict: `{what, why, open_to_how, not_a_task, right_sized}` (each 0-2) | Per-criterion rubric scores; drives recommendation logic | `artifact_utils.py:101-111` |
@@ -823,7 +824,7 @@ failures that may not surface until production runs.
 ### 4.2 Review Pipeline Invariants
 
 - **`check_revised.py` must run after every revise pass** to correct false `auto_revised` flags (prevents spurious `rfe-creator-auto-revised` labels in Jira). The REPORT transition and `submit.py` start-up run it once more in `--lower-only` mode (A7): a revise agent's write can land after FIXUP, and the last reader must not trust a flag the content contradicts. Every pass also deletes the stale removed-context companion of an unchanged task, so `submit.py` never posts a removed-context comment for an item that was not revised.
-- **`preserve_review_state.py` save/restore must bracket every reassess cycle.** Exact field set preserved: `before_score`, `before_scores`, `auto_revised`, `revision_history`. State file (`-review-state.json`) survives the pipeline's `restore --keep-state` until the COLLECT / SPLIT_CORRECTION_CHECK reconcile (`scripts/reconcile_reviews.py`) re-applies and deletes it; the interactive skills' plain `restore` deletes it at once. **Not preserved**: `needs_attention`, `needs_attention_reason`, `error` — these are implicitly cleared when the reassess cycle deletes and recreates the review file. This contradicts the "sticky" characterization of `needs_attention` in Section 5.1; in practice, `needs_attention=true` set during a first-pass review or revise is lost after reassess unless the new review agent independently re-sets it.
+- **`preserve_review_state.py` save/restore must bracket every reassess cycle.** Exact field set preserved: `before_score`, `before_scores`, `auto_revised`, `auto_revised_cycle` (AISDLC-275; only the value the revise agent wrote, never lowered), `revision_history`. State file (`-review-state.json`) survives the pipeline's `restore --keep-state` until the COLLECT / SPLIT_CORRECTION_CHECK reconcile (`scripts/reconcile_reviews.py`) re-applies and deletes it; the interactive skills' plain `restore` deletes it at once. **Not preserved**: `needs_attention`, `needs_attention_reason`, `error` — these are implicitly cleared when the reassess cycle deletes and recreates the review file. This contradicts the "sticky" characterization of `needs_attention` in Section 5.1; in practice, `needs_attention=true` set during a first-pass review or revise is lost after reassess unless the new review agent independently re-sets it.
 - **`set-default` (not `set`) for cycle counters** — prevents counter reset on context compression re-entry.
 - **`before_score`/`before_scores` set once on first pass** (`FIRST_PASS=true`), preserved across all reassess cycles. Never overwritten.
 - **`filter_for_revision.py` intentionally includes split-recommended IDs** — revise fixes non-right-sizing rubric failures; revise agent cannot change scope (`revise-agent.md: "Do NOT split scope"`).
@@ -1082,10 +1083,34 @@ item takes the update path as before. A submit re-run over already-held artifact
 again idempotently, re-applying the labels without a second comment — but only when the
 re-run itself passes `--auto-approve` or `--hold-interrupted` (the two switches, below) —
 and the comment is posted even when the item already carried the needs-attention label at
-fetch. Under `--dry-run` the hold is reported and nothing is written. Known
-limit: the hold keys on `auto_revised`, which `REASSESS_RESTORE` restores to `true` before
-`REASSESS_REVISE`, so a run that dies inside a *second* revision pass is not detected; the
-durable fix is a per-wave revision marker set by the pipeline (AISDLC-275).
+fetch. Under `--dry-run` the hold is reported and nothing is written.
+
+**Later revise passes: the per-pass signal (AISDLC-275).** `auto_revised` is sticky across
+passes: `REASSESS_RESTORE` puts it back to `true` before `REASSESS_REVISE`, so a second pass
+cut off after its body edit reads exactly like a completed one. The completion signal is
+therefore per pass. The revise agent writes `auto_revised_cycle=<REVISE_CYCLE>` in the same
+`frontmatter.py set` as `auto_revised=true` — `REVISE_CYCLE` is a launch var of the revise
+phases: `0` for REVISE and SPLIT_REVISE, the state's `reassess_cycle` for REASSESS_REVISE
+(the interactive `/rfe-review` substitutes `0` and the cycle number the same way).
+`preserve_review_state.py` saves the marker the agent wrote and `restore` / the
+`reconcile_reviews.py` re-applies only ever raise it to that saved value, so a re-review
+cannot drop it, a later completed pass keeps its higher value, and no marker is made up;
+`check_revised.py` never touches it. The dispatcher records the pass it launched last for
+each id in the state file (`revise_passes` in `tmp/pipeline-state.yaml`: REVIEW → REVISE
+records `0` for the revise ids, REASSESS_RESTORE → REASSESS_REVISE records the cycle;
+BATCH_START drops its own ids' entries, so a retry batch starts them over). The record is
+per id, not the batch-wide `reassess_cycle`: an item whose first revision passed
+its re-review is not revised again while others go on to a second pass, and BATCH_START
+resets the counter for every batch while submit runs after all of them. In the hold
+branch, a changed body is held when `auto_revised` is false (the rule above, unchanged)
+**or** when the review's `auto_revised_cycle` is behind the pass recorded for the item —
+the same hold path, `revision_interrupted:` error (`revise pass N never completed`), labels,
+comment, snapshot reset and report fields. A review without the marker (written before
+AISDLC-275), an item with no recorded pass, or a workspace without the state file (or with
+another type's) keeps the `auto_revised` rule alone. A re-run that passes a hold switch also
+holds an item whose review already carries the `revision_interrupted:` record, so a
+later-pass hold stays held where the state file is gone (a manual submit job in another
+workspace).
 
 The two switches (AISDLC-279). The hold was first armed by `--auto-approve` alone, which
 the RFE production job passes; the Initiative jobs run with auto-approve off during the

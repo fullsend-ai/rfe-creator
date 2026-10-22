@@ -521,6 +521,54 @@ class TestLowerOnly:
         assert "LOWERED=" not in result.stdout
 
 
+class TestPassMarkerUntouched:
+    """AISDLC-275: auto_revised_cycle is the revise agent's record of the pass it completed.
+    check_revised re-derives auto_revised from the content (raise, lower, --lower-only) and
+    leaves the marker exactly as written — present or absent."""
+
+    def _marked(self, tmp_path, rfe_id, original, task, auto_revised, marker):
+        _setup_batch(tmp_path, rfe_id, original, task, auto_revised=auto_revised)
+        if marker is not None:
+            review = tmp_path / "artifacts" / "rfe-reviews" / f"{rfe_id}-review.md"
+            text = review.read_text()
+            review.write_text(
+                text.replace(
+                    "needs_attention:", f"auto_revised_cycle: {marker}\nneeds_attention:", 1
+                )
+            )
+        return tmp_path / "artifacts" / "rfe-reviews" / f"{rfe_id}-review.md"
+
+    @pytest.mark.parametrize(
+        "flags,original,task,auto_revised,expected",
+        [
+            ((), "Same.", "Same.", True, False),  # FIXUP lowers
+            ((), "Original.", "Revised.", False, True),  # FIXUP raises
+            (("--lower-only",), "Same.", "Same.", True, False),  # last-reader guard
+        ],
+        ids=["lower", "raise", "lower-only"],
+    )
+    @pytest.mark.parametrize("marker", [1, None], ids=["marker", "no-marker"])
+    def test_flag_moves_marker_stays(
+        self, tmp_path, flags, original, task, auto_revised, expected, marker
+    ):
+        review = self._marked(tmp_path, "RHAIRFE-4001", original, task, auto_revised, marker)
+        result = subprocess.run(
+            ["python3", SCRIPT, "--batch", *flags, "RHAIRFE-4001"],
+            capture_output=True,
+            text=True,
+            cwd=tmp_path,
+            env={**os.environ, "PYTHONPATH": os.path.dirname(SCRIPT)},
+        )
+        assert result.returncode == 0, result.stderr
+        assert "UPDATED=1" in result.stdout
+        fm = _read_frontmatter(review)
+        assert fm["auto_revised"] is expected
+        if marker is None:
+            assert "auto_revised_cycle" not in fm
+        else:
+            assert fm["auto_revised_cycle"] == marker
+
+
 class TestStaleCompanions:
     """An unchanged task's leftover removed-context companion is deleted in both batch modes.
     2026-09-22 initiative eval, INIT-012: the revise agent wrote the companion

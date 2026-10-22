@@ -365,8 +365,12 @@ def _write_poll_stub(poll_phase, rfe_id, skip_stub=None):
 # ---------- Phase config (built from pipeline type) ----------
 
 
-def _build_phase_config(pipeline_type):
-    """Build PHASE_CONFIG for the given pipeline type."""
+def _build_phase_config(pipeline_type, reassess_cycle=0):
+    """Build PHASE_CONFIG for the given pipeline type.
+
+    ``reassess_cycle`` (the state's counter) renders REASSESS_REVISE's ``REVISE_CYCLE``: the
+    revise pass a revise agent records as ``auto_revised_cycle`` with its completion flag
+    (AISDLC-275). REVISE and SPLIT_REVISE are pass 0."""
     t = PIPELINE_TYPES[pipeline_type]
     pp = t["poll_prefix"]
     vfy = f"python3 scripts/verify_phase.py --type {pipeline_type}"
@@ -466,7 +470,7 @@ def _build_phase_config(pipeline_type):
             "prompt": f"{t['review_prompts']}/revise-agent.md",
             "ids_file": "tmp/pipeline-revise-ids.txt",
             "poll_phase": f"{pp}revise",
-            "vars": {"ID": "{ID}"},
+            "vars": {"ID": "{ID}", "REVISE_CYCLE": "0"},
         },
         "FIXUP": {
             "type": "script",
@@ -510,7 +514,7 @@ def _build_phase_config(pipeline_type):
             "prompt": f"{t['review_prompts']}/revise-agent.md",
             "ids_file": "tmp/pipeline-revise-ids.txt",
             "poll_phase": f"{pp}revise",
-            "vars": {"ID": "{ID}"},
+            "vars": {"ID": "{ID}", "REVISE_CYCLE": str(reassess_cycle)},
         },
         "REASSESS_FIXUP": {
             "type": "script",
@@ -580,7 +584,7 @@ def _build_phase_config(pipeline_type):
             "prompt": f"{t['review_prompts']}/revise-agent.md",
             "ids_file": "tmp/pipeline-revise-ids.txt",
             "poll_phase": f"{pp}revise",
-            "vars": {"ID": "{ID}"},
+            "vars": {"ID": "{ID}", "REVISE_CYCLE": "0"},
         },
         "SPLIT_FIXUP": {
             "type": "script",
@@ -641,7 +645,7 @@ def _build_phase_config(pipeline_type):
 def _get_config(state):
     """Get PHASE_CONFIG for the pipeline type in the current state (validated first)."""
     _validate_state_values(state)
-    return _build_phase_config(state.get("type", "rfe"))
+    return _build_phase_config(state.get("type", "rfe"), int(state.get("reassess_cycle", 0)))
 
 
 def _wave_size(state, config):
@@ -737,7 +741,8 @@ def _validate_state_values(state):
     ``tmp/pipeline-state.yaml`` into the REPORT command, and the phase table is
     selected by ``type``. Commands no longer go through a shell, but a tampered
     value would still become extra argv tokens (``--start-time x --foo``), so the
-    three fields ``init`` writes are checked before use.
+    three fields ``init`` writes are checked before use. ``reassess_cycle`` is checked
+    too: it renders REASSESS_REVISE's ``REVISE_CYCLE`` launch var.
     """
     problems = []
     ptype = state.get("type", "rfe")
@@ -756,6 +761,11 @@ def _validate_state_values(state):
     is_digits = isinstance(batch_size, str) and _ASCII_DIGITS_RE.fullmatch(batch_size)
     if not (is_int or is_digits) or int(batch_size) < 1:
         problems.append("batch_size is not a positive integer")
+    # Rendered into REASSESS_REVISE's REVISE_CYCLE launch var, which the revise agent pastes
+    # into its frontmatter command (AISDLC-275).
+    cycle = state.get("reassess_cycle", 0)
+    if not isinstance(cycle, int) or isinstance(cycle, bool) or cycle < 0:
+        problems.append("reassess_cycle is not a non-negative integer")
     if problems:
         print("[validate-state] refusing to run: " + "; ".join(problems), file=sys.stderr)
         sys.exit(1)
@@ -834,6 +844,27 @@ def _write_revise_baseline(ids, pipeline_type):
     baseline = {rid: revise_baseline_entry(pipeline_type, rid) for rid in ids}
     with open(REVISE_BASELINE_FILE, "w") as f:
         json.dump(baseline, f, indent=2)
+
+
+# The state key of the revise pass the pipeline last launched per id (AISDLC-275): REVIEW →
+# REVISE records pass 0, REASSESS_RESTORE → REASSESS_REVISE the reassess cycle. Kept across
+# batches (BATCH_START drops only its own ids' entries, for the retry batch). submit.py's
+# interrupted-revision hold compares a review's auto_revised_cycle, which only the revise
+# agent writes, with it: a marker behind the launched pass is a revision cut off after its
+# body edit. Per id, not the batch-wide reassess_cycle: an item whose first revision passed
+# its re-review is not revised again while others go on to a second pass.
+REVISE_PASSES_KEY = "revise_passes"
+
+
+def _record_revise_passes(state, ids, cycle):
+    """Record ``cycle`` as the revise pass launched for each of ``ids`` (saved with the state
+    on the phase transition)."""
+    passes = state.get(REVISE_PASSES_KEY)
+    if not isinstance(passes, dict):
+        passes = {}
+    for rid in ids:
+        passes[rid] = cycle
+    state[REVISE_PASSES_KEY] = passes
 
 
 def _final_reconcile(state, type_flag):
@@ -1101,7 +1132,14 @@ def advance(state, dry_run=False):
             state["reassess_cycle"] = 0
             state["correction_cycle"] = 0
             _copy_ids(batch_file, "tmp/pipeline-active-ids.txt")
-            _sweep_review_state(_read_ids("tmp/pipeline-active-ids.txt"))
+            active_ids = _read_ids("tmp/pipeline-active-ids.txt")
+            _sweep_review_state(active_ids)
+            # The batch processes its ids from scratch (the retry batch re-runs ids an
+            # earlier batch launched passes for): their launched-pass records start over.
+            passes = state.get(REVISE_PASSES_KEY)
+            if isinstance(passes, dict):
+                for rid in active_ids:
+                    passes.pop(rid, None)
         return "FETCH", f"BATCH_START → FETCH: batch={batch}"
 
     # --- Filter before REVISE phases ---
@@ -1114,6 +1152,7 @@ def advance(state, dry_run=False):
             if revise_ids:
                 _save_originals(revise_ids, pipeline_type)
             _write_revise_baseline(revise_ids, pipeline_type)
+            _record_revise_passes(state, revise_ids, 0)
         return "REVISE", "REVIEW → REVISE"
 
     if phase == "REASSESS_RESTORE":
@@ -1140,6 +1179,7 @@ def advance(state, dry_run=False):
                 # Taken after REASSESS_RESTORE rewrote the review: the re-raised flag is in
                 # the baseline, so only this wave's revise agent can move the slot.
                 _write_revise_baseline(revise_ids, pipeline_type)
+                _record_revise_passes(state, revise_ids, cycle)
         return "REASSESS_REVISE", "REASSESS_RESTORE → REASSESS_REVISE"
 
     if phase == "SPLIT_REVIEW":

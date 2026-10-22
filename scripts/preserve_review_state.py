@@ -1,18 +1,19 @@
 """Save and restore cumulative review state across re-assessment cycles.
 
-Saves before_scores, the auto_revised flag and revision history to a JSON
-state file before re-review, then restores them after the new review file is
-written. The re-review recreates the review file from scratch, so the flag
-would otherwise fall back to the schema default (false) for every re-reviewed
-item; submit.py derives the auto-revised Jira label from it.
+Saves before_scores, the auto_revised flag, the auto_revised_cycle marker and
+revision history to a JSON state file before re-review, then restores them after
+the new review file is written. The re-review recreates the review file from
+scratch, so the flag would otherwise fall back to the schema default (false) for
+every re-reviewed item; submit.py derives the auto-revised Jira label from it.
 
 Usage:
     python3 scripts/preserve_review_state.py save <ID> [<ID> ...]
     python3 scripts/preserve_review_state.py restore [--keep-state] <ID> [<ID> ...]
     python3 scripts/preserve_review_state.py cleanup <ID> [<ID> ...]
 
-``restore`` is idempotent: it only raises ``auto_revised``, fills ``before_*``
-and prepends the saved history when it is not already there, so it can run
+``restore`` is idempotent: it only raises ``auto_revised`` and
+``auto_revised_cycle``, fills ``before_*`` and prepends the saved history when it
+is not already there, so it can run
 again after a late review-agent write (AISDLC-33). With ``--keep-state`` the
 state file survives the restore for that later re-application; the pipeline's
 COLLECT reconcile (``scripts/reconcile_reviews.py``) does the final restore and
@@ -111,8 +112,15 @@ def extract_revision_history(filepath):
     return section.strip()
 
 
+def _cycle_marker(value):
+    """``value`` when it is a revise-pass marker (a non-negative int), else None."""
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value
+    return None
+
+
 def save(rfe_id):
-    """Save before_scores and revision history to a state file."""
+    """Save before_scores, the flag, its pass marker and revision history to a state file."""
     rpath = review_path(rfe_id)
     if not os.path.exists(rpath):
         print(f"SKIP={rfe_id} (no review file)")
@@ -124,6 +132,9 @@ def save(rfe_id):
         "before_scores": data.get("before_scores"),
         # Verified by check_revised.py --batch (FIXUP) before this save runs.
         "auto_revised": bool(data.get("auto_revised", False)),
+        # The revise pass the agent recorded as complete (AISDLC-275); None when it wrote
+        # none. Saved as the agent wrote it, never derived.
+        "auto_revised_cycle": _cycle_marker(data.get("auto_revised_cycle")),
         "revision_history": extract_revision_history(rpath),
     }
 
@@ -135,7 +146,8 @@ def save(rfe_id):
 
 
 def restore(rfe_id, keep_state=False):
-    """Restore before_scores, the flag and the revision history from the state file.
+    """Restore before_scores, the flag, its pass marker and the revision history from the
+    state file.
 
     Idempotent. ``keep_state`` leaves the state file in place so the restore can be
     re-applied later (the pipeline's REASSESS_RESTORE); the default removes it.
@@ -164,6 +176,17 @@ def restore(rfe_id, keep_state=False):
     # written before this key existed simply leaves the flag alone.
     if state.get("auto_revised"):
         fm_updates["auto_revised"] = True
+    # The pass marker likewise only rises, and only to the value a revise agent wrote (the
+    # saved one): a revise pass that completed after the save (REASSESS_REVISE, before the
+    # COLLECT reconcile re-applies this file) keeps its higher marker, and no marker is
+    # ever made up. submit.py holds a changed body whose marker is behind the last
+    # launched pass (§5.12), so forging one would publish an interrupted revision.
+    saved_cycle = _cycle_marker(state.get("auto_revised_cycle"))
+    if saved_cycle is not None:
+        current, _ = read_frontmatter(rpath)
+        current_cycle = _cycle_marker(current.get("auto_revised_cycle"))
+        if current_cycle is None or current_cycle < saved_cycle:
+            fm_updates["auto_revised_cycle"] = saved_cycle
     if fm_updates:
         update_frontmatter(rpath, fm_updates, _schema(rfe_id))
 
