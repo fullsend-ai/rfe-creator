@@ -1629,8 +1629,16 @@ LAUNCH_KEYS = (
     "CONTEXT_DIR",
 )
 # The phase-var keys the dispatcher adds beside the launch block (pipeline_state._review_vars,
-# _assess_vars): a dimension may not shadow these either.
-PHASE_VAR_KEYS = ("FIRST_PASS", "ID", "KEY", "ASSESS_PATH", "DATA_FILE", "RUN_DIR")
+# _assess_vars, the revise phases' REVISE_CYCLE): a dimension may not shadow these either.
+PHASE_VAR_KEYS = (
+    "FIRST_PASS",
+    "ID",
+    "KEY",
+    "ASSESS_PATH",
+    "DATA_FILE",
+    "RUN_DIR",
+    "REVISE_CYCLE",
+)
 
 
 def dimension_key(name):

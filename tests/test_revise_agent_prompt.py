@@ -63,6 +63,10 @@ class TestFrontmatterSetIsLast:
         assert "needs_attention_reason=" in last
         # Only this one command sets the flag: FIXUP owns the correction.
         assert sum("auto_revised=" in c for c in commands) == 1
+        # AISDLC-275: the pass marker is written in the same command as the flag, so no
+        # reader sees the flag of a pass without its marker. The dispatcher (REVISE /
+        # REASSESS_REVISE / SPLIT_REVISE) and the review skill supply REVISE_CYCLE.
+        assert "auto_revised=true auto_revised_cycle={REVISE_CYCLE}" in last
 
     def test_no_change_case_and_nothing_after_the_set(self, kind):
         text = _text(kind)

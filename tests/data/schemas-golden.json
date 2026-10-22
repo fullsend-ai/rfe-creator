@@ -214,6 +214,10 @@
         "not_a_task",
         "right_sized"
       ]
+    },
+    "auto_revised_cycle": {
+      "type": "int",
+      "required": false
     }
   },
   "initiative-task": {
@@ -420,6 +424,10 @@
         "open_to_how",
         "right_sized"
       ]
+    },
+    "auto_revised_cycle": {
+      "type": "int",
+      "required": false
     },
     "alignment": {
       "type": "string",

@@ -1091,6 +1091,101 @@ class TestInterruptedRevisionHold:
         assert "rfe-creator-auto-revised" in issue["fields"]["labels"]
 
 
+class TestSecondPassInterruptedHold:
+    """AISDLC-275: REASSESS_RESTORE puts ``auto_revised: true`` back before REASSESS_REVISE,
+    so a second revise pass cut off after its body edit reads like a completed one. The
+    revise agent records the pass it completed (``auto_revised_cycle``) and the dispatcher
+    the pass it launched last per id (``revise_passes`` in tmp/pipeline-state.yaml); a
+    marker behind the launched pass is held exactly like a first-pass interruption."""
+
+    ORIGINAL = "## Problem\n\nOriginal content.\n"
+    REWRITE = "## Problem\n\nRewritten by revise pass 2, cut off before its marker.\n"
+    _desc_text = staticmethod(TestInterruptedRevisionHold._desc_text)
+    _attention_comments = staticmethod(TestInterruptedRevisionHold._attention_comments)
+
+    def _seed(self, art_dir, jira, marker, launched):
+        jira.create("RHAIRFE-1234", "Test RFE", self.ORIGINAL)
+        _write(f"{art_dir}/rfe-originals/RHAIRFE-1234.md", self.ORIGINAL)
+        _write(
+            f"{art_dir}/rfe-tasks/RHAIRFE-1234.md",
+            "---\nrfe_id: RHAIRFE-1234\ntitle: Test RFE\npriority: Major\nstatus: Ready\n"
+            f"---\n{self.REWRITE}",
+        )
+        extra = f"auto_revised_cycle: {marker}\n" if marker is not None else ""
+        _write(
+            f"{art_dir}/rfe-reviews/RHAIRFE-1234-review.md",
+            _review("RHAIRFE-1234", auto_revised="true", extra_fields=extra),
+        )
+        if launched is not None:
+            _write(
+                f"{art_dir}/tmp/pipeline-state.yaml",
+                "phase: DONE\ntype: rfe\nreassess_cycle: 2\n"
+                f"revise_passes:\n  RHAIRFE-1234: {launched}\n",
+            )
+
+    @_HOLD_SWITCHES
+    def test_interrupted_second_pass_is_held_like_a_first_pass(self, art_dir, jira, hold_switch):
+        self._seed(art_dir, jira, marker=0, launched=1)
+        snap_path = TestInterruptedRevisionHold._write_snapshot(art_dir, processed=True)
+
+        r = _run_submit(
+            art_dir,
+            jira.url,
+            [hold_switch, "--generate-report", "--report-timestamp", "20261022-120000"],
+        )
+        assert r.returncode == 0, r.stderr
+        assert "revision interrupted (revise pass 1 never completed)" in r.stdout
+        assert "RHAIRFE-1234: Updated" not in r.stdout
+        assert "Transitioned to Approved" not in r.stdout
+
+        issue = jira.get("RHAIRFE-1234")
+        assert "Original content." in self._desc_text(issue)
+        assert "Rewritten" not in self._desc_text(issue)
+        assert issue["fields"]["labels"] == ["rfe-creator-needs-attention"]
+        assert len(self._attention_comments(jira)) == 1
+        fm = _read_frontmatter(f"{art_dir}/rfe-reviews/RHAIRFE-1234-review.md")
+        assert fm["pass"] is False
+        assert fm["needs_attention"] is True
+        assert fm["needs_attention_reason"].startswith("Revision interrupted:")
+        assert fm["error"].startswith("revision_interrupted:")
+        assert fm["auto_revised_cycle"] == 0  # the hold forges no marker
+        assert _read_frontmatter(f"{art_dir}/rfe-tasks/RHAIRFE-1234.md")["status"] == "Ready"
+        with open(snap_path) as f:
+            assert yaml.safe_load(f)["issues"]["RHAIRFE-1234"]["processed"] is False
+        with open(f"{art_dir}/auto-fix-runs/20261022-120000.yaml") as fh:
+            report = yaml.safe_load(fh)
+        (entry,) = [e for e in report["per_rfe"] if e["id"] == "RHAIRFE-1234"]
+        assert "Revision interrupted" in entry["blocked_reason"]
+        assert report["results"]["blocked"] == 1
+
+        # A re-run holds again without a second comment — also where the pipeline state is
+        # gone (a manual submit job in another workspace): the recorded hold is enough.
+        os.remove(f"{art_dir}/tmp/pipeline-state.yaml")
+        r = _run_submit(art_dir, jira.url, [hold_switch])
+        assert r.returncode == 0, r.stderr
+        assert "revision interrupted" in r.stdout
+        assert len(self._attention_comments(jira)) == 1
+        assert "Original content." in self._desc_text(jira.get("RHAIRFE-1234"))
+
+    def test_completed_second_pass_is_published_with_the_auto_revised_label(self, art_dir, jira):
+        self._seed(art_dir, jira, marker=1, launched=1)
+        r = _run_submit(art_dir, jira.url, ["--auto-approve"])
+        assert r.returncode == 0, r.stderr
+        assert "RHAIRFE-1234: Updated" in r.stdout
+        issue = jira.get("RHAIRFE-1234")
+        assert "Rewritten" in self._desc_text(issue)
+        assert "rfe-creator-auto-revised" in issue["fields"]["labels"]
+        assert "rfe-creator-needs-attention" not in issue["fields"]["labels"]
+
+    def test_review_without_the_marker_behaves_as_today(self, art_dir, jira):
+        """An older run's review carries no marker: auto_revised true publishes, as before."""
+        self._seed(art_dir, jira, marker=None, launched=1)
+        r = _run_submit(art_dir, jira.url, ["--auto-approve"])
+        assert r.returncode == 0, r.stderr
+        assert "RHAIRFE-1234: Updated" in r.stdout
+        assert "rfe-creator-auto-revised" in jira.get("RHAIRFE-1234")["fields"]["labels"]
+
+
 class TestConflictDetection:
     def test_conflict_prevents_update(self, art_dir, jira):
         """Jira description differs from original → skip, no PUT."""

@@ -163,7 +163,7 @@ python3 scripts/filter_for_revision.py <all_IDs_from_file>
 
 The script outputs the IDs that need revision (filters out passing, infeasible, and rejected IDs). If the output is empty, skip to Review Step 4.
 
-Launch a **revise agent** for each ID returned — substitutions `{ID}=<ID>`, prompt `revise-agent.md`. Launch all in parallel. Poll (`NEXT_POLL` rule):
+Launch a **revise agent** for each ID returned — substitutions `{ID}=<ID>, {REVISE_CYCLE}=0`, prompt `revise-agent.md`. Launch all in parallel. Poll (`NEXT_POLL` rule):
 
 ```bash
 python3 scripts/state.py write-ids {POLL_FILE_PREFIX}revise.txt <all_IDs_being_revised>
@@ -251,7 +251,7 @@ python3 scripts/preserve_review_state.py restore <all_reassess_IDs_from_file>
 python3 scripts/filter_for_revision.py <all_reassess_IDs_from_file>
 ```
 
-Launch revise agents for the IDs returned (if any) as in Review Step 3.5. Wait for all to complete, then run the batch auto_revised flag fix:
+Launch revise agents for the IDs returned (if any) as in Step 3.5 with `{REVISE_CYCLE}=<N+1>`, wait for all, then run the batch flag fix:
 
 ```bash
 python3 scripts/check_revised.py --batch {TYPE_FLAG} --clear-addressed-attention --ids-file tmp/{STATE_PREFIX}review-reassess-ids.txt
