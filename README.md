@@ -185,6 +185,10 @@ You can auto-fix some skillsaw issues with `make skillsaw-fix`.
 
 See [AGENTS.md](AGENTS.md) for architecture details and conventions.
 
+### Releasing
+
+The version string in `.claude-plugin/plugin.json` is the update gate for marketplace users: Claude Code re-fetches an installed plugin only when that string changes, so a merged change reaches a marketplace install only once a release bumps it (a checkout and the CI pipelines track branches and are unaffected). A release is a pull request that bumps `version` in both manifests (`.claude-plugin/plugin.json` and `.codex-plugin/plugin.json`; a test keeps them equal) and names what the increment delivers; once it is merged, the entry in [opendatahub-io/skills-registry](https://github.com/opendatahub-io/skills-registry) moves to the same number in the same window (`scripts/check_versions.py` there reads it from this repository's manifest). The rule for the number: a minor bump per user-visible increment, a patch bump when a merged change alters the plugin's behaviour for interactive users, no release for internal-only work. Marketplace users then pick it up with `/plugin update rfe-creator@opendatahub-skills`.
+
 ## CI / Headless Mode
 
 All orchestrator skills support `--headless` for non-interactive use in CI pipelines. Combined with `--dry-run`, you can validate the full pipeline without Jira writes:
