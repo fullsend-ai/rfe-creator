@@ -690,7 +690,8 @@ def _load_child_review(find_review, artifacts_dir, child_id, review_schema):
 def _approve_child(server, user, token, child_key, review_data, config, dry_run):
     """Transition a created (or recovered) child to the type's approved status when its
     review passes the gate submit.py applies to every other item: an explicitly feasible
-    rubric pass with no review error (artifact_utils.auto_approve_qualifies). Without this
+    rubric pass recommending submit, with no review error
+    (artifact_utils.auto_approve_qualifies). Without this
     the child's rubric-pass label excludes it from every later run and nothing ever
     transitions it (RHAIFIRST-82). Idempotent: an already-approved child is skipped, so a
     run that died between creation and approval completes it without a second comment.

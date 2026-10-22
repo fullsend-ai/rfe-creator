@@ -2256,6 +2256,40 @@ class TestApprovedTransition:
         bodies = [c["body"] for c in comments["comments"]]
         assert any("automatically transitioned to Approved" in json.dumps(b) for b in bodies)
 
+    def test_split_recommended_rfe_not_transitioned(self, art_dir, jira):
+        """--auto-approve + passing, feasible review recommending a split that never ran
+        (#251, RHAIRFE-3512) → labels only: no rubric-pass label, status unchanged, no
+        approval comment, and the plan says why."""
+        body = "Original."
+        jira.create("RHAIRFE-1234", "Test RFE", body)
+        _write(f"{art_dir}/rfe-originals/RHAIRFE-1234.md", body)
+        _write(
+            f"{art_dir}/rfe-tasks/RHAIRFE-1234.md",
+            "---\nrfe_id: RHAIRFE-1234\ntitle: Test RFE\n"
+            "priority: Major\nstatus: Ready\n---\nRevised.",
+        )
+        _write(
+            f"{art_dir}/rfe-reviews/RHAIRFE-1234-review.md",
+            _review("RHAIRFE-1234", auto_revised="true").replace(
+                "recommendation: submit", "recommendation: split"
+            ),
+        )
+
+        r = _run_submit(art_dir, jira.url, ["--auto-approve"])
+        assert r.returncode == 0, r.stderr
+        assert "Transitioned to Approved" not in r.stdout
+        assert "split recommended but not split in this run: not auto-approved" in r.stdout
+
+        issue = jira.get("RHAIRFE-1234")
+        assert issue["fields"]["status"]["name"] != "Approved"
+        assert "rfe-creator-autofix-rubric-pass" not in issue["fields"]["labels"]
+        assert "rfe-creator-feasibility-pass" in issue["fields"]["labels"]
+        comments = jira.request("GET", "/rest/api/3/issue/RHAIRFE-1234/comment")
+        assert not any(
+            "automatically transitioned to Approved" in json.dumps(c["body"])
+            for c in comments["comments"]
+        )
+
     def test_new_rfe_transitions_to_approved(self, art_dir, jira):
         """--auto-approve + new RFE with passing review → Approved."""
         _write(f"{art_dir}/rfe-tasks/RFE-001.md", TASK_FM.format(rfe_id="RFE-001"))

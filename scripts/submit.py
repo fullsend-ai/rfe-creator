@@ -1570,8 +1570,16 @@ def main():
         # Approved on its own. `needs_attention` is advisory here — it drives
         # the needs-attention label, not the transition. A review carrying an
         # `error` has no verdict at all (see _feasibility_verdict), whatever
-        # its `pass` and `feasibility` fields say.
+        # its `pass` and `feasibility` fields say. A `split` recommendation blocks the
+        # transition (#251): a split-recommended item reaching Phase 2 was not split in
+        # this run (aborted before SPLIT, or skipped), so it gets its labels only and the
+        # plan says why.
         auto_approve = auto_approve_qualifies(review_data)
+        split_note = (
+            "split recommended but not split in this run: not auto-approved"
+            if args.auto_approve and rec == "split"
+            else None
+        )
 
         # Skip rejected items
         if rec in ("reject", "autorevise_reject"):
@@ -1723,6 +1731,7 @@ def main():
                             "original_labels": original_labels,
                             "auto_approve": auto_approve,
                             "jira_status": jira_status,
+                            "note": split_note,
                         }
                     )
                     continue
@@ -1888,6 +1897,7 @@ def main():
                 "auto_approve": auto_approve,
                 "jira_status": jira_status,
                 "lift_hold": lift_fields,
+                "note": split_note,
             }
         )
 
