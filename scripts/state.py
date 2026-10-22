@@ -20,6 +20,9 @@ Usage:
     # Read an ID list (prints space-separated on one line)
     python3 scripts/state.py read-ids <file>
 
+    # Read back the dispatcher's launch-wave file (the whole file, or agent N's full block)
+    python3 scripts/state.py read-launch tmp/pipeline-launch-wave.yaml [--agent N]
+
     # Print current UTC timestamp (ISO 8601)
     python3 scripts/state.py timestamp
 
@@ -142,6 +145,51 @@ def cmd_read_ids(args):
     print(" ".join(ids))
 
 
+def cmd_read_launch(args):
+    """Print the launch-wave file ``pipeline_state.py next-action`` writes, or with
+    ``--agent N`` one agent's full block (N counts from 1 in the listing's order). The
+    orchestrator re-reads a lost or compacted listing here instead of searching its transcript.
+    """
+    usage = "Usage: state.py read-launch <file> [--agent N]"
+    agent = None
+    if len(args) == 3 and args[1] == "--agent":
+        try:
+            agent = int(args[2])
+        except ValueError:
+            print(usage, file=sys.stderr)
+            sys.exit(1)
+    elif len(args) != 1:
+        print(usage, file=sys.stderr)
+        sys.exit(1)
+    path = args[0]
+    if not os.path.exists(path):
+        print(f"State file not found: {path} — was it persisted in a prior step?", file=sys.stderr)
+        sys.exit(1)
+    if agent is None:
+        with open(path) as f:
+            print(f.read(), end="")
+        return
+    import yaml
+
+    with open(path) as f:
+        data = yaml.safe_load(f) or {}
+    agents = data.get("agents") or []
+    if not 1 <= agent <= len(agents):
+        print(f"No agent {agent} in {path} (agent_count: {len(agents)})", file=sys.stderr)
+        sys.exit(1)
+
+    class _Dumper(yaml.SafeDumper):
+        pass
+
+    def _str(dumper, value):
+        style = "|" if "\n" in value else None
+        return dumper.represent_scalar("tag:yaml.org,2002:str", value, style=style)
+
+    _Dumper.add_representer(str, _str)
+    block = {"agent": agent, "agent_count": len(agents), **agents[agent - 1]}
+    print(yaml.dump(block, Dumper=_Dumper, default_flow_style=False, sort_keys=False), end="")
+
+
 def cmd_copy_ids(args):
     """Copy IDs from one file to another (one per line, deduped).
 
@@ -198,6 +246,7 @@ COMMANDS = {
     "read": cmd_read,
     "write-ids": cmd_write_ids,
     "read-ids": cmd_read_ids,
+    "read-launch": cmd_read_launch,
     "copy-ids": cmd_copy_ids,
     "timestamp": cmd_timestamp,
     "clean": cmd_clean,

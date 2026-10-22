@@ -2315,13 +2315,25 @@ class TestSkillLayer:
         cfg = pipeline_state._build_phase_config("rfe")["ASSESS"]
         scorer, companion = example["agents"]
         assert example["phase"] == "ASSESS"
+        assert example["agents_file"] == pipeline_state.LAUNCH_WAVE_FILE
+        assert scorer["id"] == companion["id"] == "RHAIRFE-1234"
         assert scorer["subagent_type"] == cfg["subagent_type"]
         assert scorer["prompt_file"] == cfg["prompt"] == f"{SKELETON_DIR}/assess-agent.md"
-        rendered = {k: v.replace("{ID}", "RHAIRFE-1234") for k, v in cfg["vars"].items()}
+        # AISDLC-453: the listing shows the launch block once (common_vars, {ID} left in) and
+        # each agent's own lines; a phase var repeating a launch-block line stays in the block
+        block = launch(ctx.t, "auto-fix")
+        _, own = pipeline_state._split_vars(block, cfg["vars"], "RHAIRFE-1234")
+        rendered = dict(line.split("=", 1) for line in own)
+        assert "PROMPT_PATH" in cfg["vars"] and "PROMPT_PATH" not in rendered
         shown = dict(
             line.split("=", 1) for line in scorer["vars"].strip().splitlines() if "=" in line
         )
         assert shown == rendered, (shown, rendered)
+        common = dict(block)
+        for line in example["common_vars"].strip().splitlines():
+            if "=" in line:
+                key, value = line.split("=", 1)
+                assert common[key] == value, (key, value)
         # the example shows the typed prompt as the table renders it from the checkout: the
         # descriptor's relative path, in the same frame as every other path in the block (the
         # import-time table may have been projected from another cwd, hence the re-projection)

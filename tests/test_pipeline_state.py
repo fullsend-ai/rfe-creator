@@ -2635,6 +2635,138 @@ class TestNextActionAgent:
         assert "vars: |" in raw_output or "vars: |\n" in raw_output
 
 
+class TestLaunchWaveFile:
+    """AISDLC-453: next-action writes the full wave to tmp/pipeline-launch-wave.yaml and prints a
+    listing that carries the launch block once, so a large wave fits in one tool result."""
+
+    # The printed listing of a 50-agent ASSESS wave (25 ids × scorer + feasibility). The full
+    # form was ~125 KB and the harness truncated it to a file the model then grepped.
+    LISTING_BOUND = 20_000
+
+    CASES = [
+        ("rfe", "RHAIRFE", 50, "rfe-scorer"),
+        ("initiative", "RHOAIENG", 75, "initiative-scorer"),  # 2 parallel: ceil(75/3) = 25 ids
+    ]
+
+    def _wave(self, monkeypatch, pipeline_type, key, batch_size, n=25):
+        ids = [f"{key}-{1000 + i}" for i in range(n)]
+        write_ids("tmp/pipeline-active-ids.txt", ids)
+        ps._save_state(
+            make_state(phase="ASSESS", type=pipeline_type, batch=1, batch_size=batch_size)
+        )
+        monkeypatch.setattr(ps, "_run_script", lambda cmd: "")
+        import io
+        from contextlib import redirect_stdout
+
+        import yaml as _yaml
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            ps.cmd_next_action([])
+        raw = buf.getvalue()
+        return ids, raw, _yaml.safe_load(raw)
+
+    @pytest.mark.parametrize("pipeline_type,key,batch_size,scorer", CASES)
+    def test_large_assess_wave_fits_and_the_file_holds_every_block(
+        self, tmp_dir, monkeypatch, pipeline_type, key, batch_size, scorer
+    ):
+        import yaml as _yaml
+
+        ids, raw, result = self._wave(monkeypatch, pipeline_type, key, batch_size)
+        assert (result["action"], result["phase"]) == ("launch_wave", "ASSESS")
+        assert result["message"] == "ASSESS: wave 1/1 (25 IDs)"
+        assert read_ids(ps.WAVE_IDS_FILE) == ids
+        assert result["agents_file"] == ps.LAUNCH_WAVE_FILE == "tmp/pipeline-launch-wave.yaml"
+        assert result["agent_count"] == len(result["agents"]) == 50
+        assert len(raw) < self.LISTING_BOUND, len(raw)
+
+        launch_block = ps.type_registry.launch_vars(ps._TYPES.get(pipeline_type), "auto-fix")
+        assert result["common_vars"] == "".join(f"{k}={v}\n" for k, v in launch_block)
+        assert "{ID}" in result["common_vars"]  # left for the orchestrator to substitute
+        assert raw.count("STAGE=auto-fix") == 1  # the launch block is printed once
+
+        with open(ps.LAUNCH_WAVE_FILE) as f:
+            wave = _yaml.safe_load(f)
+        assert (wave["phase"], wave["message"]) == ("ASSESS", result["message"])
+        assert wave["agent_count"] == len(wave["agents"]) == 50
+        config = ps._get_config(ps._load_state())["ASSESS"]
+        feasibility = config["parallel"][0]
+        for i, rid in enumerate(ids):
+            for j, (cfg, entry, short) in enumerate(
+                zip(
+                    (config, feasibility),
+                    wave["agents"][2 * i : 2 * i + 2],
+                    result["agents"][2 * i : 2 * i + 2],
+                )
+            ):
+                assert entry["id"] == short["id"] == rid
+                assert entry["prompt_file"] == short["prompt_file"] == cfg["prompt"]
+                if j == 0:
+                    assert entry["subagent_type"] == short["subagent_type"] == scorer
+                else:
+                    assert "subagent_type" not in entry and "subagent_type" not in short
+                # the file holds the agent's full vars, exactly the pre-AISDLC-453 rendering
+                assert entry["vars"] == ps._render_vars(launch_block, cfg["vars"], rid)
+                # and the listing reassembles to it: common_vars with {ID} substituted, then
+                # the agent's own lines (already substituted)
+                assert "{ID}" not in short["vars"] and "STAGE=" not in short["vars"]
+                assert result["common_vars"].replace("{ID}", rid) + short["vars"] == (entry["vars"])
+        # the alignment companion (initiative) was skipped: no parent key, poll stub written
+        assert all("alignment" not in a["prompt_file"] for a in wave["agents"])
+
+    @pytest.mark.parametrize("pipeline_type,key,batch_size,scorer", CASES)
+    def test_state_read_launch_returns_the_file(
+        self, tmp_dir, monkeypatch, pipeline_type, key, batch_size, scorer
+    ):
+        import yaml as _yaml
+
+        ids, _, result = self._wave(monkeypatch, pipeline_type, key, batch_size)
+        state_py = os.path.join(os.path.dirname(ps.__file__), "state.py")
+
+        def read_launch(*extra):
+            return subprocess.run(
+                ["python3", state_py, "read-launch", ps.LAUNCH_WAVE_FILE, *extra],
+                capture_output=True,
+                text=True,
+            )
+
+        whole = read_launch()
+        assert whole.returncode == 0, whole.stderr
+        with open(ps.LAUNCH_WAVE_FILE) as f:
+            assert whole.stdout == f.read()
+        wave = _yaml.safe_load(whole.stdout)
+        for n in (1, 2, 50):
+            one = read_launch("--agent", str(n))
+            assert one.returncode == 0, one.stderr
+            block = _yaml.safe_load(one.stdout)
+            assert block == {"agent": n, "agent_count": 50, **wave["agents"][n - 1]}
+            short = result["agents"][n - 1]
+            assert (
+                block["vars"]
+                == result["common_vars"].replace("{ID}", short["id"]) + (short["vars"])
+            )
+        assert "vars: |" in read_launch("--agent", "1").stdout
+        for bad in ("0", "51"):
+            out = read_launch("--agent", bad)
+            assert out.returncode == 1 and "agent_count: 50" in out.stderr
+
+    def test_the_file_is_overwritten_per_wave(self, tmp_dir, monkeypatch):
+        import yaml as _yaml
+
+        self._wave(monkeypatch, "rfe", "RHAIRFE", 50)
+        write_ids("tmp/pipeline-active-ids.txt", ["RHAIRFE-1001"])
+        ps._save_state(make_state(phase="REVIEW", batch=1))
+        result = _run_next_action()
+        assert (result["action"], result["phase"], result["agent_count"]) == (
+            "launch_wave",
+            "REVIEW",
+            1,
+        )
+        with open(ps.LAUNCH_WAVE_FILE) as f:
+            wave = _yaml.safe_load(f)
+        assert wave["phase"] == "REVIEW" and [a["id"] for a in wave["agents"]] == ["RHAIRFE-1001"]
+
+
 class TestNextActionWaveSize:
     def test_wave_size_respects_batch_size(self, tmp_dir, monkeypatch):
         """Wave size is batch_size / (1 + n_parallel)."""
@@ -2860,6 +2992,11 @@ class TestDispatchContextNextAction:
         assert "wait-for-wave" in output
         assert "run-phase" in output
         assert "launch_wave" in output
+        # AISDLC-453: the banner describes the compact listing and the read-back command
+        assert "common_vars" in output and "agents_file" in output
+        assert (
+            "python3 scripts/state.py read-launch tmp/pipeline-launch-wave.yaml --agent N" in output
+        )
 
     def test_shows_batch_info(self, tmp_dir):
         """dispatch-context shows batch progress."""

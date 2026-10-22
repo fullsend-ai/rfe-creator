@@ -144,6 +144,60 @@ class TestErrorHandling:
         assert rc != 0
         assert "State file not found" in err
 
+    def test_read_launch_missing_file(self, tmp_dir):
+        _, err, rc = run_state("read-launch", "tmp/nonexistent.yaml")
+        assert rc != 0
+        assert "State file not found" in err
+
+    def test_read_launch_usage(self, tmp_dir):
+        for args in ((), ("tmp/w.yaml", "--agent"), ("tmp/w.yaml", "--agent", "x")):
+            _, err, rc = run_state("read-launch", *args)
+            assert rc != 0
+            assert "Usage: state.py read-launch" in err
+
+
+class TestReadLaunch:
+    """read-launch re-reads the dispatcher's launch-wave file (AISDLC-453); the next-action
+    side is pinned in tests/test_pipeline_state.py::TestLaunchWaveFile."""
+
+    WAVE = (
+        "phase: ASSESS\n"
+        "message: 'ASSESS: wave 1/1 (1 IDs)'\n"
+        "agent_count: 2\n"
+        "agents:\n"
+        "- id: RFE-001\n"
+        "  subagent_type: rfe-scorer\n"
+        "  prompt_file: p/assess-agent.md\n"
+        "  vars: |\n"
+        "    STAGE=auto-fix\n"
+        "    KEY=RFE-001\n"
+        "- id: RFE-001\n"
+        "  prompt_file: p/feasibility.md\n"
+        "  vars: |\n"
+        "    STAGE=auto-fix\n"
+        "    ID=RFE-001\n"
+    )
+
+    def test_whole_file_and_one_agent(self, tmp_dir):
+        os.makedirs("tmp", exist_ok=True)
+        with open("tmp/pipeline-launch-wave.yaml", "w") as f:
+            f.write(self.WAVE)
+        out, _, rc = run_state("read-launch", "tmp/pipeline-launch-wave.yaml")
+        assert rc == 0 and out == self.WAVE
+        out, _, rc = run_state("read-launch", "tmp/pipeline-launch-wave.yaml", "--agent", "2")
+        assert rc == 0
+        assert out == (
+            "agent: 2\n"
+            "agent_count: 2\n"
+            "id: RFE-001\n"
+            "prompt_file: p/feasibility.md\n"
+            "vars: |\n"
+            "  STAGE=auto-fix\n"
+            "  ID=RFE-001\n"
+        )
+        _, err, rc = run_state("read-launch", "tmp/pipeline-launch-wave.yaml", "--agent", "3")
+        assert rc == 1 and "No agent 3" in err
+
 
 class TestTimestamp:
     def test_returns_iso8601(self, tmp_dir):
