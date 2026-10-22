@@ -637,15 +637,47 @@ class TestCallersDeclareType:
             guard_at = text.index(self.LAYOUT_GUARD)
             first_command = re.search(r"^(python3|bash) scripts/|^rm -rf", text, re.M)
             assert first_command and guard_at < first_command.start(), name
-            assert "The plugin root is the skill directory's third parent." in text, name
             assert "reaches you unsubstituted" in text, name
             assert "on any nonzero exit stop and show its message" in text, name
             assert "exit 3 means the directory already carries its own" in text, name
-            # The condition is the path identity, not a filename: a directory that carries
-            # its own scripts/bootstrap.sh still gets the plugin's refusal (CodeRabbit on
-            # #205), and the checkout, where the root is the cwd, still runs no extra command.
-            assert "Unless the working directory is that root (a checkout), run once" in text, name
+            # The condition is the skill directory's location, not a filename: a directory
+            # that carries its own scripts/bootstrap.sh still gets the plugin's refusal
+            # (CodeRabbit on #205). It is decidable from values the model already has (#248):
+            # "the working directory is the skill directory's third parent" made it compare
+            # a path it had not computed, so a checkout ran the call to be safe.
+            assert self.LAYOUT_SKIP in text, name
+            assert "Unless the working directory is that root" not in text, name
             assert "scripts/bootstrap.sh` is not in the working directory" not in text, name
+
+    # The skip condition every guarded body opens with (#248): in a checkout the skill
+    # directory is <cwd>/.claude/skills/<name>; in a marketplace install it is under the
+    # plugin cache, outside the project, so the call still runs there exactly once.
+    LAYOUT_SKIP = (
+        "**Layout check.** Skip it when `${CLAUDE_SKILL_DIR}` is under the working "
+        "directory's `.claude/skills/` (a checkout). Otherwise run once"
+    )
+
+    @classmethod
+    def _layout_paragraph(cls, text):
+        """The layout check, from its bold lead-in to the end of the paragraph that follows
+        the guard's code block."""
+        start = text.index("**Layout check.**")
+        end = text.index("Every command below then runs exactly as written.", start)
+        return text[start:end]
+
+    def test_the_layout_paragraph_is_the_same_in_every_guarded_body(self):
+        """#248: the seven bodies carry one layout paragraph, word for word, so the skip
+        condition cannot drift in one body again."""
+        paragraphs = {}
+        for name in self.GUARDED_BODIES:
+            with open(os.path.join(SKILLS_DIR, name, "SKILL.md")) as f:
+                paragraphs[name] = self._layout_paragraph(f.read())
+        assert len(paragraphs) == 7, sorted(paragraphs)
+        reference = paragraphs["rfe-create"]
+        assert reference.startswith(self.LAYOUT_SKIP), reference
+        assert self.LAYOUT_GUARD in reference, reference
+        drifted = sorted(name for name, p in paragraphs.items() if p != reference)
+        assert drifted == [], drifted
 
     def test_no_committed_symlinks(self):
         """No symlink is committed anywhere in the repository except the CLAUDE.md alias that

@@ -11,7 +11,7 @@ Reference for the person invoking this skill, not read during a run: docs/workin
 
 ## Step 0: Resolve the Type and Parse Arguments
 
-**Layout check.** The plugin root is the skill directory's third parent. Unless the working directory is that root (a checkout), run once
+**Layout check.** Skip it when `${CLAUDE_SKILL_DIR}` is under the working directory's `.claude/skills/` (a checkout). Otherwise run once
 
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../../scripts/bootstrap.sh" --layout
