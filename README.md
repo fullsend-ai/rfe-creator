@@ -6,36 +6,54 @@ Inspired by the [PRD/RFE workflow](https://github.com/ambient-code/workflows/tre
 
 ## Quick Start
 
+Works for every registered type: RFEs by default, Initiatives with --type initiative.
+
 ```
-# RFE Pipeline
-/rfe-create     # Write a new RFE from a problem statement
-/rfe-review     # Review, improve, and auto-revise RFEs
-/rfe-split      # Split an oversized RFE into right-sized pieces
-/rfe-submit     # Submit new or update existing RFEs in Jira
+# The pipeline skills
+/rfe-create     # Write a new work item
+/rfe-review     # Review, improve, and auto-revise work items
+/rfe-split      # Split an oversized work item into right-sized pieces
+/rfe-submit     # Submit new or update existing work items in Jira
 /rfe-speedrun   # Full pipeline end-to-end with minimal interaction
 /rfe-auto-fix   # Batch review+revise+split pipeline (non-interactive)
 
-# Improve an existing Jira RFE
-/rfe-review RHAIRFE-1234      # Fetch, review, and auto-revise
-/rfe-split RHAIRFE-1234       # Fetch and split an oversized RFE
-/rfe-speedrun RHAIRFE-1234    # Fetch, review, revise, and update in one step
+# Write a new work item
+/rfe-create                                      # An RFE, from a problem statement
+/rfe-create --type initiative                    # An Initiative, from an engineering objective
+
+# Improve an existing Jira work item
+/rfe-review RHAIRFE-1234                         # Fetch, review, and auto-revise an RFE
+/rfe-review --type initiative RHOAIENG-12345     # Fetch, review, and auto-revise an Initiative
+/rfe-split RHAIRFE-1234                          # Split an oversized RFE
+/rfe-split --type initiative RHOAIENG-12345      # Split an oversized Initiative
+/rfe-speedrun RHAIRFE-1234                       # Fetch, review, revise, and update an RFE in one step
+/rfe-speedrun --type initiative RHOAIENG-12345   # Fetch, review, revise, and update an Initiative in one step
 
 # Batch operations
-/rfe-speedrun --input batch.yaml --headless --dry-run              # Batch create + review from YAML
-/rfe-speedrun --input batch.yaml --headless --announce-complete    # Print completion marker for CI
-/rfe-auto-fix --jql "project = RHAIRFE AND ..."         # Batch review from JQL query
-/rfe-auto-fix RHAIRFE-1234 RHAIRFE-5678                 # Batch review explicit IDs
-
-# Initiatives (RHOAIENG): the same skills with --type initiative
-/rfe-create --type initiative                                       # Write a new Initiative from an engineering objective
-/rfe-speedrun --type initiative RHOAIENG-12345                      # Fetch, review, revise, and update an Initiative
-/rfe-auto-fix --type initiative --jql "project = RHOAIENG AND ..."  # Batch review Initiatives from JQL query
+/rfe-speedrun --input batch.yaml --headless --dry-run                     # Batch create + review RFEs from YAML
+/rfe-speedrun --type initiative --input batch.yaml --headless --dry-run   # Batch create + review Initiatives from YAML
+/rfe-speedrun --input batch.yaml --headless --announce-complete           # Print completion marker for CI
+/rfe-auto-fix --jql "project = RHAIRFE AND ..."                           # Batch review RFEs from a JQL query
+/rfe-auto-fix --type initiative --jql "project = RHOAIENG AND ..."        # Batch review Initiatives from a JQL query
+/rfe-auto-fix RHAIRFE-1234 RHAIRFE-5678                                   # Batch review explicit RFE keys
+/rfe-auto-fix --type initiative RHOAIENG-12345 RHOAIENG-12346             # Batch review explicit Initiative keys
 
 # Maintenance
 /rfe-creator.update-deps   # Force update vendored dependencies
 ```
 
 Every skill takes `--type <type>` (`rfe` or `initiative`); without it the type is resolved from the ids you pass (`RHAIRFE-*` / `RFE-*` are RFEs, `RHOAIENG-*` / `INIT-*` are Initiatives) and defaults to `rfe`. The dotted names of the original RFE skills (`/rfe.create`, `/rfe.review`, `/rfe.split`, `/rfe.submit`, `/rfe.speedrun`, `/rfe.auto-fix`) remain as compatibility aliases that run the same bodies. See [docs/working-with-work-item-types.md](docs/working-with-work-item-types.md) for how the type is chosen and what changes with it.
+
+## Work Item Types
+
+RFE and Initiative are the two registered work item types:
+
+| Type | Jira project | Jira issue type | Flag | Id before submit |
+|---|---|---|---|---|
+| RFE | RHAIRFE | Feature Request | `--type rfe` (the default) | `RFE-001` |
+| Initiative | RHOAIENG | Initiative | `--type initiative` | `INIT-001` |
+
+The skill bodies are shared; each type's judgement — template, clarifying questions, review rules, split rules and review dimensions — lives under `types/<type>/`, next to a data-only descriptor, `types/<type>/type.yaml`, which `python3 scripts/validate_types.py` lints and `python3 scripts/type_registry.py` reads. The field reference is [types/README.md](types/README.md), the guide to adding a type is [docs/type-provider-guide.md](docs/type-provider-guide.md), and the mechanism's development notes (which scripts read the registry, its delivery history) are in [docs/work-item-types-development.md](docs/work-item-types-development.md).
 
 ## Install
 
@@ -47,30 +65,35 @@ Every skill takes `--type <type>` (`rfe` or `initiative`); without it the type i
 
 ## Pipeline
 
-### New RFEs
+The same commands run the pipeline for both types: RFEs by default, Initiatives with `--type initiative`. Initiative review also runs a strategic alignment assessment (against RHAISTRAT Outcomes) in addition to rubric scoring and technical feasibility.
+
+### New work items
 
 ```
 /rfe-create → /rfe-review → /rfe-submit
+/rfe-create --type initiative → /rfe-review --type initiative → /rfe-submit --type initiative
 ```
 
 `/rfe-review` auto-revises issues it finds (up to 2 cycles). You can also edit artifacts manually between steps.
 
-`/rfe-speedrun` runs the full pipeline with reasonable defaults and minimal interaction.
+`/rfe-speedrun` (`/rfe-speedrun --type initiative`) runs the full pipeline with reasonable defaults and minimal interaction.
 
-### Existing Jira RFEs
+### Existing Jira work items
 
 ```
 /rfe-review RHAIRFE-1234 → /rfe-submit
+/rfe-review --type initiative RHOAIENG-12345 → /rfe-submit --type initiative
 ```
 
-Or in one step: `/rfe-speedrun RHAIRFE-1234`
+Or in one step: `/rfe-speedrun RHAIRFE-1234`, `/rfe-speedrun --type initiative RHOAIENG-12345`. Use `RHAIRFE-*` / `RHOAIENG-*` keys for existing Jira items and `RFE-*` / `INIT-*` ids for new ones.
 
 ### Batch Operations
 
-Create and review multiple RFEs from a YAML file:
+Create and review multiple work items from a YAML file:
 
 ```
 /rfe-speedrun --headless --dry-run --input batch.yaml
+/rfe-speedrun --type initiative --headless --dry-run --input batch.yaml
 ```
 
 YAML format:
@@ -83,18 +106,16 @@ YAML format:
   priority: Major
 ```
 
-Review a batch of existing Jira RFEs:
+Review a batch of existing Jira work items:
 
 ```
 /rfe-auto-fix --jql "project = RHAIRFE AND status = New" --limit 20
 /rfe-auto-fix RHAIRFE-1234 RHAIRFE-5678 RHAIRFE-9012
+/rfe-auto-fix --type initiative --jql "project = RHOAIENG AND status = New" --limit 20
+/rfe-auto-fix --type initiative RHOAIENG-12345 RHOAIENG-12346
 ```
 
 Auto-fix processes in batches (default 5), handles review, revision, splitting, retry, and report generation.
-
-### Initiatives
-
-The same skills run the pipeline for Initiatives targeting the RHOAIENG Jira project: pass `--type initiative` — e.g., `/rfe-speedrun --type initiative`, `/rfe-auto-fix --type initiative RHOAIENG-12345` (an `RHOAIENG-*` or `INIT-*` id resolves the type on its own). Use `RHOAIENG-*` keys for existing Jira initiatives and `INIT-*` IDs for new ones. Initiative review includes strategic alignment assessment (against RHAISTRAT Outcomes) in addition to rubric scoring and technical feasibility. Each type's judgement — template, clarifying questions, review rules, split rules and review dimensions — lives under `types/<type>/`; the skill bodies are shared.
 
 ### Strategy Pipeline
 
@@ -161,10 +182,6 @@ make lint
 This runs [skillsaw](https://github.com/stbenjam/skillsaw), ruff (check + format), shellcheck, the work item type lints, and pytest. The type lint needs the dev dependencies (`pip install -r requirements-dev.txt`).
 
 You can auto-fix some skillsaw issues with `make skillsaw-fix`.
-
-### Work Item Types
-
-RFE and Initiative are the two registered work item types. Each is described by a data-only descriptor, `types/<type>/type.yaml` (field reference in [types/README.md](types/README.md), provider guide in [docs/type-provider-guide.md](docs/type-provider-guide.md)), which `python3 scripts/validate_types.py` lints and `python3 scripts/type_registry.py` reads. Tests pin the descriptors to the per-type tables the scripts still carry; the scripts move to reading the registry in follow-up PRs.
 
 See [AGENTS.md](AGENTS.md) for architecture details and conventions.
 

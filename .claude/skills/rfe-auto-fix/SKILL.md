@@ -1,6 +1,6 @@
 ---
 name: rfe-auto-fix
-description: Review and fix batches of work items automatically — RFEs by default, any registered type with --type (e.g. --type initiative). Accepts explicit IDs or a JQL query. Reviews, auto-revises, and splits oversized items. Non-interactive.
+description: "Review and fix batches of work items automatically. Works for every registered type: RFEs by default, Initiatives with --type initiative. Accepts explicit IDs or a JQL query. Reviews, auto-revises, and splits oversized items. Non-interactive."
 user-invocable: true
 allowed-tools: Bash, Agent
 ---

@@ -8,7 +8,8 @@ rfe-autofixer repository's operator runbook. Design:
 (gates), §3.4 (provider obligations), §3.5 (discovery), §3.7 (cross-type chain).
 
 **Status (PR-3a): 28 scripts read the registry at import** — the "Adoption status" table in
-[`types/README.md`](../types/README.md) lists them and what is still pending. Since PR-2b the
+[`docs/work-item-types-development.md`](work-item-types-development.md) lists them and what is
+still pending. Since PR-2b the
 artifact schemas (`artifact_utils.SCHEMAS`), the scan / rename / parse helpers and the poll phase
 table (`check_review_progress.PHASE_CHECKS`) are projections too, so a registered type gets its
 `<type>-task` / `<type>-review` schemas, its `<poll_prefix><phase>` rows and the generics without
@@ -31,6 +32,7 @@ descriptor value ("Deployment binding override" below).
 |---|---|
 | Field reference (every key, with its consuming `file:line`) | `types/_schema/type.schema.json` `description` strings; `types/rfe/type.yaml` and `types/initiative/type.yaml` |
 | Extension points vs shared machinery, reserved vocabulary, R7 frozen strings, binding override and trust boundary, gate list | [`types/README.md`](../types/README.md) |
+| Which scripts read the registry, delivery history, where the descriptors depart from the design text | [`docs/work-item-types-development.md`](work-item-types-development.md) |
 | Copy-from skeleton | `types/rfe/` (`cp -r types/rfe types/<name>`) |
 | Registry API and CLI | `scripts/type_registry.py` (`list`, `show`, `get`, `binding`, `candidates`, `resolve`); in code `load()`, `names()`/`choices()`/`get()`, `detect(item_id)`, `candidates(item_id)`, `resolve(registry, ...)`, `assert_registered_binding(desc)`, `is_headless(env, flag)`, `parse_type_arg(registry, argv)` |
 | Validator (gates 1–3) | `scripts/validate_types.py` (`make lint` runs gate 1) |
@@ -184,6 +186,64 @@ Rules that are easy to trip:
 - **Frozen strings (R7).** `conventions.labels.rubric_pass`, `conventions.removed_context_preamble`
   and the `{key}-strategy.md` attachment convention are consumed downstream; change them only with
   a migration note.
+
+### Gates checklist
+
+A new type is done when every gate below passes; `make lint` runs all of them (and CI runs
+`make lint`). Run each one on its own while you work: the failure output names the type and the
+field.
+
+- [ ] **Descriptor lint** — `python3 scripts/validate_types.py` (gate 1; add
+  `--extra-roots <dir>` for a drop-in root, `--verify --type <name>` for a one-line verdict on one
+  type).
+  - Passes with `OK: <n> type(s) valid: rfe, initiative, <name>`.
+  - Fails with one `ERROR <type>: <message>` line per finding, `*` in place of the type for a
+    cross-type finding, then a `validate_types: <n> finding(s) across <m> type(s)` summary on
+    stderr and exit 1. A copy of `types/rfe/` with only `type:` changed prints, among others,
+    `ERROR *: duplicate effective binding (jira, RHAIRFE, Feature Request) shared by types: demo, rfe`,
+    `ERROR *: duplicate identity.local_prefix 'RFE-' shared by types: demo, rfe` and
+    `ERROR *: pipeline.poll_prefix is empty for type 'demo' (an empty prefix is grandfathered for type 'rfe' only)`.
+  - Fix: a per-type finding names the dotted key to set or the file to create; a cross-type
+    finding names the value your type shares with another — give your type its own (binding,
+    `local_prefix`, `local_id_pattern`, `id_field`, poll / state / snapshot / report prefixes,
+    `results_subdir`), as "Lint gates" in [`types/README.md`](../types/README.md) lists.
+- [ ] **No new literal key-prefix predicates** — `python3 scripts/lint_prefix_predicates.py`.
+  - Passes with `OK: <n> file(s) scanned, <k> grandfathered occurrence(s) in <f> file(s) within
+    baseline (prefixes: ...)`; the prefix list includes your type's prefixes as soon as it is
+    registered.
+  - Fails with `ERROR scripts/<file>.py: <n> literal prefix occurrence(s) in code, baseline <b>
+    -- read the prefix from the type registry instead` (or `not in baseline`), followed by one
+    `<path>:<line>:<col>: <prefix> in '<literal>' | <code>` line per occurrence, exit 1.
+  - Fix: read the value from the registry (`Descriptor.get`, `key_prefixes`, `local_prefix`,
+    `detect()`, `snapshot.prefix`) instead of spelling it. Never grow
+    `tests/data/prefix_predicate_baseline.json`: it only shrinks.
+- [ ] **Generated eval configs in sync** — `python3 scripts/generate_eval_config.py --check`.
+  - Passes with one `<type>: <config> up to date` line per type.
+  - Fails with `<type>: <config> is out of date` and the unified diff on stderr, then
+    `generate_eval_config: <n> config(s) out of date; run python3 scripts/generate_eval_config.py
+    and commit the result`, exit 1. A config that cannot be rendered at all (an unresolved
+    placeholder, an unused fragment key, a threshold naming a judge the config does not define)
+    is one `generate_eval_config: <reason>` line, exit 2.
+  - Fix: never edit the config by hand; change `types/<name>/eval/fragment.yaml`, the
+    descriptor or `eval/config/skeleton.yaml`, run
+    `python3 scripts/generate_eval_config.py --type <name>` and commit the result. A copied
+    `rfe_quality` threshold is renamed `<name>_quality`.
+- [ ] **The pytest pins that read the registry** — `python3 -m pytest tests/test_user_guide_doc.py
+  tests/test_readme_doc.py tests/test_type_registry_pins.py`. Each iterates `type_registry.load().names()`, so registering the type is enough to
+  enrol it.
+  - `tests/test_user_guide_doc.py` fails with `AssertionError: ('<name>', '<Display name>')`
+    (then the Jira project, the issue type, `--type <name>`) when
+    `docs/working-with-work-item-types.md` has no row for the type. Fix: add the type's row to
+    the page's type table — display name, Jira project, Jira issue type, purpose, key and local id
+    examples — and mention `--type <name>` on the page.
+  - `tests/test_readme_doc.py` fails the same way when `README.md` does not name the type's
+    display name, Jira project and `--type <name>`. Fix: add the type next to the others in the
+    README's "Work Item Types" section and quick start.
+  - `tests/test_type_registry_pins.py` fails with `<field>: descriptor projection <value> !=
+    live <value> (<where>)` when a script that does not read the registry yet carries a per-type
+    table without your type, or with a different value for it. Fix: add the type to that
+    script's table with the descriptor's value in the same change (or move the script onto the
+    registry, which deletes the pin); `<where>` names the file.
 
 ## Developing against a drop-in root
 

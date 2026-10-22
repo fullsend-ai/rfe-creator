@@ -26,20 +26,20 @@ them free of repo-specific helpers: JSON-Schema validation lives in
 ``scripts/validate_types.py`` (the only place ``jsonschema`` is imported), not here.
 
 Adoption status (PR-3a): 28 scripts load the registry at import (module-level
-``_TYPES = type_registry.load()``; the table in ``types/README.md`` lists them) and use
-DESCRIPTOR values only; ``detect()``/``owns()`` are the design §5 rung-3 routers. The values a
-pending script still carries are pinned equal to the descriptors by test, and the remaining
-scripts adopt the registry one PR at a time (design §10 items 2-5). The resolution ladder
-(``candidates``, ``resolve``, ``assert_registered_binding``) ships here. PR-3b wires the two
-batch-root consumers — ``validate_batch_input.py`` and ``next_rfe_id.py --from-batch`` — through
-``read_batch`` (the one parser of a batch file, read ONCE — the parsed pair is handed to
-``resolve`` as ``batch_items``, so a pipe or ``/dev/stdin`` works) and ``resolve`` with
-``items_are_ids=False`` (a bare string item is the caller's malformed entry, never an id signal)
-and ``binding=False`` (the type verdict only: the environment's binding overrides are neither
-read nor validated). They print the resolve line on STDERR only when a non-default rung decided
-(D3): the legacy default — a bare list with no ``--type`` — is byte-identical to main on stdout
-and stderr; an explicit ``--type`` or a mapping ``type:`` adds exactly one stderr line. The
-remaining entry scripts follow in PR-3c.
+``_TYPES = type_registry.load()``; the table in ``docs/work-item-types-development.md``
+lists them) and use DESCRIPTOR values only; ``detect()``/``owns()`` are the design §5 rung-3
+routers. The values a pending script still carries are pinned equal to the descriptors by
+test, and the remaining scripts adopt the registry one PR at a time (design §10 items 2-5).
+The resolution ladder (``candidates``, ``resolve``, ``assert_registered_binding``) ships here.
+PR-3b wires the two batch-root consumers — ``validate_batch_input.py`` and
+``next_rfe_id.py --from-batch`` — through ``read_batch`` (the one parser of a batch file, read
+ONCE — the parsed pair is handed to ``resolve`` as ``batch_items``, so a pipe or
+``/dev/stdin`` works) and ``resolve`` with ``items_are_ids=False`` (a bare string item is the
+caller's malformed entry, never an id signal) and ``binding=False`` (the type verdict only: the
+environment's binding overrides are neither read nor validated). They print the resolve line on
+STDERR only when a non-default rung decided (D3): the legacy default — a bare list with no
+``--type`` — is byte-identical to main on stdout and stderr; an explicit ``--type`` or a
+mapping ``type:`` adds exactly one stderr line. The remaining entry scripts follow in PR-3c.
 ``parse_type_arg`` is the one hand-parser behind the pipeline gates that take ``--type``
 without argparse (``check_revised``, ``check_right_sized``, ``check_autofix_complete``), so
 their error text cannot drift.

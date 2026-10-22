@@ -1,6 +1,6 @@
 ---
 name: rfe-create
-description: Write a new work item of any registered type — an RFE from a problem statement, idea, or need (business needs, WHAT/WHY), or an Initiative from an objective or strategic goal (/rfe-create --type initiative ...). Asks clarifying questions, then produces well-formed items. Use when starting from scratch.
+description: "Write a new work item — an RFE from a problem statement, idea, or need (business needs, WHAT/WHY), or an Initiative from an objective or strategic goal. Works for every registered type: RFEs by default, Initiatives with --type initiative. Asks clarifying questions, then produces well-formed items. Use when starting from scratch."
 user-invocable: true
 allowed-tools: Read, Write, Edit, Bash, AskUserQuestion
 ---
