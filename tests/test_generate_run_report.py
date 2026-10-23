@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Tests for scripts/generate_run_report.py — run report generation."""
 
+import json
 import os
+import re
 import subprocess
 import sys
 
@@ -1365,7 +1367,7 @@ class TestBindingHeader:
     tracker binding — ``{tracker, project, issue_type, source}`` — as an additive ``binding``
     key right after the self-describing header; everything else keeps its key order."""
 
-    HEADER = ["report_schema_version", "type", "report_stage", "binding"]
+    HEADER = ["report_schema_version", "type", "report_stage", "binding", "provenance"]
     BODY = ["run_id", "started", "completed", "input_count", "results"]
     BODY += ["before_scores_avg", "after_scores_avg"]
 
@@ -1420,7 +1422,7 @@ class TestBindingHeader:
             "source": "descriptor",
         }
 
-    def test_key_order_is_the_old_order_plus_binding_after_the_header(
+    def test_key_order_is_the_old_order_plus_the_additive_headers(
         self, no_override, art_dir, tmp_path
     ):
         self._one_rfe(art_dir)
@@ -1503,11 +1505,18 @@ class TestBindingHeader:
         assert result.stderr == ""  # no resolve line: the report is not an entry script (D3)
         with open(result.stdout.strip()) as f:
             text = f.read()
-        # The YAML block as written, right after the header.
+        # The YAML block as written, right after the header: binding, then the provenance
+        # header (AISDLC-193; its commit is the test tree's own), then the body.
+        prov = generate_run_report._provenance_header("rfe")
+        commit = prov["pipeline_commit"] or "null"
+        rubric = prov["rubric"]
         assert text.startswith(
             "report_schema_version: 1\ntype: rfe\nreport_stage: pre_submit\nbinding:\n"
             "  tracker: jira\n  project: RHAIRFE\n  issue_type: Feature Request\n"
-            "  source: descriptor\nrun_id: 20260818-090000\n"
+            "  source: descriptor\nprovenance:\n"
+            f"  pipeline_version: {prov['pipeline_version']}\n  pipeline_commit: {commit}\n"
+            f"  rubric:\n    repo: {rubric['repo']}\n    ref: {rubric['ref']}\n"
+            f"    path: {rubric['path']}\nrun_id: 20260818-090000\n"
         )
         env[type_registry.binding_env_var("rfe", "PROJECT")] = "KONFLUX"
         result = subprocess.run(cmd, capture_output=True, text=True, env=env)
@@ -1547,3 +1556,93 @@ class TestBindingHeader:
             "project key\n"
         )
         assert not os.path.exists(f"{art_dir}/auto-fix-runs")
+
+
+class TestProvenanceHeader:
+    """AISDLC-193: the report says what judged the run — the plugin version, the checkout's
+    commit and the descriptor's rubric pin — as an additive ``provenance`` key right after
+    ``binding``. No schema version bump; readers that predate it ignore it."""
+
+    def _one_rfe(self, art_dir):
+        _write(
+            f"{art_dir}/rfe-tasks/RHAIRFE-1234.md",
+            TASK_TEMPLATE.format(rfe_id="RHAIRFE-1234", extra=""),
+        )
+        _write(
+            f"{art_dir}/rfe-reviews/RHAIRFE-1234-review.md",
+            REVIEW_TEMPLATE.format(
+                rfe_id="RHAIRFE-1234",
+                score=9,
+                pass_val="true",
+                recommendation="submit",
+                right_sized=2,
+            ),
+        )
+
+    def test_rubric_is_the_descriptor_pin_for_each_type(self, art_dir, tmp_path):
+        self._one_rfe(art_dir)
+        report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
+        rfe = generate_run_report._TYPES.get("rfe")
+        assert report["provenance"]["rubric"] == {
+            "repo": rfe.get("pipeline.rubric.repo"),
+            "ref": rfe.get("pipeline.rubric.ref"),
+            "path": rfe.get("pipeline.rubric.path"),
+        }
+        assert re.fullmatch(r"[0-9a-f]{40}", report["provenance"]["rubric"]["ref"])
+        for d in ["initiatives", "initiative-reviews"]:
+            os.makedirs(tmp_path / "artifacts" / d)
+        initiative = build_report(
+            [],
+            "2026-08-18T09:00:00Z",
+            artifacts_dir=str(tmp_path / "artifacts"),
+            entry_type="initiative",
+        )
+        ini = generate_run_report._TYPES.get("initiative")
+        assert initiative["provenance"]["rubric"]["path"] == ini.get("pipeline.rubric.path")
+        assert list(initiative["provenance"]) == ["pipeline_version", "pipeline_commit", "rubric"]
+        assert list(initiative["provenance"]["rubric"]) == list(
+            generate_run_report.PROVENANCE_RUBRIC_KEYS
+        )
+
+    def test_pipeline_version_is_the_manifest_version(self, art_dir):
+        self._one_rfe(art_dir)
+        manifest = json.loads(
+            (type_registry.PLUGIN_ROOT / ".claude-plugin" / "plugin.json").read_text()
+        )
+        report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
+        assert report["provenance"]["pipeline_version"] == manifest["version"]
+
+    def test_pipeline_commit_is_the_checkout_head(self, art_dir):
+        """The test tree is a git checkout (a worktree counts): the report names its HEAD."""
+        self._one_rfe(art_dir)
+        head = subprocess.run(
+            ["git", "-C", str(type_registry.PLUGIN_ROOT), "rev-parse", "--verify", "HEAD"],
+            capture_output=True,
+            text=True,
+        )
+        report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
+        if head.returncode == 0:
+            assert report["provenance"]["pipeline_commit"] == head.stdout.strip()
+        else:  # a tree that is not a checkout reports None, never a guess
+            assert report["provenance"]["pipeline_commit"] is None
+
+    def test_outside_a_checkout_the_commit_is_none_and_the_report_still_writes(
+        self, art_dir, monkeypatch
+    ):
+        self._one_rfe(art_dir)
+
+        def no_git(*args, **kwargs):
+            raise FileNotFoundError("git")
+
+        monkeypatch.setattr(generate_run_report.subprocess, "run", no_git)
+        report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
+        assert report["provenance"]["pipeline_commit"] is None
+        assert report["provenance"]["pipeline_version"] is not None
+
+    def test_an_unreadable_manifest_yields_none_not_a_crash(self, art_dir, monkeypatch):
+        self._one_rfe(art_dir)
+        monkeypatch.setattr(type_registry, "PLUGIN_ROOT", type_registry.PLUGIN_ROOT / "nope")
+        report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
+        assert report["provenance"]["pipeline_version"] is None
+        assert report["provenance"]["pipeline_commit"] is None
+        assert report["provenance"]["rubric"]["ref"]  # the descriptor pin needs no tree

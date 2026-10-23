@@ -2,8 +2,10 @@
 """Generate a structured YAML run report from review frontmatter."""
 
 import argparse
+import json
 import os
 import re
+import subprocess
 import sys
 from datetime import datetime, timezone
 from functools import partial
@@ -189,6 +191,57 @@ def _binding_header(entry_type, env=None):
         env = os.environ
     binding = type_registry.resolve(_TYPES, explicit_type=entry_type, env=env).binding
     return {key: binding.get(key) for key in BINDING_HEADER_KEYS}
+
+
+PROVENANCE_RUBRIC_KEYS = ("repo", "ref", "path")
+
+
+def _plugin_version():
+    """The plugin manifest's ``version`` (the release marketplace users see), or None when
+    the manifest next to the scripts cannot be read."""
+    manifest = type_registry.PLUGIN_ROOT / ".claude-plugin" / "plugin.json"
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    version = data.get("version") if isinstance(data, dict) else None
+    return version if isinstance(version, str) else None
+
+
+def _plugin_commit():
+    """The commit of the rfe-creator tree the scripts run from, or None when that tree is
+    not a git checkout (a marketplace install under the plugin cache) or git is unavailable.
+    ``PLUGIN_ROOT`` is resolved through symlinks, so a working directory that only links
+    ``scripts/`` in (the eval harness's run directory) reports the linked checkout."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(type_registry.PLUGIN_ROOT), "rev-parse", "--verify", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    sha = result.stdout.strip()
+    return sha if re.fullmatch(r"[0-9a-f]{40}", sha) else None
+
+
+def _provenance_header(entry_type):
+    """The ``provenance`` header (AISDLC-193): what judged this run. ``pipeline_version``
+    is the plugin manifest's version and ``pipeline_commit`` the checkout's commit (None
+    outside a git checkout); ``rubric`` is the descriptor's pin — ``pipeline.rubric``
+    ``repo``, ``ref`` (an immutable commit SHA) and ``path`` — exactly what the bootstrap
+    checked out for the scorer. A rubric or descriptor change can then be told apart from
+    a model change after the fact, from the report alone. Additive under
+    ``report_schema_version`` 1: readers that predate it ignore it."""
+    desc = _TYPES.get(entry_type)
+    return {
+        "pipeline_version": _plugin_version(),
+        "pipeline_commit": _plugin_commit(),
+        "rubric": {key: desc.get(f"pipeline.rubric.{key}", None) for key in PROVENANCE_RUBRIC_KEYS},
+    }
 
 
 def _parse_run_id(start_time):
@@ -429,6 +482,9 @@ def build_report(
         # order is unchanged. Readers that predate it ignore it (bootstrap_snapshot reads
         # ``type`` and the item list only); no schema version bump.
         "binding": _binding_header(entry_type),
+        # Additive too (AISDLC-193): the commit, plugin version and rubric pin that judged
+        # the run, right after the binding; no schema version bump.
+        "provenance": _provenance_header(entry_type),
         "run_id": _parse_run_id(start_time),
         "started": start_time,
         "completed": now,
