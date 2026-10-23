@@ -896,6 +896,31 @@ class TestFeasibilityLabelOnSubmit:
         assert "Would create" not in stdout
         assert "rfe-creator-feasibility" not in stdout
 
+    def test_setup_failed_review_is_skipped_without_any_write(self, art_dir):
+        """AISDLC-194: the SETUP fail-fast stub means the type was broken before any wave
+        ran. No Jira write at all -- not even the needs-attention label the stub shape
+        carries -- and left unprocessed, like an absent review."""
+        _write(f"{art_dir}/rfe-tasks/RFE-001.md", self._task("RFE-001"))
+        _write(
+            f"{art_dir}/rfe-reviews/RFE-001-review.md",
+            "---\nrfe_id: RFE-001\n"
+            "error: 'setup_failed: ERROR rfe: pipeline.rubric.ref: missing'\n"
+            "score: 0\npass: false\nrecommendation: revise\nfeasibility: feasible\n"
+            "auto_revised: false\nneeds_attention: true\n"
+            "needs_attention_reason: 'Agent failed: setup_failed: ERROR rfe: "
+            "pipeline.rubric.ref: missing'\n"
+            "scores:\n  what: 0\n  why: 0\n  open_to_how: 0\n  not_a_task: 0\n"
+            "  right_sized: 0\ntype: rfe\n---\nStub.",
+        )
+        stdout, _, rc = _run_submit(art_dir)
+        assert rc == 0
+        assert "SKIP" in stdout
+        assert "setup_failed: ERROR rfe: pipeline.rubric.ref: missing" in stdout
+        assert "left unprocessed" in stdout
+        assert "Would create" not in stdout
+        assert "needs-attention" not in stdout
+        assert "rfe-creator-feasibility" not in stdout
+
     @pytest.mark.parametrize("error", ["assess_stalled", "review_failed", "revise_stalled"])
     def test_error_bearing_review_has_no_feasibility_verdict(self, art_dir, error):
         """A review carrying an ``error`` is an error stub (or a real review a stall marker

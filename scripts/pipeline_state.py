@@ -1395,7 +1395,7 @@ def cmd_init(args):
     # run's ids in it (interactive use shares tmp/) would misname that run's ids as pending.
     for f in glob.glob("tmp/pipeline-batch-*-ids.txt"):
         os.remove(f)
-    for f in (DISPATCH_MARKER, PROCESS_IDS_FILE):
+    for f in (DISPATCH_MARKER, PROCESS_IDS_FILE, SETUP_ERROR_FILE):
         if os.path.exists(f):
             os.remove(f)
     state = {
@@ -1448,7 +1448,8 @@ def cmd_get_phase_config(args):
     print(yaml.dump(config, default_flow_style=False, sort_keys=False), end="")
 
 
-SETUP_FAILED_PREFIX = "setup_failed:"
+SETUP_FAILED_PREFIX = "setup_failed:"  # == generate_run_report.SETUP_FAILED_PREFIX (test-pinned)
+SETUP_ERROR_FILE = "tmp/pipeline-setup-error.txt"  # == generate_run_report.SETUP_ERROR_FILE
 
 
 def _run_setup_verify(cmd):
@@ -1483,26 +1484,57 @@ def _run_setup_verify(cmd):
 
 
 def _fail_setup(state, diagnosis):
-    """Stop the batch before any wave is launched and paid for: record the finding in the
-    state (advance routes SETUP to REPORT on it) and write the registry error stub, with
-    ``setup_failed: <diagnosis>`` as the error, on every active id -- so the run report
-    lists each of them with the reason, nothing is submitted, and bootstrap_snapshot reads
-    them as unprocessed for the next run (an error entry never counts as processed)."""
+    """Stop the batch before any wave is launched and paid for.
+
+    Three records, so no reader depends on another: the finding in the state (advance
+    routes SETUP to REPORT on it); the diagnosis in SETUP_ERROR_FILE (the run report reads
+    it and marks every id ``failed_reason: setup_failed: ...`` whatever review the id
+    carries -- a restored one from an earlier run included -- and names it in
+    ``setup_error``); and the registry error stub with that error on every active id's
+    review, which is what submit reads (it skips a ``setup_failed:`` review without a Jira
+    write) and what keeps a stale review from being published. An id whose stub could not
+    be written is named on stderr and in the state; the report still covers it through the
+    file. bootstrap_snapshot never counts a failed_reason entry as processed, so the next
+    run selects them all again.
+    """
     print(f"[run-phase] SETUP: FAILED -- {diagnosis}", file=sys.stderr)
     state["setup_error"] = diagnosis
-    _save_state(state)
+    with open(SETUP_ERROR_FILE, "w") as f:
+        f.write(f"{SETUP_FAILED_PREFIX} {diagnosis}\n")
     ids = _read_ids("tmp/pipeline-active-ids.txt")
-    if not ids:
-        return
-    import verify_phase
+    unwritten = []
+    if ids:
+        import verify_phase
 
-    verify_phase.write_error_stubs(
-        "setup",
-        ids,
-        state.get("type", "rfe"),
-        outcome="failed",
-        error=f"{SETUP_FAILED_PREFIX} {diagnosis}",
-    )
+        unwritten = verify_phase.write_error_stubs(
+            "setup",
+            ids,
+            state.get("type", "rfe"),
+            outcome="failed",
+            error=f"{SETUP_FAILED_PREFIX} {diagnosis}",
+        )
+    if unwritten:
+        state["setup_unwritten"] = list(unwritten)
+        print(
+            f"[run-phase] SETUP: no setup_failed stub written for {', '.join(unwritten)};"
+            " the run report still carries the diagnosis for them",
+            file=sys.stderr,
+        )
+    _save_state(state)
+
+
+def _clear_setup_failure(state):
+    """A SETUP that passes its gate (or whose gate could not run) after an earlier failure
+    in the same run -- an operator fixed the descriptor and retried -- must not keep routing
+    to REPORT on the stale diagnosis (Qodo on #257)."""
+    stale = state.pop("setup_error", None) is not None
+    stale |= state.pop("setup_unwritten", None) is not None
+    if stale:
+        _save_state(state)
+    try:
+        os.remove(SETUP_ERROR_FILE)
+    except FileNotFoundError:
+        pass
 
 
 def cmd_run_phase(args):
@@ -1526,6 +1558,7 @@ def cmd_run_phase(args):
             with open(DISPATCH_MARKER, "w") as f:
                 f.write(phase)
             return
+        _clear_setup_failure(state)
     if config.get("commands"):
         # Concurrent commands (SETUP). See the phase config for why exit codes
         # are logged rather than fatal.

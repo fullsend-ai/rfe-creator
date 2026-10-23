@@ -3287,9 +3287,61 @@ class TestNoShell:
         ]
         assert "SETUP: FAILED -- ERROR rfe: pipeline.rubric.ref" in capsys.readouterr().err
         assert open(ps.DISPATCH_MARKER).read() == "SETUP"
+        # The run-level record the report reads, whatever review each id carries.
+        assert (
+            open(ps.SETUP_ERROR_FILE).read()
+            == "setup_failed: ERROR rfe: pipeline.rubric.ref: missing (gate 1)\n"
+        )
+        assert "setup_unwritten" not in state
         nxt, summary = ps.advance(state)
         assert nxt == "REPORT"
         assert "setup failed (ERROR rfe: pipeline.rubric.ref" in summary
+
+    def test_the_report_reads_the_same_prefix_and_marker_the_pipeline_writes(self):
+        import generate_run_report
+
+        assert ps.SETUP_FAILED_PREFIX == generate_run_report.SETUP_FAILED_PREFIX
+        assert ps.SETUP_ERROR_FILE == generate_run_report.SETUP_ERROR_FILE
+
+    def test_ids_whose_stub_could_not_be_written_are_named(self, tmp_dir, monkeypatch, capsys):
+        import verify_phase
+
+        ps._save_state(make_state(phase="SETUP", type="rfe"))
+        write_ids("tmp/pipeline-active-ids.txt", ["RHAIRFE-1", "RHAIRFE-2"])
+        monkeypatch.setattr(subprocess, "run", lambda argv, **kw: _verify_result(1, "ERROR rfe: x"))
+        monkeypatch.setattr(subprocess, "Popen", lambda argv, **kw: pytest.fail("launched"))
+        monkeypatch.setattr(verify_phase, "write_error_stubs", lambda *a, **kw: ["RHAIRFE-2"])
+        ps.cmd_run_phase([])
+        assert ps._load_state()["setup_unwritten"] == ["RHAIRFE-2"]
+        assert "no setup_failed stub written for RHAIRFE-2" in capsys.readouterr().err
+        assert os.path.exists(ps.SETUP_ERROR_FILE)  # the report still covers RHAIRFE-2
+
+    def test_a_passing_retry_clears_an_earlier_failure(self, tmp_dir, monkeypatch):
+        """An operator fixes the descriptor and re-runs SETUP in the same run: the stale
+        diagnosis must not keep routing to REPORT (Qodo on #257)."""
+        ps._save_state(
+            make_state(
+                phase="SETUP", type="rfe", setup_error="ERROR rfe: old", setup_unwritten=["x"]
+            )
+        )
+        with open(ps.SETUP_ERROR_FILE, "w") as f:
+            f.write("setup_failed: ERROR rfe: old\n")
+        monkeypatch.setattr(subprocess, "run", lambda argv, **kw: _verify_result(0, "OK: rfe"))
+        monkeypatch.setattr(subprocess, "Popen", lambda argv, **kw: _FakeProc())
+        ps.cmd_run_phase([])
+        state = ps._load_state()
+        assert "setup_error" not in state and "setup_unwritten" not in state
+        assert not os.path.exists(ps.SETUP_ERROR_FILE)
+        assert ps.advance(state)[0] == "ASSESS"
+
+    def test_an_unavailable_gate_on_retry_also_clears_the_failure(self, tmp_dir, monkeypatch):
+        ps._save_state(make_state(phase="SETUP", type="rfe", setup_error="ERROR rfe: old"))
+        monkeypatch.setattr(
+            subprocess, "run", lambda argv, **kw: _verify_result(2, "", "no jsonschema")
+        )
+        monkeypatch.setattr(subprocess, "Popen", lambda argv, **kw: _FakeProc())
+        ps.cmd_run_phase([])
+        assert "setup_error" not in ps._load_state()
 
     def test_a_finding_without_active_ids_still_routes_to_report(self, tmp_dir, monkeypatch):
         ps._save_state(make_state(phase="SETUP", type="initiative"))
