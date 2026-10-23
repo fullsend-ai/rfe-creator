@@ -9,6 +9,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from functools import partial
+from pathlib import Path
 
 import yaml
 
@@ -193,7 +194,13 @@ def _binding_header(entry_type, env=None):
     return {key: binding.get(key) for key in BINDING_HEADER_KEYS}
 
 
-PROVENANCE_RUBRIC_KEYS = ("repo", "ref", "path")
+PROVENANCE_RUBRIC_KEYS = ("repo", "ref", "path", "source", "commit")
+# Mirror of bootstrap.sh CONTEXT_DIR: where the bootstrap vendors the assess-rfe checkout.
+ASSESS_CONTEXT_DIR = ".context/assess-rfe"
+# The bootstrap's ad-hoc overrides of the descriptor's rubric pin (bootstrap.sh REPO_SOURCE /
+# REF_SOURCE): when either is set, the run scored against something other than the pin.
+RUBRIC_REPO_ENV = "ASSESS_RFE_REPO"
+RUBRIC_REF_ENV = "ASSESS_RFE_REF"
 
 
 def _plugin_version():
@@ -208,14 +215,21 @@ def _plugin_version():
     return version if isinstance(version, str) else None
 
 
-def _plugin_commit():
-    """The commit of the rfe-creator tree the scripts run from, or None when that tree is
-    not a git checkout (a marketplace install under the plugin cache) or git is unavailable.
-    ``PLUGIN_ROOT`` is resolved through symlinks, so a working directory that only links
-    ``scripts/`` in (the eval harness's run directory) reports the linked checkout."""
+def _head_of_checkout(root):
+    """HEAD of the git checkout whose top level is exactly ``root``, or None.
+
+    None when ``root`` is not a git checkout, when git is unavailable, and when git would
+    answer from an enclosing repository -- a plugin or rubric directory that is not a
+    checkout itself but sits inside one must not be attributed that repository's commit
+    (Qodo on #256). A linked worktree's top level is the worktree itself, so it qualifies.
+    """
+    try:
+        root = Path(root).resolve()
+    except OSError:
+        return None
     try:
         result = subprocess.run(
-            ["git", "-C", str(type_registry.PLUGIN_ROOT), "rev-parse", "--verify", "HEAD"],
+            ["git", "-C", str(root), "rev-parse", "--show-toplevel", "--verify", "HEAD"],
             capture_output=True,
             text=True,
             timeout=10,
@@ -224,23 +238,69 @@ def _plugin_commit():
         return None
     if result.returncode != 0:
         return None
-    sha = result.stdout.strip()
+    lines = result.stdout.split()
+    if len(lines) != 2:
+        return None
+    toplevel, sha = lines
+    try:
+        if Path(toplevel).resolve() != root:
+            return None
+    except OSError:
+        return None
     return sha if re.fullmatch(r"[0-9a-f]{40}", sha) else None
 
 
-def _provenance_header(entry_type):
-    """The ``provenance`` header (AISDLC-193): what judged this run. ``pipeline_version``
-    is the plugin manifest's version and ``pipeline_commit`` the checkout's commit (None
-    outside a git checkout); ``rubric`` is the descriptor's pin — ``pipeline.rubric``
-    ``repo``, ``ref`` (an immutable commit SHA) and ``path`` — exactly what the bootstrap
-    checked out for the scorer. A rubric or descriptor change can then be told apart from
-    a model change after the fact, from the report alone. Additive under
-    ``report_schema_version`` 1: readers that predate it ignore it."""
+def _plugin_commit():
+    """The commit of the rfe-creator tree the scripts run from, or None when that tree is
+    not a git checkout (a marketplace install under the plugin cache) or git is unavailable.
+    ``PLUGIN_ROOT`` is resolved through symlinks, so a working directory that only links
+    ``scripts/`` in (the eval harness's run directory) reports the linked checkout."""
+    return _head_of_checkout(type_registry.PLUGIN_ROOT)
+
+
+def _repo_url(value):
+    """bootstrap.sh's spelling rule: a bare ``owner/repo`` slug is a GitHub repository."""
+    if not value or "://" in value or re.search(r"@[^:]+:", value):
+        return value
+    return f"https://github.com/{value}"
+
+
+def _rubric_provenance(entry_type, env=None, context_dir=None):
+    """What the run scored against: the rubric the bootstrap was asked for and the checkout
+    it left behind. ``repo`` and ``ref`` are the descriptor's ``pipeline.rubric`` pin unless
+    the bootstrap's ad-hoc overrides (``ASSESS_RFE_REPO`` / ``ASSESS_RFE_REF``) were set, which
+    ``source`` records (``descriptor`` or ``env``), spelled as the bootstrap spells them.
+    ``commit`` is HEAD of the vendored checkout in ``context_dir`` (bootstrap.sh CONTEXT_DIR)
+    when it is a git checkout of its own -- the revision the scorer read, whatever was
+    requested -- and None when there is no such checkout or git cannot say (the bootstrap
+    then proceeded with the files as they were and said so in its log)."""
+    if env is None:
+        env = os.environ
+    if context_dir is None:
+        context_dir = ASSESS_CONTEXT_DIR
     desc = _TYPES.get(entry_type)
+    repo_override = env.get(RUBRIC_REPO_ENV) or None
+    ref_override = env.get(RUBRIC_REF_ENV) or None
+    return {
+        "repo": _repo_url(repo_override or desc.get("pipeline.rubric.repo", None)),
+        "ref": ref_override or desc.get("pipeline.rubric.ref", None),
+        "path": desc.get("pipeline.rubric.path", None),
+        "source": "env" if (repo_override or ref_override) else "descriptor",
+        "commit": _head_of_checkout(context_dir),
+    }
+
+
+def _provenance_header(entry_type, env=None):
+    """The ``provenance`` header (AISDLC-193): what judged this run. ``pipeline_version``
+    is the plugin manifest's version and ``pipeline_commit`` the checkout's own commit (None
+    outside a git checkout); ``rubric`` is what the scorer read -- see _rubric_provenance.
+    A rubric or descriptor change can then be told apart from a model change after the
+    fact, from the report alone. Additive under ``report_schema_version`` 1: readers that
+    predate it ignore it."""
     return {
         "pipeline_version": _plugin_version(),
         "pipeline_commit": _plugin_commit(),
-        "rubric": {key: desc.get(f"pipeline.rubric.{key}", None) for key in PROVENANCE_RUBRIC_KEYS},
+        "rubric": _rubric_provenance(entry_type, env=env),
     }
 
 

@@ -1516,7 +1516,8 @@ class TestBindingHeader:
             "  source: descriptor\nprovenance:\n"
             f"  pipeline_version: {prov['pipeline_version']}\n  pipeline_commit: {commit}\n"
             f"  rubric:\n    repo: {rubric['repo']}\n    ref: {rubric['ref']}\n"
-            f"    path: {rubric['path']}\nrun_id: 20260818-090000\n"
+            f"    path: {rubric['path']}\n    source: {rubric['source']}\n"
+            f"    commit: {rubric['commit'] or 'null'}\nrun_id: 20260818-090000\n"
         )
         env[type_registry.binding_env_var("rfe", "PROJECT")] = "KONFLUX"
         result = subprocess.run(cmd, capture_output=True, text=True, env=env)
@@ -1579,6 +1580,33 @@ class TestProvenanceHeader:
             ),
         )
 
+    @pytest.fixture(autouse=True)
+    def _no_rubric_override_and_no_checkout(self, monkeypatch, tmp_path):
+        """The bootstrap's overrides and a vendored checkout belong to the tests that set
+        them up; a developer's shell or .context/ must not leak into the others."""
+        monkeypatch.delenv(generate_run_report.RUBRIC_REPO_ENV, raising=False)
+        monkeypatch.delenv(generate_run_report.RUBRIC_REF_ENV, raising=False)
+        monkeypatch.setattr(
+            generate_run_report, "ASSESS_CONTEXT_DIR", str(tmp_path / "no-such-checkout")
+        )
+
+    @staticmethod
+    def _git_repo(path):
+        """A git repository with one commit at ``path``; returns its HEAD."""
+        env = {
+            **os.environ,
+            "GIT_AUTHOR_NAME": "t",
+            "GIT_AUTHOR_EMAIL": "t@example.com",
+            "GIT_COMMITTER_NAME": "t",
+            "GIT_COMMITTER_EMAIL": "t@example.com",
+        }
+        os.makedirs(path, exist_ok=True)
+        for args in (["init", "-q"], ["commit", "-q", "--allow-empty", "-m", "one"]):
+            subprocess.run(["git", "-C", str(path), *args], check=True, env=env)
+        return subprocess.run(
+            ["git", "-C", str(path), "rev-parse", "HEAD"], capture_output=True, text=True
+        ).stdout.strip()
+
     def test_rubric_is_the_descriptor_pin_for_each_type(self, art_dir, tmp_path):
         self._one_rfe(art_dir)
         report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
@@ -1587,6 +1615,8 @@ class TestProvenanceHeader:
             "repo": rfe.get("pipeline.rubric.repo"),
             "ref": rfe.get("pipeline.rubric.ref"),
             "path": rfe.get("pipeline.rubric.path"),
+            "source": "descriptor",
+            "commit": None,  # no vendored checkout in this test tree
         }
         assert re.fullmatch(r"[0-9a-f]{40}", report["provenance"]["rubric"]["ref"])
         for d in ["initiatives", "initiative-reviews"]:
@@ -1646,3 +1676,61 @@ class TestProvenanceHeader:
         assert report["provenance"]["pipeline_version"] is None
         assert report["provenance"]["pipeline_commit"] is None
         assert report["provenance"]["rubric"]["ref"]  # the descriptor pin needs no tree
+
+    def test_bootstrap_overrides_are_recorded_as_the_effective_rubric(self, art_dir, monkeypatch):
+        """ASSESS_RFE_REPO / ASSESS_RFE_REF send the bootstrap elsewhere for an ad-hoc run;
+        the report must say so instead of repeating the descriptor pin (Qodo on #256)."""
+        self._one_rfe(art_dir)
+        monkeypatch.setenv(generate_run_report.RUBRIC_REPO_ENV, "acme/assess-fork")
+        monkeypatch.setenv(generate_run_report.RUBRIC_REF_ENV, "experiment-branch")
+        rubric = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")["provenance"]["rubric"]
+        assert rubric["repo"] == "https://github.com/acme/assess-fork"  # bootstrap's slug rule
+        assert rubric["ref"] == "experiment-branch"
+        assert rubric["source"] == "env"
+        assert rubric["path"] == generate_run_report._TYPES.get("rfe").get("pipeline.rubric.path")
+
+    def test_one_override_alone_still_marks_the_source_as_env(self, art_dir, monkeypatch):
+        self._one_rfe(art_dir)
+        monkeypatch.setenv(generate_run_report.RUBRIC_REF_ENV, "abc123")
+        rubric = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")["provenance"]["rubric"]
+        assert rubric["source"] == "env"
+        assert rubric["ref"] == "abc123"
+        assert rubric["repo"] == generate_run_report._TYPES.get("rfe").get("pipeline.rubric.repo")
+
+    def test_rubric_commit_is_the_vendored_checkouts_head(self, art_dir, tmp_path, monkeypatch):
+        self._one_rfe(art_dir)
+        checkout = tmp_path / ".context" / "assess-rfe"
+        head = self._git_repo(checkout)
+        monkeypatch.setattr(generate_run_report, "ASSESS_CONTEXT_DIR", str(checkout))
+        rubric = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")["provenance"]["rubric"]
+        assert rubric["commit"] == head
+
+    def test_a_rubric_directory_inside_another_repo_is_not_given_that_repos_commit(
+        self, art_dir, tmp_path, monkeypatch
+    ):
+        outer = tmp_path / "outer"
+        self._git_repo(outer)
+        nested = outer / ".context" / "assess-rfe"
+        os.makedirs(nested)  # files copied in, no checkout of its own
+        self._one_rfe(art_dir)
+        monkeypatch.setattr(generate_run_report, "ASSESS_CONTEXT_DIR", str(nested))
+        assert (
+            build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")["provenance"]["rubric"]["commit"]
+            is None
+        )
+
+    def test_a_plugin_directory_inside_another_repo_reports_no_commit(
+        self, art_dir, tmp_path, monkeypatch
+    ):
+        """A marketplace install is not a checkout; if it sits inside some other repository,
+        git would answer with that repository's HEAD. The report says null instead."""
+        outer = tmp_path / "outer"
+        self._git_repo(outer)
+        nested = outer / "plugins" / "rfe-creator"
+        os.makedirs(nested / ".claude-plugin")
+        (nested / ".claude-plugin" / "plugin.json").write_text(json.dumps({"version": "9.9.9"}))
+        self._one_rfe(art_dir)
+        monkeypatch.setattr(type_registry, "PLUGIN_ROOT", nested)
+        prov = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")["provenance"]
+        assert prov["pipeline_commit"] is None
+        assert prov["pipeline_version"] == "9.9.9"
