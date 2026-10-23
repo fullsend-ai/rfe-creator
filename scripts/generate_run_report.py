@@ -98,6 +98,13 @@ REVISION_INTERRUPTED_PREFIX = "revision_interrupted:"
 # was left as it was, with a comment listing the proposal and the needs-attention label. Blocked
 # like a refused split: the parent stays unprocessed for a run without the hold.
 SPLIT_HELD_PREFIX = "split_held:"
+# The pipeline's SETUP fail-fast (AISDLC-194): the verify gate found the type broken, so
+# nothing was assessed, reviewed or submitted. pipeline_state._fail_setup writes this prefix
+# on every active id's review error and the diagnosis to SETUP_ERROR_FILE; the report carries
+# it as failed_reason (an undisposed outcome bootstrap_snapshot never counts as processed).
+SETUP_FAILED_PREFIX = "setup_failed:"
+# Mirror of pipeline_state.SETUP_ERROR_FILE: present while a SETUP failure ended the run.
+SETUP_ERROR_FILE = "tmp/pipeline-setup-error.txt"
 
 
 def split_children_map(artifacts_dir, config, tasks=None):
@@ -191,6 +198,20 @@ def _binding_header(entry_type, env=None):
     return {key: binding.get(key) for key in BINDING_HEADER_KEYS}
 
 
+def _setup_error():
+    """The SETUP fail-fast diagnosis of the run this report closes, prefixed, or None.
+    Read from SETUP_ERROR_FILE in the working directory (the pipeline's tmp/), which only
+    exists between pipeline_state._fail_setup and the next init."""
+    try:
+        with open(SETUP_ERROR_FILE, encoding="utf-8") as f:
+            text = f.read().strip()
+    except OSError:
+        return None
+    if not text:
+        return None
+    return text if text.startswith(SETUP_FAILED_PREFIX) else f"{SETUP_FAILED_PREFIX} {text}"
+
+
 def _parse_run_id(start_time):
     """Derive run_id from a timestamp. Accepts YYYYMMDD-HHMMSS or ISO format."""
     if re.match(r"^\d{8}-\d{6}$", start_time):
@@ -252,6 +273,7 @@ def build_report(
     before_score_list, after_score_list = [], []
     counts = {"passed": 0, "failed": 0, "split": 0, "blocked": 0, "errors": 0}
 
+    setup_error = _setup_error()
     for item_id in expanded_ids:
         if entry_type == "rfe":
             review_path = find_review_file(artifacts_dir, item_id)
@@ -266,6 +288,12 @@ def build_report(
         fallback_ref = item_id if _is_tracker_key(item_id, config) else None
 
         if not review_path:
+            if setup_error:
+                per_item.append(
+                    {"id": item_id, "tracker_ref": fallback_ref, "failed_reason": setup_error}
+                )
+                counts["failed"] += 1
+                continue
             per_item.append(
                 {"id": item_id, "tracker_ref": fallback_ref, "error": "review file not found"}
             )
@@ -398,6 +426,15 @@ def build_report(
             # the disposition.
             failed_reason = data.get("needs_attention_reason") or review_error
             entry["failed_reason"] = failed_reason
+        elif review_error.startswith(SETUP_FAILED_PREFIX) or setup_error:
+            # SETUP fail-fast: the stub (or, for an id whose stub could not be written,
+            # the run-level diagnosis) says the type was broken before any wave ran.
+            # failed_reason, not error: bootstrap_snapshot reads neither as processed,
+            # and the diagnosis stays legible next to whatever review the id carried.
+            failed_reason = (
+                review_error if review_error.startswith(SETUP_FAILED_PREFIX) else setup_error
+            )
+            entry["failed_reason"] = failed_reason
 
         if blocked_reason:
             counts["blocked"] += 1
@@ -447,6 +484,9 @@ def build_report(
     }
     if entry_type == "rfe":
         report["batch_size"] = batch_size
+    if setup_error:
+        # Additive, last: the run-level reason every entry above failed.
+        report["setup_error"] = setup_error
     return report
 
 

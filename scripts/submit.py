@@ -67,6 +67,7 @@ from artifact_utils import (  # noqa: E402
 )
 from generate_run_report import (  # noqa: E402
     REVISION_INTERRUPTED_PREFIX,
+    SETUP_FAILED_PREFIX,
     SPLIT_FAILED_PREFIX,
     SPLIT_HELD_PREFIX,
     SPLIT_NOT_ATTEMPTED_PREFIX,
@@ -1513,6 +1514,36 @@ def main():
                     "labels": [],
                     "remove_labels": [],
                     "skip_reason": "no readable review — left unprocessed for the next run",
+                    "task_path": task_path,
+                    "jira_key": jira_key,
+                    "attn_reason": None,
+                    "original_labels": task_data.get("original_labels") or [],
+                    "auto_approve": False,
+                    "jira_status": None,
+                    "leave_unprocessed": True,
+                }
+            )
+            continue
+
+        setup_failed = _review_error(args.artifacts_dir, item_id, cfg) or ""
+        if setup_failed.startswith(SETUP_FAILED_PREFIX):
+            # The pipeline's SETUP fail-fast (AISDLC-194) wrote this stub: the type was
+            # broken before any wave ran, so the item was neither assessed nor reviewed and
+            # nothing here says anything about it. No Jira write -- not even the
+            # needs-attention label the stub shape carries, which would flag every item of
+            # the batch for a fault in the descriptor -- and left unprocessed, exactly like
+            # an absent review: the next run selects it again once the type is fixed.
+            plan.append(
+                {
+                    id_field: item_id,
+                    "title": title,
+                    "is_existing": is_existing,
+                    "priority": priority,
+                    "size": size,
+                    "action": "SKIP",
+                    "labels": [],
+                    "remove_labels": [],
+                    "skip_reason": f"{setup_failed} — left unprocessed for the next run",
                     "task_path": task_path,
                     "jira_key": jira_key,
                     "attn_reason": None,
