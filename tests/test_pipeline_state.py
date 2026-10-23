@@ -86,6 +86,18 @@ def make_state(**overrides):
     return base
 
 
+def _verify_result(rc, out="", err=""):
+    """What subprocess.run returns for SETUP's verify gate in these tests."""
+    return types.SimpleNamespace(returncode=rc, stdout=out, stderr=err)
+
+
+class _FakeProc:
+    """A SETUP command that exits 0."""
+
+    def wait(self):
+        return 0
+
+
 # ---------- Init ----------
 
 
@@ -3193,6 +3205,7 @@ class TestNoShell:
         monkeypatch.setattr(
             subprocess, "Popen", lambda argv, **kw: launched.append(argv) or FakeProc(argv)
         )
+        monkeypatch.setattr(subprocess, "run", lambda argv, **kw: _verify_result(0, "OK: rfe"))
         ps.cmd_run_phase([])  # must not raise: exit codes are logged, not fatal
         assert [a[:2] for a in launched] == [
             ["bash", "scripts/bootstrap.sh"],
@@ -3201,6 +3214,130 @@ class TestNoShell:
         assert all(isinstance(a, list) for a in launched)
         assert "exit 3 from: bash scripts/fetch-architecture-context.sh" in capsys.readouterr().err
         assert open(ps.DISPATCH_MARKER).read() == "SETUP"
+
+    def test_setup_runs_the_verify_gate_before_its_commands(self, tmp_dir, monkeypatch, capsys):
+        """AISDLC-194: the registry's gate 3 runs first, once, synchronously; on a clean tree
+        the two SETUP commands follow as before and nothing is recorded in the state."""
+        ps._save_state(make_state(phase="SETUP", type="rfe"))
+        ran, launched = [], []
+        monkeypatch.setattr(
+            subprocess,
+            "run",
+            lambda argv, **kw: ran.append(argv) or _verify_result(0, "OK: 1 type(s) valid: rfe"),
+        )
+        monkeypatch.setattr(
+            subprocess, "Popen", lambda argv, **kw: launched.append(argv) or _FakeProc()
+        )
+        ps.cmd_run_phase([])
+        assert ran == [["python3", "scripts/validate_types.py", "--verify", "--type", "rfe"]]
+        assert [a[:2] for a in launched] == [
+            ["bash", "scripts/bootstrap.sh"],
+            ["bash", "scripts/fetch-architecture-context.sh"],
+        ]
+        assert "setup_error" not in ps._load_state()
+        assert "SETUP: verify OK: 1 type(s) valid: rfe" in capsys.readouterr().out
+        assert open(ps.DISPATCH_MARKER).read() == "SETUP"
+
+    @pytest.mark.parametrize("t", ["rfe", "initiative"])
+    def test_the_verify_command_is_the_registry_gate_for_the_run_type(self, tmp_dir, t):
+        config = ps._get_config(make_state(phase="SETUP", type=t))["SETUP"]
+        assert config["verify"] == f"python3 scripts/validate_types.py --verify --type {t}"
+        assert config["commands"][0] == f"bash scripts/bootstrap.sh --type {t}"
+
+    def test_a_finding_stops_setup_before_any_command_and_stubs_every_active_id(
+        self, tmp_dir, monkeypatch, capsys
+    ):
+        """A broken type (here a missing rubric pin) must cost nothing: no bootstrap, no
+        wave. The finding is recorded in the state, every active id gets the registry error
+        stub with ``setup_failed: <diagnosis>``, and advance routes SETUP to REPORT."""
+        import verify_phase
+
+        ps._save_state(make_state(phase="SETUP", type="rfe"))
+        write_ids("tmp/pipeline-active-ids.txt", ["RHAIRFE-1", "RHAIRFE-2"])
+        monkeypatch.setattr(
+            subprocess,
+            "run",
+            lambda argv, **kw: _verify_result(
+                1, "ERROR rfe: pipeline.rubric.ref: missing (gate 1)\n"
+            ),
+        )
+        monkeypatch.setattr(
+            subprocess, "Popen", lambda argv, **kw: pytest.fail(f"launched {argv} after a finding")
+        )
+        stubs = []
+
+        def fake_stubs(
+            phase, ids, pipeline_type="rfe", outcome="failed", error=None, failures=None
+        ):
+            stubs.append((phase, list(ids), pipeline_type, outcome, error))
+            return []
+
+        monkeypatch.setattr(verify_phase, "write_error_stubs", fake_stubs)
+        ps.cmd_run_phase([])
+        state = ps._load_state()
+        assert state["setup_error"] == "ERROR rfe: pipeline.rubric.ref: missing (gate 1)"
+        assert stubs == [
+            (
+                "setup",
+                ["RHAIRFE-1", "RHAIRFE-2"],
+                "rfe",
+                "failed",
+                "setup_failed: ERROR rfe: pipeline.rubric.ref: missing (gate 1)",
+            )
+        ]
+        assert "SETUP: FAILED -- ERROR rfe: pipeline.rubric.ref" in capsys.readouterr().err
+        assert open(ps.DISPATCH_MARKER).read() == "SETUP"
+        nxt, summary = ps.advance(state)
+        assert nxt == "REPORT"
+        assert "setup failed (ERROR rfe: pipeline.rubric.ref" in summary
+
+    def test_a_finding_without_active_ids_still_routes_to_report(self, tmp_dir, monkeypatch):
+        ps._save_state(make_state(phase="SETUP", type="initiative"))
+        monkeypatch.setattr(
+            subprocess, "run", lambda argv, **kw: _verify_result(1, "ERROR initiative: broken")
+        )
+        monkeypatch.setattr(subprocess, "Popen", lambda argv, **kw: pytest.fail("launched"))
+        ps.cmd_run_phase([])
+        assert ps.advance(ps._load_state())[0] == "REPORT"
+
+    def test_a_clean_setup_still_advances_to_assess(self, tmp_dir):
+        assert ps.advance(make_state(phase="SETUP"))[0] == "ASSESS"
+
+    def test_an_unavailable_gate_warns_and_the_phase_continues(self, tmp_dir, monkeypatch, capsys):
+        """Exit 2 is 'cannot run' (jsonschema is a dev dependency), not a verdict."""
+        ps._save_state(make_state(phase="SETUP", type="rfe"))
+        launched = []
+        monkeypatch.setattr(
+            subprocess,
+            "run",
+            lambda argv, **kw: _verify_result(2, "", "ERROR: jsonschema is not installed"),
+        )
+        monkeypatch.setattr(
+            subprocess, "Popen", lambda argv, **kw: launched.append(argv) or _FakeProc()
+        )
+        ps.cmd_run_phase([])
+        assert len(launched) == 2
+        assert "setup_error" not in ps._load_state()
+        err = capsys.readouterr().err
+        assert "verify unavailable (exit 2: ERROR: jsonschema is not installed); continuing" in err
+
+    def test_a_gate_that_cannot_start_warns_and_the_phase_continues(
+        self, tmp_dir, monkeypatch, capsys
+    ):
+        ps._save_state(make_state(phase="SETUP", type="rfe"))
+        launched = []
+
+        def no_python(argv, **kw):
+            raise FileNotFoundError("python3")
+
+        monkeypatch.setattr(subprocess, "run", no_python)
+        monkeypatch.setattr(
+            subprocess, "Popen", lambda argv, **kw: launched.append(argv) or _FakeProc()
+        )
+        ps.cmd_run_phase([])
+        assert len(launched) == 2
+        assert "setup_error" not in ps._load_state()
+        assert "verify could not run" in capsys.readouterr().err
 
     def test_no_shell_true_left_in_module(self):
         import inspect
