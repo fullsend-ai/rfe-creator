@@ -300,7 +300,13 @@ check stay the descriptor's until the grammar reads `binding()["local_id_pattern
 prefix's form (`RHAIRFE-DRY` today, `KONFLUX-DRY` under the override; never rendered, it only
 keeps the rename step off). Run reports gain the additive `binding:` header — `tracker`,
 `project`, `issue_type` and `source` of the effective binding at report time (`source:
-descriptor` when nothing is overridden), D11; the snapshot header keys are deferred.
+descriptor` when nothing is overridden), D11; the snapshot header keys are deferred. Since AISDLC-193 they also carry the additive
+`provenance:` header — `pipeline_version` (the plugin manifest's), `pipeline_commit` (the
+checkout's HEAD, `null` outside a git checkout) and the `rubric` that judged the run — `repo`,
+`ref` and `path` from `pipeline.rubric` unless the bootstrap's `ASSESS_RFE_REPO` / `ASSESS_RFE_REF`
+overrides were set (`source: descriptor` or `env`), plus `commit`, HEAD of the vendored
+`.context/assess-rfe` checkout when it is one (`null` otherwise) — so a rubric or descriptor
+change can be told apart from a model change from the report alone. Neither header bumps `report_schema_version`.
 
 **Trust boundary, restated.** The writers read `RFE_CREATOR_BINDING_<TYPE>_*` only — in a
 headless or CI run protected CI variables — and refuse the bare `JIRA_PROJECT` / `JIRA_ISSUE_TYPE`
