@@ -1362,6 +1362,81 @@ class TestKeyPrefixUnionFallback:
         assert by_id["RHAIOLD-9"]["error"] == "review file not found"
 
 
+class TestSetupFailedOutcome:
+    """AISDLC-194: a SETUP fail-fast leaves every active id undisposed. The report says so
+    as ``failed_reason`` (never ``error``), which bootstrap_snapshot does not count as
+    processed, and names the run-level diagnosis in ``setup_error``."""
+
+    STUB = (
+        "---\nrfe_id: {rfe_id}\nerror: 'setup_failed: ERROR rfe: pipeline.rubric.ref: missing'\n"
+        "score: 0\npass: false\nrecommendation: revise\nfeasibility: feasible\n"
+        "auto_revised: false\nneeds_attention: true\n"
+        "needs_attention_reason: 'Agent failed: setup_failed: ERROR rfe: "
+        "pipeline.rubric.ref: missing'\n"
+        "scores:\n  what: 0\n  why: 0\n  open_to_how: 0\n  not_a_task: 0\n  right_sized: 0\n"
+        "type: rfe\n---\nStub.\n"
+    )
+
+    @pytest.fixture(autouse=True)
+    def _no_marker(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(generate_run_report, "SETUP_ERROR_FILE", str(tmp_path / "no-marker"))
+
+    def _task(self, art_dir, rfe_id):
+        _write(f"{art_dir}/rfe-tasks/{rfe_id}.md", TASK_TEMPLATE.format(rfe_id=rfe_id, extra=""))
+
+    def test_a_setup_failed_stub_is_a_failed_reason_not_an_error(self, art_dir):
+        self._task(art_dir, "RHAIRFE-1")
+        _write(f"{art_dir}/rfe-reviews/RHAIRFE-1-review.md", self.STUB.format(rfe_id="RHAIRFE-1"))
+        report = build_report(["RHAIRFE-1"], "2026-08-18T09:00:00Z")
+        [entry] = report["per_rfe"]
+        assert entry["failed_reason"] == "setup_failed: ERROR rfe: pipeline.rubric.ref: missing"
+        assert "error" not in entry
+        assert report["errors"] == []
+        assert report["results"]["failed"] == 1
+        assert report["results"]["passed"] == 0
+        assert "setup_error" not in report
+
+    def test_the_marker_file_overrides_whatever_review_an_id_carries(
+        self, art_dir, tmp_path, monkeypatch
+    ):
+        """An id whose stub could not be written may still carry a review from an earlier
+        run (restored for the resume check); the run-level diagnosis wins in the report."""
+        marker = tmp_path / "setup-error.txt"
+        marker.write_text("ERROR rfe: pipeline.rubric.ref: missing\n")
+        monkeypatch.setattr(generate_run_report, "SETUP_ERROR_FILE", str(marker))
+        self._task(art_dir, "RHAIRFE-1")
+        _write(
+            f"{art_dir}/rfe-reviews/RHAIRFE-1-review.md",
+            REVIEW_TEMPLATE.format(
+                rfe_id="RHAIRFE-1", score=9, pass_val="true", recommendation="submit", right_sized=2
+            ),
+        )
+        self._task(art_dir, "RHAIRFE-2")  # no review at all
+        report = build_report(["RHAIRFE-1", "RHAIRFE-2"], "2026-08-18T09:00:00Z")
+        by_id = {e["id"]: e for e in report["per_rfe"]}
+        reason = "setup_failed: ERROR rfe: pipeline.rubric.ref: missing"
+        assert by_id["RHAIRFE-1"]["failed_reason"] == reason
+        assert by_id["RHAIRFE-1"]["after_score"] == 9  # the stale review stays legible
+        assert by_id["RHAIRFE-2"] == {
+            "id": "RHAIRFE-2",
+            "tracker_ref": "RHAIRFE-2",
+            "failed_reason": reason,
+        }
+        assert report["errors"] == []
+        assert report["results"]["failed"] == 2 and report["results"]["errors"] == 0
+        assert report["setup_error"] == reason
+        assert list(report)[-1] == "setup_error"  # additive, after the body
+
+    def test_an_empty_marker_is_no_marker(self, art_dir, tmp_path, monkeypatch):
+        marker = tmp_path / "setup-error.txt"
+        marker.write_text("\n")
+        monkeypatch.setattr(generate_run_report, "SETUP_ERROR_FILE", str(marker))
+        self._task(art_dir, "RHAIRFE-1")
+        report = build_report(["RHAIRFE-1"], "2026-08-18T09:00:00Z")
+        assert report["per_rfe"][0]["error"] == "review file not found"
+        assert "setup_error" not in report
+
+
 class TestBindingHeader:
     """PR-3c (design §3.2.1 rule e, D11): the report carries the resolved type's EFFECTIVE
     tracker binding — ``{tracker, project, issue_type, source}`` — as an additive ``binding``
