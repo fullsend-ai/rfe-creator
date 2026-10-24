@@ -98,6 +98,8 @@ jobs:
             authorized=true
           else
             if api_err=$(mktemp); then
+              # $p is a jq variable; the single quotes are intentional.
+              # shellcheck disable=SC2016
               if role=$(gh api "repos/$REPO/collaborators/$COMMENT_USER_LOGIN/permission" \
                 --jq '.user.permissions as $p
                   | if (.role_name | type) != "string" or .role_name == "" then "none"
@@ -129,7 +131,7 @@ jobs:
           fi
           gh label create "fullsend-no-fix" --repo "$REPO" \
             --description "Skip bot-triggered fix agent runs" --color "FBCA04" \
-            --force 2>/dev/null || true
+            2>/dev/null || true
           gh pr edit "$PR_NUMBER" --repo "$REPO" \
             --add-label "fullsend-no-fix"
           gh pr comment "$PR_NUMBER" --repo "$REPO" \
