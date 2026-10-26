@@ -109,6 +109,8 @@ SPLIT_HELD_PREFIX = "split_held:"
 SETUP_FAILED_PREFIX = "setup_failed:"
 # Mirror of pipeline_state.SETUP_ERROR_FILE: present while a SETUP failure ended the run.
 SETUP_ERROR_FILE = "tmp/pipeline-setup-error.txt"
+# Mirror of pipeline_state.PROCESS_IDS_FILE: every id the run was to process, all batches.
+PROCESS_IDS_FILE = "tmp/pipeline-process-ids.txt"
 
 
 def split_children_map(artifacts_dir, config, tasks=None):
@@ -397,6 +399,15 @@ def _provenance_header(entry_type, env=None, workspace_root=None):
     }
 
 
+def _process_ids():
+    """The ids the run was to process (PROCESS_IDS_FILE, one per line), or none."""
+    try:
+        with open(PROCESS_IDS_FILE, encoding="utf-8") as f:
+            return [ln.strip() for ln in f if ln.strip()]
+    except OSError:
+        return []
+
+
 def _setup_error():
     """The SETUP fail-fast diagnosis of the run this report closes, prefixed, or None.
     Read from SETUP_ERROR_FILE in the working directory (the pipeline's tmp/), which only
@@ -450,6 +461,13 @@ def build_report(
     task_map = _task_map(tasks, config)
     all_children = [c for kids in children_map.values() for c in kids]
     expanded_ids = list(ids) + [c for c in all_children if c not in ids]
+    setup_error = _setup_error()
+    if setup_error:
+        # A SETUP failure ends the run at its first batch: the ids of later batches have no
+        # task or review yet. They failed for the same reason and are reported with it.
+        for pid in _process_ids():
+            if pid not in expanded_ids:
+                expanded_ids.append(pid)
     # ...and every task file the run left behind. The CLI's default population
     # scans the REVIEWS directory, so an item whose review was never written —
     # or was cleared for a reassess cycle that never ran — simply vanished
@@ -472,7 +490,6 @@ def build_report(
     before_score_list, after_score_list = [], []
     counts = {"passed": 0, "failed": 0, "split": 0, "blocked": 0, "errors": 0}
 
-    setup_error = _setup_error()
     for item_id in expanded_ids:
         if entry_type == "rfe":
             review_path = find_review_file(artifacts_dir, item_id)

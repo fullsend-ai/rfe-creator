@@ -1427,6 +1427,23 @@ class TestSetupFailedOutcome:
         assert report["setup_error"] == reason
         assert list(report)[-1] == "setup_error"  # additive, after the body
 
+    def test_later_batch_ids_are_reported_under_the_marker(self, art_dir, tmp_path, monkeypatch):
+        """SETUP fails in batch 1: the ids of later batches have no task or review yet, but
+        they failed for the same reason and must not vanish from the report."""
+        marker = tmp_path / "setup-error.txt"
+        marker.write_text("ERROR rfe: broken\n")
+        process_ids = tmp_path / "process-ids.txt"
+        process_ids.write_text("RHAIRFE-1\nRHAIRFE-7\n\nRHAIRFE-8\n")
+        monkeypatch.setattr(generate_run_report, "SETUP_ERROR_FILE", str(marker))
+        monkeypatch.setattr(generate_run_report, "PROCESS_IDS_FILE", str(process_ids))
+        self._task(art_dir, "RHAIRFE-1")
+        _write(f"{art_dir}/rfe-reviews/RHAIRFE-1-review.md", self.STUB.format(rfe_id="RHAIRFE-1"))
+        report = build_report(["RHAIRFE-1"], "2026-08-18T09:00:00Z")
+        assert [e["id"] for e in report["per_rfe"]] == ["RHAIRFE-1", "RHAIRFE-7", "RHAIRFE-8"]
+        assert all(e["failed_reason"].startswith("setup_failed:") for e in report["per_rfe"])
+        assert report["input_count"] == 1  # the run's own count is unchanged
+        assert report["results"]["failed"] == 3
+
     def test_an_empty_marker_is_no_marker(self, art_dir, tmp_path, monkeypatch):
         marker = tmp_path / "setup-error.txt"
         marker.write_text("\n")

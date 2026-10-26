@@ -75,6 +75,7 @@ from generate_run_report import (  # noqa: E402
     SPLIT_HELD_PREFIX,
     SPLIT_NOT_ATTEMPTED_PREFIX,
     _parse_run_id,
+    _setup_error,
 )
 from generate_run_report import TYPE_CONFIG as REPORT_TYPE_CONFIG  # noqa: E402
 from jira_utils import (  # noqa: E402
@@ -1129,6 +1130,22 @@ def main():
         if _is_stall_escalation(error):
             stalled_split_parents[parent_key] = error
             del split_parent_data[parent_key]
+    # The pipeline's SETUP fail-fast (AISDLC-194): the type was broken before any wave ran,
+    # so no split tree in this workspace was reviewed in this run -- an Archived parent with
+    # local children is one an earlier run left behind. Its stub says so; the run-level
+    # marker (tmp/pipeline-setup-error.txt, read by _setup_error) says so for every parent,
+    # a stub that could not be written included. Neither is split-submitted nor marked
+    # processed (it is in no plan): the next run, on a fixed type, sees it again.
+    setup_error = _setup_error()
+    for parent_key in sorted(split_parent_data):
+        error = _review_error(args.artifacts_dir, parent_key, cfg) or ""
+        reason = setup_error or (error if error.startswith(SETUP_FAILED_PREFIX) else None)
+        if reason:
+            print(
+                f"  {parent_key}: SKIP split-submit - {reason}; nothing was assessed this run,"
+                " left unprocessed for the next"
+            )
+            del split_parent_data[parent_key]
     split_parents = list(split_parent_data.keys())
 
     _parent_of = {}
@@ -1558,6 +1575,7 @@ def main():
         return labels
 
     plan = []
+    setup_error = _setup_error()  # the run-level SETUP fail-fast marker, if this run left one
     for task_path, task_data in submittable:
         item_id = task_data[id_field]
         title = task_data["title"]
@@ -1614,14 +1632,20 @@ def main():
             )
             continue
 
-        setup_failed = _review_error(args.artifacts_dir, item_id, cfg) or ""
-        if setup_failed.startswith(SETUP_FAILED_PREFIX):
-            # The pipeline's SETUP fail-fast (AISDLC-194) wrote this stub: the type was
-            # broken before any wave ran, so the item was neither assessed nor reviewed and
-            # nothing here says anything about it. No Jira write -- not even the
-            # needs-attention label the stub shape carries, which would flag every item of
-            # the batch for a fault in the descriptor -- and left unprocessed, exactly like
-            # an absent review: the next run selects it again once the type is fixed.
+        stub_error = _review_error(args.artifacts_dir, item_id, cfg) or ""
+        setup_failed = setup_error or (
+            stub_error if stub_error.startswith(SETUP_FAILED_PREFIX) else ""
+        )
+        if setup_failed:
+            # The pipeline's SETUP fail-fast (AISDLC-194): the type was broken before any
+            # wave ran, so the item was neither assessed nor reviewed and whatever review it
+            # carries (the stub, or one restored from an earlier run when the stub could not
+            # be written -- the run-level marker covers that) says nothing about it. No Jira
+            # write -- not even the needs-attention label the stub shape carries, which
+            # would flag every item of the batch for a fault in the descriptor -- and left
+            # unprocessed like an absent review, with its snapshot entry reset: a
+            # --reprocess fetch writes an unchanged issue as processed, and the next ordinary
+            # fetch must select it again once the type is fixed (invariant 7, the hold rule).
             plan.append(
                 {
                     id_field: item_id,
@@ -1632,7 +1656,10 @@ def main():
                     "action": "SKIP",
                     "labels": [],
                     "remove_labels": [],
-                    "skip_reason": f"{setup_failed} — left unprocessed for the next run",
+                    "skip_reason": (
+                        f"{setup_failed} — left unprocessed for the next run"
+                        f"{' (snapshot entry reset)' if is_existing else ''}"
+                    ),
                     "task_path": task_path,
                     "jira_key": jira_key,
                     "attn_reason": None,
@@ -1640,6 +1667,7 @@ def main():
                     "auto_approve": False,
                     "jira_status": None,
                     "leave_unprocessed": True,
+                    "reset_processed": is_existing,
                 }
             )
             continue
@@ -2115,6 +2143,10 @@ def main():
             # here was a decision (e.g. rejected) and counts as disposal.
             if "Jira conflict" not in entry["skip_reason"] and not entry.get("leave_unprocessed"):
                 mark_processed_ids.append(item_id)
+            if entry.get("reset_processed"):
+                # Queued like a hold's: a --reprocess fetch wrote the unchanged issue as
+                # processed, and nothing here disposed of it.
+                reset_processed_ids.append(item_id)
             print(f"  {item_id}: Skipping — {entry['skip_reason']}")
             continue
 

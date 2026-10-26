@@ -917,6 +917,7 @@ class TestFeasibilityLabelOnSubmit:
         assert "SKIP" in stdout
         assert "setup_failed: ERROR rfe: pipeline.rubric.ref: missing" in stdout
         assert "left unprocessed" in stdout
+        assert "snapshot entry reset" not in stdout  # a local draft has no snapshot entry
         assert "Would create" not in stdout
         assert "needs-attention" not in stdout
         assert "rfe-creator-feasibility" not in stdout
@@ -1596,6 +1597,44 @@ class TestStallEscalatedSplitParentIsSkipped:
             if not ln.startswith(" "):
                 rows.append(ln.split()[0])
         return rows
+
+    SETUP_FAILED = "setup_failed: ERROR rfe: pipeline.rubric.ref: missing"
+
+    def test_setup_failed_parent_is_not_split(self, art_dir, tmp_path):
+        """AISDLC-194: a SETUP fail-fast stub on an Archived parent with local children --
+        nothing was reviewed this run, so Phase 1 must not mint its children."""
+        self._batch(art_dir, self._parent_review(self.SETUP_FAILED))
+        stdout, stderr, rc, calls = self._run(art_dir, tmp_path)
+        assert rc == 0, stderr
+        assert calls == []
+        assert (
+            f"  RHAIRFE-1000: SKIP split-submit - {self.SETUP_FAILED}; nothing was assessed"
+            in stdout
+        )
+        assert "Phase 1: Submitting" not in stdout
+        assert "RHAIRFE-1000: Skipping" not in stdout
+        assert "RFE-001" not in stdout  # the unreviewed child is in no plan either
+
+    def test_the_run_level_marker_skips_every_split_and_item(self, art_dir, tmp_path):
+        """A stub that could not be written leaves a parent with its old, clean split review:
+        the marker the pipeline wrote for the run still keeps it out of Phase 1, and every
+        regular item out of Phase 2."""
+        self._batch(art_dir, self._parent_review(None))
+        os.makedirs(tmp_path / "tmp", exist_ok=True)
+        (tmp_path / "tmp" / "pipeline-setup-error.txt").write_text(f"{self.SETUP_FAILED}\n")
+        log = tmp_path / "split-stub.log"
+        stub = tmp_path / "split_submit_stub.py"
+        stub.write_text("import sys\nsys.exit(0)\n")
+        env = _clean_env(**FAKE_CREDS, RFE_SPLIT_SUBMIT_SCRIPT=str(stub), SPLIT_STUB_LOG=str(log))
+        cmd = ["python3", os.path.abspath(SCRIPT), "--dry-run", "--artifacts-dir", art_dir]
+        result = subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert not log.exists()
+        assert f"RHAIRFE-1000: SKIP split-submit - {self.SETUP_FAILED}" in result.stdout
+        assert "Phase 1: Submitting" not in result.stdout
+        assert f"RFE-099: Skipping — {self.SETUP_FAILED} — left unprocessed" in result.stdout
+        assert "Would create" not in result.stdout
+        assert "Would update" not in result.stdout
 
     def test_split_not_attempted_parent_is_skipped(self, art_dir, tmp_path):
         self._batch(art_dir, self._parent_review(self.STALLED))
