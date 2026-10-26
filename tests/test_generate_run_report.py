@@ -1741,10 +1741,46 @@ class TestProvenanceHeader:
         assert report["provenance"]["rubric"]["repo"] == "https://git.example.com/x/assess.git"
         assert "s3cr3t" not in yaml.safe_dump(report)
 
+    def test_query_and_fragment_credentials_are_not_recorded(self, art_dir, monkeypatch):
+        """A token can ride a URL's query or fragment as well as its userinfo (fullsend review
+        on #256); neither identifies a repository, so both are dropped, in the whole report."""
+        self._one_rfe(art_dir)
+        monkeypatch.setenv(
+            generate_run_report.RUBRIC_REPO_ENV,
+            "https://u:p4ss@git.example.com/x/assess.git?access_token=qu3ry-s3cr3t#fr4g-s3cr3t",
+        )
+        report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
+        assert report["provenance"]["rubric"]["repo"] == "https://git.example.com/x/assess.git"
+        dumped = yaml.safe_dump(report)
+        for secret in ("p4ss", "qu3ry-s3cr3t", "fr4g-s3cr3t"):
+            assert secret not in dumped
+
+    def test_an_scp_style_token_is_not_recorded_in_the_whole_report(self, art_dir, monkeypatch):
+        self._one_rfe(art_dir)
+        monkeypatch.setenv(
+            generate_run_report.RUBRIC_REPO_ENV, "scp-s3cr3t@git.example.com:x/assess.git"
+        )
+        report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
+        assert report["provenance"]["rubric"]["repo"] == "git.example.com:x/assess.git"
+        assert "scp-s3cr3t" not in yaml.safe_dump(report)
+
+    def test_ipv6_hosts_ports_and_malformed_ports_survive_the_stripping(self):
+        f = generate_run_report._repo_url
+        assert f("ssh://git@[2001:db8::1]/rubric.git") == "ssh://[2001:db8::1]/rubric.git"
+        assert f("https://u:t@[2001:db8::1]:8443/r.git") == "https://[2001:db8::1]:8443/r.git"
+        assert f("https://u:t@h.example:notaport/r.git") == "https://h.example:notaport/r.git"
+        assert f("https://h.example:8443/r.git?x=1") == "https://h.example:8443/r.git"
+
     def test_scp_and_slug_spellings_are_kept_as_the_bootstrap_reads_them(self):
+        # The scp spelling loses its user part: `git` carries no information and a token in
+        # its place must not reach the report.
         assert (
             generate_run_report._repo_url("git@github.com:acme/assess.git")
-            == "git@github.com:acme/assess.git"
+            == "github.com:acme/assess.git"
+        )
+        assert (
+            generate_run_report._repo_url("s3cr3t-token@git.example.com:acme/assess.git")
+            == "git.example.com:acme/assess.git"
         )
         assert generate_run_report._repo_url("acme/assess") == "https://github.com/acme/assess"
         assert (

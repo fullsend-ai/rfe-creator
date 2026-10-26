@@ -260,22 +260,26 @@ def _plugin_commit():
 
 
 def _repo_url(value):
-    """bootstrap.sh's spelling rule: a bare ``owner/repo`` slug is a GitHub repository.
-    A URL's userinfo (``https://user:TOKEN@host/...``, the way an ad-hoc override may carry
-    a credential) is dropped before the value reaches a report that is pushed to a results
-    repository; the host and path identify the rubric, the credential never did."""
+    """A credential-free identity for the rubric repository, spelled as the bootstrap reads it.
+
+    bootstrap.sh's rule: a bare ``owner/repo`` slug is a GitHub repository. The report is
+    pushed to a results repository, and an ad-hoc ``ASSESS_RFE_REPO`` override may carry a
+    credential, so everything that can hold one is dropped before the value is recorded:
+    the userinfo of a URL (``https://user:TOKEN@host/...``) and of the scp-like spelling
+    (``TOKEN@host:path``), and a URL's query and fragment (``?access_token=...``), none of
+    which identify a repository. The host keeps its brackets and port (the netloc is cut at
+    its last ``@``, never rebuilt), so an IPv6 literal or a malformed port cannot break the
+    report.
+    """
     if not value:
         return value
     if "://" in value:
         parts = urlsplit(value)
-        if parts.username is not None or parts.password is not None:
-            host = parts.hostname or ""
-            if parts.port:
-                host = f"{host}:{parts.port}"
-            value = urlunsplit((parts.scheme, host, parts.path, parts.query, parts.fragment))
-        return value
-    if re.search(r"@[^:]+:", value):  # scp-like git spelling, no secret in it
-        return value
+        netloc = parts.netloc.rsplit("@", 1)[-1]
+        return urlunsplit((parts.scheme, netloc, parts.path, "", ""))
+    m = re.fullmatch(r"(?:[^@/:\s]+@)?([^/:\s]+):(.+)", value)
+    if m:  # scp-like git spelling: user (or a token in its place) dropped
+        return f"{m.group(1)}:{m.group(2)}"
     return f"https://github.com/{value}"
 
 
