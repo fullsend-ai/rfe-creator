@@ -411,14 +411,22 @@ def _process_ids():
 def _setup_error():
     """The SETUP fail-fast diagnosis of the run this report closes, prefixed, or None.
     Read from SETUP_ERROR_FILE in the working directory (the pipeline's tmp/), which only
-    exists between pipeline_state._fail_setup and the next init."""
+    exists between pipeline_state._fail_setup and the next init. The marker is written whole
+    or not at all (a rename into place), so an existing one that is empty or cannot be read
+    is a failure whose text was lost, never "no failure": submit gates its Jira writes on
+    this answer, and an absent marker is the only thing that means a sound SETUP."""
     try:
         with open(SETUP_ERROR_FILE, encoding="utf-8") as f:
             text = f.read().strip()
-    except OSError:
+    except FileNotFoundError:
         return None
+    except OSError as exc:
+        text = (
+            f"marker {SETUP_ERROR_FILE} unreadable ({type(exc).__name__}); the diagnosis is"
+            " in the pipeline log"
+        )
     if not text:
-        return None
+        text = f"marker {SETUP_ERROR_FILE} is empty; the diagnosis is in the pipeline log"
     return text if text.startswith(SETUP_FAILED_PREFIX) else f"{SETUP_FAILED_PREFIX} {text}"
 
 
@@ -629,7 +637,19 @@ def build_report(
         review_error = data.get("error") or ""
         blocked_reason = None
         failed_reason = None
-        if review_error.startswith(
+        if review_error.startswith(SETUP_FAILED_PREFIX) or setup_error:
+            # SETUP fail-fast, checked FIRST: the stub (or, for an id whose stub could not
+            # be written, the run-level diagnosis) says the type was broken before any
+            # scoring wave ran. Whatever older marker the review carries -- a restored
+            # split_held: or revision_interrupted: from an earlier run -- says nothing
+            # about this run, so it is neither blocked nor failed for that old reason.
+            # failed_reason, not error: bootstrap_snapshot reads neither as processed,
+            # and the diagnosis stays legible next to whatever review the id carried.
+            failed_reason = (
+                review_error if review_error.startswith(SETUP_FAILED_PREFIX) else setup_error
+            )
+            entry["failed_reason"] = failed_reason
+        elif review_error.startswith(
             (SPLIT_REFUSED_PREFIX, REVISION_INTERRUPTED_PREFIX, SPLIT_HELD_PREFIX)
         ):
             blocked_reason = data.get("needs_attention_reason") or review_error
@@ -641,15 +661,6 @@ def build_report(
             # readable and the entry keeps its scores; failed_reason marks
             # the disposition.
             failed_reason = data.get("needs_attention_reason") or review_error
-            entry["failed_reason"] = failed_reason
-        elif review_error.startswith(SETUP_FAILED_PREFIX) or setup_error:
-            # SETUP fail-fast: the stub (or, for an id whose stub could not be written,
-            # the run-level diagnosis) says the type was broken before any wave ran.
-            # failed_reason, not error: bootstrap_snapshot reads neither as processed,
-            # and the diagnosis stays legible next to whatever review the id carried.
-            failed_reason = (
-                review_error if review_error.startswith(SETUP_FAILED_PREFIX) else setup_error
-            )
             entry["failed_reason"] = failed_reason
 
         if blocked_reason:

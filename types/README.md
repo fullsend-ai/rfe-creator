@@ -583,7 +583,8 @@ the `extra_rules` consistency check, the `annotations_extra` lines, the run-repo
    before its first scoring wave, every active id gets a `setup_failed: <diagnosis>` error stub,
    the run goes straight to its report, and submit leaves every id of the run unprocessed for
    the next one; a gate that cannot run (exit 2, `jsonschema` not installed) is a warning and
-   the run continues. The skill's pre-loop bootstrap and the FETCH wave precede SETUP: a pin the
+   the run continues, unless an earlier failure of the same run stands; any other exit code is a
+   failure. The skill's pre-loop bootstrap and the FETCH wave precede SETUP: a pin the
    bootstrap cannot read stops the run there, with the bootstrap's message and no report.
 
 Alongside: `python3 scripts/lint_prefix_predicates.py` rejects new literal key/snapshot prefixes

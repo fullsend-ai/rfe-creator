@@ -1444,14 +1444,61 @@ class TestSetupFailedOutcome:
         assert report["input_count"] == 1  # the run's own count is unchanged
         assert report["results"]["failed"] == 3
 
-    def test_an_empty_marker_is_no_marker(self, art_dir, tmp_path, monkeypatch):
+    def test_an_empty_marker_is_still_a_failure(self, art_dir, tmp_path, monkeypatch):
+        """The marker is written whole or not at all; an empty one is a truncated write or a
+        crash, and reading it as "no failure" would let submit publish (fullsend on #257)."""
         marker = tmp_path / "setup-error.txt"
         marker.write_text("\n")
         monkeypatch.setattr(generate_run_report, "SETUP_ERROR_FILE", str(marker))
         self._task(art_dir, "RHAIRFE-1")
         report = build_report(["RHAIRFE-1"], "2026-08-18T09:00:00Z")
-        assert report["per_rfe"][0]["error"] == "review file not found"
-        assert "setup_error" not in report
+        assert report["per_rfe"][0]["failed_reason"].startswith("setup_failed: marker ")
+        assert "is empty" in report["setup_error"]
+
+    def test_an_unreadable_marker_is_still_a_failure(self, art_dir, tmp_path, monkeypatch):
+        marker = tmp_path / "setup-error.txt"
+        marker.mkdir()  # exists, cannot be read as a file
+        monkeypatch.setattr(generate_run_report, "SETUP_ERROR_FILE", str(marker))
+        self._task(art_dir, "RHAIRFE-1")
+        report = build_report(["RHAIRFE-1"], "2026-08-18T09:00:00Z")
+        assert report["per_rfe"][0]["failed_reason"].startswith("setup_failed: marker ")
+        assert "unreadable" in report["setup_error"]
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            f"{generate_run_report.SPLIT_REFUSED_PREFIX} too many leaf children",
+            f"{generate_run_report.REVISION_INTERRUPTED_PREFIX} second pass",
+            f"{generate_run_report.SPLIT_HELD_PREFIX} 3 children proposed, submission withheld",
+            f"{generate_run_report.SPLIT_FAILED_PREFIX} exit 4",
+            f"{generate_run_report.SPLIT_NOT_ATTEMPTED_PREFIX} wave stalled in SPLIT",
+        ],
+    )
+    def test_the_marker_outranks_an_older_error_the_review_carries(
+        self, art_dir, tmp_path, monkeypatch, error
+    ):
+        """A restored review from an earlier run may carry that run's split or hold marker;
+        under this run's SETUP failure the id is setup-failed, neither blocked nor failed for
+        the old reason (fullsend on #257). Its scores stay legible."""
+        marker = tmp_path / "setup-error.txt"
+        marker.write_text("ERROR rfe: pipeline.rubric.ref: missing\n")
+        monkeypatch.setattr(generate_run_report, "SETUP_ERROR_FILE", str(marker))
+        self._task(art_dir, "RHAIRFE-1")
+        _write(
+            f"{art_dir}/rfe-reviews/RHAIRFE-1-review.md",
+            "---\nrfe_id: RHAIRFE-1\nscore: 6\npass: false\nrecommendation: split\n"
+            "feasibility: feasible\nauto_revised: false\nneeds_attention: true\n"
+            f'needs_attention_reason: "Agent failed: {error}"\nerror: "{error}"\n'
+            "scores:\n  what: 2\n  why: 2\n  open_to_how: 1\n  not_a_task: 1\n  right_sized: 0\n"
+            "type: rfe\n---\n\nToo big.\n",
+        )
+        report = build_report(["RHAIRFE-1"], "2026-08-18T09:00:00Z")
+        [entry] = report["per_rfe"]
+        assert entry["failed_reason"] == "setup_failed: ERROR rfe: pipeline.rubric.ref: missing"
+        assert "blocked_reason" not in entry
+        assert entry["after_score"] == 6
+        results = report["results"]
+        assert (results["failed"], results["blocked"], results["split"]) == (1, 0, 0)
 
 
 class TestBindingHeader:

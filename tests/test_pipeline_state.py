@@ -3334,14 +3334,47 @@ class TestNoShell:
         assert not os.path.exists(ps.SETUP_ERROR_FILE)
         assert ps.advance(state)[0] == "ASSESS"
 
-    def test_an_unavailable_gate_on_retry_also_clears_the_failure(self, tmp_dir, monkeypatch):
+    def test_an_unavailable_gate_on_retry_keeps_the_failure(self, tmp_dir, monkeypatch, capsys):
+        """A gate that cannot run disproves nothing: an earlier failure of the same run
+        stands, nothing is launched, and the batch still goes to REPORT (fullsend on #257)."""
         ps._save_state(make_state(phase="SETUP", type="rfe", setup_error="ERROR rfe: old"))
         monkeypatch.setattr(
             subprocess, "run", lambda argv, **kw: _verify_result(2, "", "no jsonschema")
         )
-        monkeypatch.setattr(subprocess, "Popen", lambda argv, **kw: _FakeProc())
+        monkeypatch.setattr(subprocess, "Popen", lambda argv, **kw: pytest.fail("launched"))
         ps.cmd_run_phase([])
-        assert "setup_error" not in ps._load_state()
+        state = ps._load_state()
+        assert state["setup_error"] == "ERROR rfe: old"
+        assert ps.advance(state)[0] == "REPORT"
+        assert "the earlier failure stands -- ERROR rfe: old" in capsys.readouterr().err
+        assert open(ps.DISPATCH_MARKER).read() == "SETUP"
+
+    @pytest.mark.parametrize("rc", [-9, 137, 3])
+    def test_an_unexpected_gate_exit_is_a_failure(self, tmp_dir, monkeypatch, rc):
+        """Only 0, 1 and 2 are the gate's contract: any other exit gave no verdict, so the
+        type is not known sound and the batch stops like a finding (fullsend on #257)."""
+        ps._save_state(make_state(phase="SETUP", type="rfe"))
+        monkeypatch.setattr(subprocess, "run", lambda argv, **kw: _verify_result(rc, "", "Killed"))
+        monkeypatch.setattr(subprocess, "Popen", lambda argv, **kw: pytest.fail("launched"))
+        ps.cmd_run_phase([])
+        state = ps._load_state()
+        assert state["setup_error"] == f"the verify gate did not complete (exit {rc}: Killed)"
+        assert ps.advance(state)[0] == "REPORT"
+
+    def test_the_marker_is_written_whole_or_not_at_all(self, tmp_dir, monkeypatch):
+        """The marker goes to a temp name and is renamed into place: a reader never sees a
+        truncated file, and no temp file is left behind (fullsend on #257)."""
+        ps._save_state(make_state(phase="SETUP", type="rfe"))
+        monkeypatch.setattr(subprocess, "run", lambda argv, **kw: _verify_result(1, "ERROR rfe: x"))
+        monkeypatch.setattr(subprocess, "Popen", lambda argv, **kw: pytest.fail("launched"))
+        replaced, real_replace = [], os.replace
+        monkeypatch.setattr(
+            os, "replace", lambda a, b: replaced.append((a, b)) or real_replace(a, b)
+        )
+        ps.cmd_run_phase([])
+        assert (f"{ps.SETUP_ERROR_FILE}.tmp", ps.SETUP_ERROR_FILE) in replaced
+        assert open(ps.SETUP_ERROR_FILE).read() == "setup_failed: ERROR rfe: x\n"
+        assert not os.path.exists(f"{ps.SETUP_ERROR_FILE}.tmp")
 
     def test_a_finding_without_active_ids_still_routes_to_report(self, tmp_dir, monkeypatch):
         ps._save_state(make_state(phase="SETUP", type="initiative"))

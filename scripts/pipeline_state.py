@@ -1497,34 +1497,42 @@ def cmd_get_phase_config(args):
 
 
 def _run_setup_verify(cmd):
-    """Run SETUP's ``verify`` gate. Returns the one-line diagnosis of a finding (exit 1),
-    or None when the gate passed or could not run.
+    """Run SETUP's ``verify`` gate. Returns ``(verdict, diagnosis)``: ``("ok", None)``,
+    ``("finding", <one line>)`` or ``("unavailable", None)``.
 
     ``validate_types.py --verify`` exits 0 (one ``OK:`` line), 1 (one ``ERROR <type>:
     <message>`` line per finding) or 2 (usage error, or its jsonschema dependency is not
-    installed -- a dev dependency, see requirements-dev.txt). Only 1 is a verdict on the
-    type; 2, like a gate that cannot be started at all, is reported on stderr and the
-    phase continues as it did before the gate was wired (AISDLC-194).
+    installed -- a dev dependency, see requirements-dev.txt). 1 is a verdict on the type.
+    2, like a gate that cannot be started at all, is reported on stderr and the phase
+    continues as it did before the gate was wired (AISDLC-194) -- unless an earlier
+    failure of the same run stands, which nothing has disproved (cmd_run_phase keeps it).
+    Any other exit (a signal, an interpreter that started and died) is outside the gate's
+    contract and is a failure too: no verdict was given, so the type is not known sound.
     """
     try:
         result = subprocess.run(_argv(cmd), capture_output=True, text=True)
     except OSError as exc:
         print(f"[run-phase] SETUP: verify could not run ({exc}); continuing", file=sys.stderr)
-        return None
+        return "unavailable", None
     out = (getattr(result, "stdout", "") or "") + (getattr(result, "stderr", "") or "")
     lines = [ln.strip() for ln in out.splitlines() if ln.strip()]
     if result.returncode == 0:
         print(f"[run-phase] SETUP: verify {lines[0] if lines else 'OK'}")
-        return None
+        return "ok", None
     if result.returncode == 1:
         findings = [ln for ln in lines if ln.startswith("ERROR")] or lines
-        return findings[0] if findings else f"exit {result.returncode} from: {cmd}"
-    print(
-        f"[run-phase] SETUP: verify unavailable (exit {result.returncode}"
-        f"{': ' + lines[0] if lines else ''}); continuing",
-        file=sys.stderr,
+        return "finding", (findings[0] if findings else f"exit {result.returncode} from: {cmd}")
+    if result.returncode == 2:
+        print(
+            f"[run-phase] SETUP: verify unavailable (exit 2"
+            f"{': ' + lines[0] if lines else ''}); continuing",
+            file=sys.stderr,
+        )
+        return "unavailable", None
+    return "finding", (
+        f"the verify gate did not complete (exit {result.returncode}"
+        f"{': ' + lines[0] if lines else ''})"
     )
-    return None
 
 
 def _fail_setup(state, diagnosis):
@@ -1543,8 +1551,12 @@ def _fail_setup(state, diagnosis):
     """
     print(f"[run-phase] SETUP: FAILED -- {diagnosis}", file=sys.stderr)
     state["setup_error"] = diagnosis
-    with open(SETUP_ERROR_FILE, "w") as f:
+    # Whole or absent, never truncated: the report and submit read an existing but empty or
+    # unreadable marker as a failure whose text was lost, so a half-written one must not exist.
+    tmp_marker = f"{SETUP_ERROR_FILE}.tmp"
+    with open(tmp_marker, "w") as f:
         f.write(f"{SETUP_FAILED_PREFIX} {diagnosis}\n")
+    os.replace(tmp_marker, SETUP_ERROR_FILE)
     ids = _read_ids("tmp/pipeline-active-ids.txt")
     unwritten = []
     if ids:
@@ -1568,9 +1580,10 @@ def _fail_setup(state, diagnosis):
 
 
 def _clear_setup_failure(state):
-    """A SETUP that passes its gate (or whose gate could not run) after an earlier failure
-    in the same run -- an operator fixed the descriptor and retried -- must not keep routing
-    to REPORT on the stale diagnosis (Qodo on #257)."""
+    """A SETUP that passes its gate after an earlier failure in the same run -- an operator
+    fixed the descriptor and retried -- must not keep routing to REPORT on the stale
+    diagnosis (Qodo on #257). Only a pass clears it: a gate that cannot run disproves
+    nothing, so the failure stands (fullsend on #257)."""
     stale = state.pop("setup_error", None) is not None
     stale |= state.pop("setup_unwritten", None) is not None
     if stale:
@@ -1596,13 +1609,25 @@ def cmd_run_phase(args):
         print(f"run-phase: phase {phase} is type '{phase_type}', not 'script'", file=sys.stderr)
         sys.exit(1)
     if config.get("verify"):
-        diagnosis = _run_setup_verify(config["verify"].format_map(state))
-        if diagnosis is not None:
+        verdict, diagnosis = _run_setup_verify(config["verify"].format_map(state))
+        if verdict == "finding":
             _fail_setup(state, diagnosis)
             with open(DISPATCH_MARKER, "w") as f:
                 f.write(phase)
             return
-        _clear_setup_failure(state)
+        if verdict == "ok":
+            _clear_setup_failure(state)
+        elif state.get("setup_error"):
+            # The gate could not run and an earlier failure of this run stands: nothing has
+            # shown the type sound since, so the batch still stops here (fail closed).
+            print(
+                f"[run-phase] {phase}: verify unavailable and the earlier failure stands --"
+                f" {state['setup_error']}",
+                file=sys.stderr,
+            )
+            with open(DISPATCH_MARKER, "w") as f:
+                f.write(phase)
+            return
     if config.get("commands"):
         # Concurrent commands (SETUP). See the phase config for why exit codes
         # are logged rather than fatal.
