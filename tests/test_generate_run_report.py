@@ -1507,7 +1507,9 @@ class TestBindingHeader:
             text = f.read()
         # The YAML block as written, right after the header: binding, then the provenance
         # header (AISDLC-193; its commit is the test tree's own), then the body.
-        prov = generate_run_report._provenance_header("rfe")
+        # The CLI looks for the rubric checkout beside the artifacts directory, so the expected
+        # value is computed from the same workspace root.
+        prov = generate_run_report._provenance_header("rfe", workspace_root=os.path.dirname(art))
         commit = prov["pipeline_commit"] or "null"
         rubric = prov["rubric"]
         assert text.startswith(
@@ -1776,6 +1778,32 @@ class TestProvenanceHeader:
         assert report["provenance"]["rubric"]["repo"] is None
         assert "s3cr3t" not in yaml.safe_dump(report)
 
+    @pytest.mark.parametrize(
+        "override",
+        [
+            "https://user:CRED-1234?x@git.example.com/x/assess.git",
+            "https://user:CRED-1234#x@git.example.com/x/assess.git",
+            "https::https://user:CRED-1234?x@git.example.com/x/assess.git",
+            "https::https://user:CRED-1234#x@git.example.com/x/assess.git",
+        ],
+    )
+    def test_an_unescaped_delimiter_in_the_userinfo_does_not_record_the_credential(
+        self, art_dir, monkeypatch, override
+    ):
+        """An unescaped ``?`` or ``#`` in the userinfo ends the authority early: the netloc is
+        the userinfo itself, so the credential would be recorded as the host (fullsend review
+        on #256). Such a URL cannot be normalized safely, so no identity is recorded."""
+        self._one_rfe(art_dir)
+        monkeypatch.setenv(generate_run_report.RUBRIC_REPO_ENV, override)
+        report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
+        assert report["provenance"]["rubric"]["repo"] is None
+        assert "CRED-1234" not in yaml.safe_dump(report)
+
+    def test_a_numeric_port_and_a_bracketed_ipv6_literal_with_a_port_are_unchanged(self):
+        f = generate_run_report._repo_url
+        assert f("https://h.example:8443/r.git") == "https://h.example:8443/r.git"
+        assert f("https://[2001:db8::1]:8443/r.git") == "https://[2001:db8::1]:8443/r.git"
+
     def test_the_remote_helper_spelling_is_reduced_to_a_credential_free_url(
         self, art_dir, monkeypatch
     ):
@@ -1802,7 +1830,9 @@ class TestProvenanceHeader:
         f = generate_run_report._repo_url
         assert f("ssh://git@[2001:db8::1]/rubric.git") == "ssh://[2001:db8::1]/rubric.git"
         assert f("https://u:t@[2001:db8::1]:8443/r.git") == "https://[2001:db8::1]:8443/r.git"
-        assert f("https://u:t@h.example:notaport/r.git") == "https://h.example:notaport/r.git"
+        # A non-numeric port is what a colon-separated userinfo cut off by an unescaped
+        # delimiter looks like, so it costs the identity rather than being kept.
+        assert f("https://u:t@h.example:notaport/r.git") is None
         assert f("https://h.example:8443/r.git?x=1") == "https://h.example:8443/r.git"
 
     def test_scp_and_slug_spellings_are_kept_as_the_bootstrap_reads_them(self):

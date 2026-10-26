@@ -271,9 +271,11 @@ def _repo_url(value):
     (``TOKEN@host:path``), and a URL's query and fragment (``?access_token=...``), none of
     which identify a repository. A bare slug is turned into its GitHub URL first and goes
     through the same sanitization. The host keeps its brackets and port (the netloc is cut at
-    its last ``@``, never rebuilt), so an IPv6 literal or a malformed port cannot break the
-    report; a URL the parser rejects outright, or one with no host or with a second URL in
-    its path, is recorded as None. git's ``<transport>::<rest>`` spelling is reduced to
+    its last ``@``, never rebuilt), so an IPv6 literal cannot break the report; a URL the
+    parser rejects outright, one with a non-numeric port or an "@" in its query or fragment
+    (an unescaped ``?``/``#`` in the userinfo ended the authority early, leaving the
+    credential in the netloc), one with no host, or one with a second URL in its path, is
+    recorded as None. git's ``<transport>::<rest>`` spelling is reduced to
     ``<rest>``, and a value without a scheme separator is cut at its first query or fragment
     before anything else is read from it.
     """
@@ -293,6 +295,16 @@ def _repo_url(value):
             # A URL the parser rejects (an unmatched IPv6 bracket, say) cannot be made
             # credential-free, so no identity is recorded -- never the raw value, and never
             # an exception that would cost the whole report.
+            return None
+        try:
+            parts.port  # noqa: B018 -- reading it is the check: a non-numeric port raises
+        except ValueError:
+            # A colon-separated userinfo cut off from the host by an unescaped "?" or "#"
+            # leaves the credential in the netloc, and its tail reads as a non-numeric port.
+            return None
+        if "@" in parts.query or "@" in parts.fragment:
+            # The authority was ended early by an unescaped delimiter inside the userinfo,
+            # so the real host (and the rest of the credential) sits in the query/fragment.
             return None
         if not parts.netloc or "://" in parts.path or "@" in parts.path:
             # Nothing a host could be cut from, or a second URL (with whatever it carries)
