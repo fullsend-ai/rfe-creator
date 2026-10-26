@@ -18,6 +18,9 @@ modified copies of the real files.
 """
 
 import copy
+import os
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -228,3 +231,46 @@ class TestProviderCredentials:
     def test_builtin_providers_are_skipped(self):
         assert not _is_local("vertex-ai")
         assert _is_local("rfe-creator/jira-provider.yaml")
+
+
+class TestPreScriptRegistryFailure:
+    """``pre-rfe-creator.sh`` must fail when the type registry cannot be read.
+
+    The script used to run ``for t in $(python3 scripts/type_registry.py list)``: a
+    command substitution inside a ``for`` list does not trip ``set -e``, so a registry
+    failure ran the loop zero times, vendored nothing and still exited 0. The sandbox
+    (``RFE_SKIP_BOOTSTRAP=1``) then failed on every typed launch with no useful error at
+    the pre-script. Both cases run the real script against a temp checkout whose
+    ``scripts/`` is a copy of ``type_registry.py`` with no (or an empty) ``types/`` beside
+    it, which is the observed workspace shape.
+    """
+
+    PRE_SCRIPT = FULLSEND_DIR / "rfe-creator" / "pre-rfe-creator.sh"
+
+    @staticmethod
+    def _checkout(tmp_path, with_types_dir):
+        scripts = tmp_path / "scripts"
+        scripts.mkdir()
+        shutil.copy(REPO / "scripts" / "type_registry.py", scripts / "type_registry.py")
+        if with_types_dir:
+            (tmp_path / "types").mkdir()
+        return tmp_path
+
+    def _run(self, checkout):
+        env = {**os.environ, "TARGET_REPO_DIR": str(checkout)}
+        return subprocess.run(
+            ["bash", str(self.PRE_SCRIPT)], capture_output=True, text=True, env=env
+        )
+
+    def test_registry_error_aborts_with_its_message(self, tmp_path):
+        result = self._run(self._checkout(tmp_path, with_types_dir=False))
+        assert result.returncode != 0
+        assert "type root not found" in result.stderr
+        assert "pre-script: complete" not in result.stdout
+
+    def test_empty_registry_aborts_naming_the_likely_cause(self, tmp_path):
+        result = self._run(self._checkout(tmp_path, with_types_dir=True))
+        assert result.returncode != 0
+        assert "listed no types" in result.stderr
+        assert "no types/ directory beside scripts/" in result.stderr
+        assert "pre-script: complete" not in result.stdout
