@@ -2,10 +2,15 @@
 # Eval variant of rfe-creator.yaml: same prompt, scripts, image, policy, gates
 # (the validation loop's DONE gate, pre-script, post-script), but no Jira access
 # and the models under evaluation injected from outside. fullsend composes this
-# file over its base (internal/harness/compose.go): non-empty scalars override,
-# env.sandbox / env.runner merge with these keys winning, and providers /
-# openshell.profiles entries replace the base entry with the same provider name /
-# profile id. Entries cannot be removed, so "no Jira" is an override here.
+# file over its base (mergeBaseIntoChild in internal/harness/compose.go):
+# non-empty scalars override, env.sandbox / env.runner merge with these keys
+# winning, validation_loop merges field by field (child non-zero wins), and
+# providers / openshell.profiles are concatenated, base first and this file last.
+# The same-identity replacement happens later, at resolve time
+# (internal/cli/run.go): dedupResolvedProviders by provider name and
+# dedupResolvedProfiles by profile id, last wins, so the entries here replace the
+# base entries of the same name / id. Entries cannot be removed, so "no Jira" is
+# an override here.
 #
 # `model` is not set: `fullsend run --model` passes the model under evaluation.
 # tests/test_fullsend_eval_harness.py pins this file to the keys below.
@@ -18,6 +23,14 @@ base: rfe-creator.yaml
 # Below the eval's execution.timeout (10800 s); the full 26-case batch took
 # 105-110 minutes under claude-code.
 timeout_minutes: 170
+
+# timeout_minutes is a per-iteration budget. With the inherited max_iterations: 2,
+# a DONE-gate failure late in iteration 1 would start a second 170-minute
+# iteration, and 2 x 170 min exceeds the eval's 10800 s execution.timeout: the
+# harness would kill fullsend before the post-script copies the artifacts back.
+# validation_loop merges field by field, so this overrides only the count.
+validation_loop:
+  max_iterations: 1
 
 env:
   sandbox:

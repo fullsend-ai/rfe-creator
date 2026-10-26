@@ -1,8 +1,10 @@
 ---
-# Eval variant of jira-profile.yaml (rfe-creator-eval.yaml): same id, so it
-# replaces the read-only Jira profile, and no endpoints, so the sandbox has no
-# Atlassian egress at all. The credential stays declared because the eval
-# provider still supplies JIRA_TOKEN.
+# Eval variant of jira-profile.yaml (rfe-creator-eval.yaml): same id, and no
+# endpoints, so the sandbox has no Atlassian egress at all. fullsend's compose
+# step only concatenates the profile lists (base first); the read-only Jira
+# profile is dropped at resolve time (dedupResolvedProfiles in
+# internal/cli/run.go keeps the last entry per id), so this one wins. The
+# credential stays declared because the eval provider still supplies JIRA_TOKEN.
 id: jira
 display_name: Jira
 description: Jira

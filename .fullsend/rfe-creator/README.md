@@ -76,7 +76,12 @@ pre-script and post-script. It overrides only:
   host needs no Jira credentials;
 - the `jira` provider (`jira-provider-eval.yaml`, literal placeholder credential) and the
   `jira` OpenShell profile (`jira-profile-eval.yaml`, no endpoints: no Atlassian egress);
-- `timeout_minutes: 170`, below the eval's 10800 s `execution.timeout`.
+- `timeout_minutes: 170`, below the eval's 10800 s `execution.timeout`;
+- `validation_loop.max_iterations: 1` (the rest of the loop is inherited, as fullsend merges
+  `validation_loop` field by field). `timeout_minutes` is a per-iteration budget, so the
+  inherited `max_iterations: 2` could start a second 170-minute iteration after a late DONE-gate
+  failure, exceed `execution.timeout`, and get fullsend killed before the post-script copies the
+  artifacts back.
 
 The model comes from `fullsend run --model`. `tests/test_fullsend_eval_harness.py` pins the
 child to exactly these overrides. Run it locally, with no `JIRA_*` variables on the host, from
@@ -89,6 +94,11 @@ fullsend run rfe-creator-eval --fullsend-dir .fullsend --target-repo . --model c
 where `.env` holds the four Vertex variables above plus
 `FULLSEND_TASK="/rfe-speedrun --headless --dry-run --input batch.yaml --type rfe"` and
 `AGENT_EVAL_SUBAGENT_MODEL=claude-opus-4-6`.
+
+*Note*: both variants import the same OpenShell profile id `jira` and provider name `jira`
+with different content. A gateway that last ran the other variant can fail at
+"Importing profile: jira" because the persisted provider still references the old profile
+content. Run `openshell provider delete jira` before switching variants.
 
 ## Expected log lines
 

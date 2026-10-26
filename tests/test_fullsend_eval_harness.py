@@ -2,12 +2,15 @@
 """Pin the eval child harness (.fullsend/rfe-creator/rfe-creator-eval.yaml) to its base.
 
 The eval variant runs the production package (rfe-creator.yaml) with no Jira access and the
-models under evaluation injected from outside. fullsend composes a child over its base
-(internal/harness/compose.go): non-empty scalars override, ``env.sandbox`` / ``env.runner``
-merge with child keys winning, and ``providers`` / ``openshell.profiles`` entries replace the
-base entry with the same identity (provider ``name``, profile ``id``). The tests mirror only
-that much of the policy and assert the composed eval harness differs from the production file
-in exactly the keys the eval needs, so any other drift (a model, an image, a gate) fails CI.
+models under evaluation injected from outside. fullsend's compose step (``mergeBaseIntoChild``
+in internal/harness/compose.go) lets non-empty scalars override, merges ``env.sandbox`` /
+``env.runner`` with child keys winning, merges ``validation_loop`` field by field, and only
+concatenates ``providers`` and ``openshell.profiles`` (base first, child last). The
+same-identity replacement happens later, at resolve time (internal/cli/run.go:
+``dedupResolvedProviders`` by provider ``name``, ``dedupResolvedProfiles`` by profile ``id``,
+last wins). ``_compose`` below models the effective outcome of both steps and the tests assert
+the composed eval harness differs from the production file in exactly the keys the eval needs,
+so any other drift (a model, an image, a gate) fails CI.
 """
 
 from pathlib import Path
@@ -27,6 +30,7 @@ EVAL_JIRA_TOKEN = "eval-no-jira"
 # Every path at which the composed eval harness may differ from the production file.
 EXPECTED_DIFF = {
     "timeout_minutes",
+    "validation_loop.max_iterations",
     "env.sandbox.JIRA_SERVER",
     "env.sandbox.JIRA_USER",
     "env.sandbox.CLAUDE_CODE_SUBAGENT_MODEL",
@@ -67,6 +71,8 @@ def _compose(base, child):
                 section: {**base.get("env", {}).get(section, {}), **v.get(section, {})}
                 for section in set(base.get("env", {})) | set(v)
             }
+        elif k == "validation_loop":
+            out[k] = {**base.get(k, {}), **v}
         elif k == "providers":
             out[k] = _merge_list(base.get(k, []), v, "name")
         elif k == "openshell":
@@ -101,7 +107,14 @@ def test_eval_base_is_the_production_harness():
 
 def test_eval_sets_only_the_listed_keys():
     child = _load(EVAL)
-    assert set(child) == {"base", "timeout_minutes", "env", "openshell", "providers"}, (
+    assert set(child) == {
+        "base",
+        "timeout_minutes",
+        "validation_loop",
+        "env",
+        "openshell",
+        "providers",
+    }, (
         "the eval child inherits everything else from rfe-creator.yaml; `model` comes from "
         "`fullsend run --model`"
     )
@@ -134,6 +147,8 @@ def test_composed_lists_swap_only_the_jira_entries():
 def test_eval_values():
     child = _load(EVAL)
     assert child["timeout_minutes"] == 170
+    # timeout_minutes is per iteration: one iteration keeps the run inside execution.timeout.
+    assert child["validation_loop"] == {"max_iterations": 1}
     assert child["env"]["sandbox"] == {
         "JIRA_SERVER": EVAL_JIRA_SERVER,
         "JIRA_USER": EVAL_JIRA_USER,
