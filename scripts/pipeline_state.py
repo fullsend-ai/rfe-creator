@@ -48,6 +48,11 @@ STATE_FILE = "tmp/pipeline-state.yaml"
 WAVE_IDS_FILE = "tmp/pipeline-wave-ids.txt"
 # The resume check's output (skill step 4): the ids this run still has to process.
 PROCESS_IDS_FILE = "tmp/pipeline-process-ids.txt"
+# The SETUP fail-fast (AISDLC-194): the error prefix of its stubs and the run-level marker that
+# outlives them. generate_run_report mirrors both (test-pinned equal) rather than import this
+# module.
+SETUP_FAILED_PREFIX = "setup_failed:"
+SETUP_ERROR_FILE = "tmp/pipeline-setup-error.txt"
 # Epoch of the current wave's launch (AISDLC-33): the barrier hands it to check_review_progress
 # as --since so a review or assess result written before the launch — a previous reassess
 # cycle's late agent — cannot release the wave.
@@ -436,11 +441,14 @@ def _build_phase_config(pipeline_type, reassess_cycle=0):
         },
         "SETUP": {
             "type": "script",
-            # Fail-fast first (AISDLC-194): the registry's gate 3 runs before anything is
-            # bootstrapped or launched. Findings (exit 1) stop the run with the gate's
-            # one-line diagnosis -- see _fail_setup; a gate that cannot run (exit 2: its
-            # jsonschema dependency is not installed, a usage error) is a warning, not a
-            # verdict, and the run goes on as before.
+            # Fail-fast first (AISDLC-194): the registry's gate 3 runs at the top of SETUP,
+            # before this phase's own bootstrap and before the batch's first scoring wave.
+            # Not before everything: the skill's pre-loop bootstrap (step 3) and the FETCH
+            # wave precede SETUP, and a pin the bootstrap itself cannot read stops the run
+            # there, with the bootstrap's own message and no report. Findings (exit 1) stop
+            # the run with the gate's one-line diagnosis -- see _fail_setup; a gate that
+            # cannot run (exit 2: its jsonschema dependency is not installed, a usage error)
+            # is a warning, not a verdict, and the run goes on as before.
             "verify": f"python3 scripts/validate_types.py --verify --type {pipeline_type}",
             # Then run concurrently. Exit codes are logged but do not fail the phase:
             # the previous `a & b & wait` form returned wait's status, which is
@@ -1488,10 +1496,6 @@ def cmd_get_phase_config(args):
     print(yaml.dump(config, default_flow_style=False, sort_keys=False), end="")
 
 
-SETUP_FAILED_PREFIX = "setup_failed:"  # == generate_run_report.SETUP_FAILED_PREFIX (test-pinned)
-SETUP_ERROR_FILE = "tmp/pipeline-setup-error.txt"  # == generate_run_report.SETUP_ERROR_FILE
-
-
 def _run_setup_verify(cmd):
     """Run SETUP's ``verify`` gate. Returns the one-line diagnosis of a finding (exit 1),
     or None when the gate passed or could not run.
@@ -1524,7 +1528,7 @@ def _run_setup_verify(cmd):
 
 
 def _fail_setup(state, diagnosis):
-    """Stop the batch before any wave is launched and paid for.
+    """Stop the batch before any scoring wave is launched and paid for (FETCH already ran).
 
     Three records, so no reader depends on another: the finding in the state (advance
     routes SETUP to REPORT on it); the diagnosis in SETUP_ERROR_FILE (the run report reads

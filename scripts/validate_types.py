@@ -66,7 +66,8 @@ design-proposals/work-item-types-unified.md §3.3:
   Gate 3 — --verify --type T, pipeline SETUP fail-fast:
     * gate 1 for that one type, one-line diagnosis, non-zero exit.
       Wired into the pipeline's SETUP phase (pipeline_state.cmd_run_phase runs it
-      before the bootstrap; exit 1 stops the batch, exit 2 is a warning) -- AISDLC-194.
+      before SETUP's bootstrap, after the FETCH wave; exit 1 stops the batch, exit 2 is
+      a warning) -- AISDLC-194.
 
 Usage:
     python3 scripts/validate_types.py [--root DIR] [--extra-roots A:B]

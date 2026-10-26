@@ -8,6 +8,7 @@ import sys
 from types import SimpleNamespace
 
 import pytest
+import yaml
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 import type_registry  # noqa: E402
@@ -1635,6 +1636,51 @@ class TestStallEscalatedSplitParentIsSkipped:
         assert f"RFE-099: Skipping — {self.SETUP_FAILED} — left unprocessed" in result.stdout
         assert "Would create" not in result.stdout
         assert "Would update" not in result.stdout
+
+    def test_a_split_only_batch_under_a_setup_failure_still_finishes(self, art_dir, tmp_path):
+        """With no regular item the setup-skipped parent IS the batch: it must end through
+        _finish (exit 0, the report regenerated), not through the no-submittable error exit,
+        which left the final run report unwritten (fullsend review on #257)."""
+        self._batch(art_dir, self._parent_review(self.SETUP_FAILED), with_regular=False)
+        stdout, stderr, rc, calls = self._run(art_dir, tmp_path)
+        assert rc == 0, stderr
+        assert calls == []
+        assert f"RHAIRFE-1000: SKIP split-submit - {self.SETUP_FAILED}" in stdout
+        assert "No submittable" not in stderr
+        assert "Done." in stdout
+
+    def test_a_setup_failure_resets_every_affected_snapshot_entry(self, art_dir, tmp_path):
+        """Under the run-level marker the reset reaches every id the run touched, whatever
+        the plan holds: the skipped split parent, an existing item whose stub could not be
+        written and that has no review at all, and a later-batch id with no task yet. A
+        --reprocess fetch wrote all three as processed; the next fetch must select them
+        again (fullsend review on #257)."""
+        self._batch(art_dir, self._parent_review(None), with_regular=False)
+        _write(f"{art_dir}/rfe-tasks/RHAIRFE-2000.md", TASK_FM.format(rfe_id="RHAIRFE-2000"))
+        keys = ("RHAIRFE-1000", "RHAIRFE-2000", "RHAIRFE-3000")
+        snap_dir = f"{art_dir}/auto-fix-runs"
+        os.makedirs(snap_dir, exist_ok=True)
+        snap = f"{snap_dir}/issue-snapshot-20260101-000000.yaml"
+        with open(snap, "w") as f:
+            yaml.safe_dump({"issues": {k: {"hash": "h", "processed": True} for k in keys}}, f)
+        os.makedirs(tmp_path / "tmp", exist_ok=True)
+        (tmp_path / "tmp" / "pipeline-setup-error.txt").write_text(f"{self.SETUP_FAILED}\n")
+        (tmp_path / "tmp" / "pipeline-process-ids.txt").write_text("\n".join(keys) + "\n")
+        # Not a dry run: the snapshot is only written live. No Jira call happens -- the split
+        # parent is in no plan and every regular entry is a setup-failed SKIP.
+        env = _clean_env(**FAKE_CREDS)
+        cmd = ["python3", os.path.abspath(SCRIPT), "--artifacts-dir", art_dir]
+        result = subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert (
+            f"RHAIRFE-2000: Skipping — {self.SETUP_FAILED} — left unprocessed for the next run"
+            " (snapshot entry reset)"
+        ) in result.stdout
+        assert "no readable review" not in result.stdout  # the marker outranks the absent review
+        assert "Reset 3 setup-failed id(s) to unprocessed in the snapshot" in result.stdout
+        with open(snap) as f:
+            issues = yaml.safe_load(f)["issues"]
+        assert [issues[k]["processed"] for k in keys] == [False, False, False]
 
     def test_split_not_attempted_parent_is_skipped(self, art_dir, tmp_path):
         self._batch(art_dir, self._parent_review(self.STALLED))

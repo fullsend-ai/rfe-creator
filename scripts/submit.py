@@ -75,6 +75,7 @@ from generate_run_report import (  # noqa: E402
     SPLIT_HELD_PREFIX,
     SPLIT_NOT_ATTEMPTED_PREFIX,
     _parse_run_id,
+    _process_ids,
     _setup_error,
 )
 from generate_run_report import TYPE_CONFIG as REPORT_TYPE_CONFIG  # noqa: E402
@@ -1130,13 +1131,16 @@ def main():
         if _is_stall_escalation(error):
             stalled_split_parents[parent_key] = error
             del split_parent_data[parent_key]
-    # The pipeline's SETUP fail-fast (AISDLC-194): the type was broken before any wave ran,
-    # so no split tree in this workspace was reviewed in this run -- an Archived parent with
-    # local children is one an earlier run left behind. Its stub says so; the run-level
-    # marker (tmp/pipeline-setup-error.txt, read by _setup_error) says so for every parent,
-    # a stub that could not be written included. Neither is split-submitted nor marked
-    # processed (it is in no plan): the next run, on a fixed type, sees it again.
+    # The pipeline's SETUP fail-fast (AISDLC-194): the type was broken before any scoring
+    # wave ran, so no split tree in this workspace was reviewed in this run -- an Archived
+    # parent with local children is one an earlier run left behind. Its stub says so; the
+    # run-level marker (tmp/pipeline-setup-error.txt, read by _setup_error) says so for every
+    # parent, a stub that could not be written included. Neither is split-submitted nor marked
+    # processed (it is in no plan), and its snapshot entry is reset with the run's other
+    # setup-failed ids below: the next run, on a fixed type, sees it again. Kept apart, like
+    # the stalled parents, so a split-only batch still ends through _finish.
     setup_error = _setup_error()
+    setup_skipped_parents = {}
     for parent_key in sorted(split_parent_data):
         error = _review_error(args.artifacts_dir, parent_key, cfg) or ""
         reason = setup_error or (error if error.startswith(SETUP_FAILED_PREFIX) else None)
@@ -1145,6 +1149,7 @@ def main():
                 f"  {parent_key}: SKIP split-submit - {reason}; nothing was assessed this run,"
                 " left unprocessed for the next"
             )
+            setup_skipped_parents[parent_key] = reason
             del split_parent_data[parent_key]
     split_parents = list(split_parent_data.keys())
 
@@ -1450,35 +1455,51 @@ def main():
     # hold is on disk: a parent whose record failed is reported as split (the run is red and
     # its report is no bootstrap source for that parent), and the live snapshot must not say
     # otherwise.
-    if held_parents and not args.dry_run:
+    # A SETUP failure (AISDLC-194) resets the same way, for the same reason, every id the run
+    # touched: the split parents skipped above and, under the run-level marker, every id of
+    # tmp/pipeline-process-ids.txt -- the items of later batches included, which have no task
+    # or review yet and so no plan entry below to queue them. The current batch's items are
+    # queued again by their Phase 2 entries; a second reset of the same entry is a no-op.
+    setup_reset = set(setup_skipped_parents)
+    if setup_error:
+        setup_reset |= set(_process_ids())
+    if (held_parents or setup_reset) and not args.dry_run:
         held = sorted(held_parents)
+        reset_ids = sorted(set(held) | setup_reset)
         snap_dir = os.path.join(args.artifacts_dir, "auto-fix-runs")
-        snap_kwargs = {"reset_processed": held}
+        snap_kwargs = {"reset_processed": reset_ids}
         if cfg["snapshot_prefix"]:
             snap_kwargs["prefix"] = cfg["snapshot_prefix"]
         updated = update_snapshot_hashes({}, snap_dir, **snap_kwargs)
         if updated:
-            print(
-                f"  Reset {len(held)} held split parent(s) to unprocessed in the snapshot:"
-                f" {updated}"
-            )
+            if held:
+                print(
+                    f"  Reset {len(held)} held split parent(s) to unprocessed in the snapshot:"
+                    f" {updated}"
+                )
+            if setup_reset:
+                print(
+                    f"  Reset {len(setup_reset)} setup-failed id(s) to unprocessed in the"
+                    f" snapshot: {updated}"
+                )
         elif snapshot_files(
             snap_dir, **({"prefix": snap_kwargs["prefix"]} if "prefix" in snap_kwargs else {})
         ):
-            # A snapshot exists and the reset did not land: a held parent that entered
-            # processed: true stays so and no later fetch would select it. The hold itself
-            # (label, comment, review) stands; the run ends red through _finish.
+            # A snapshot exists and the reset did not land: a held parent (or a setup-failed
+            # id) that entered processed: true stays so and no later fetch would select it.
+            # The hold itself (label, comment, review) stands; the run ends red through _finish.
             print(
-                "Error: the snapshot could not be updated after holding the split of "
-                f"{', '.join(held)}; a held parent may stay processed and the next fetch would "
-                "not select it. Reset its snapshot entry by hand.",
+                "Error: the snapshot could not be updated after leaving "
+                f"{', '.join(reset_ids)} unprocessed; such an item may stay processed and the "
+                "next fetch would not select it. Reset its snapshot entry by hand.",
                 file=sys.stderr,
             )
-            for held_id in held:
+            for held_id in reset_ids:
                 submit_errors.append(
                     (
                         held_id,
-                        "split held, but the snapshot reset did not land: fix the entry by hand",
+                        "left unprocessed, but the snapshot reset did not land: fix the entry"
+                        " by hand",
                     )
                 )
         else:
@@ -1533,7 +1554,7 @@ def main():
         if not _has_jira_ancestor(data[id_field])
     )
     if not submittable:
-        if split_parents or stalled_split_parents or any_submitted:
+        if split_parents or stalled_split_parents or setup_skipped_parents or any_submitted:
             if cfg["has_index"]:
                 rebuild_index(args.artifacts_dir)
                 print(f"Done. Index rebuilt at {args.artifacts_dir}/rfes.md")
@@ -1596,6 +1617,49 @@ def main():
             except (ValidationError, Exception) as e:
                 print(f"Warning: cannot read review for {item_id}: {e}", file=sys.stderr)
 
+        stub_error = _review_error(args.artifacts_dir, item_id, cfg) or ""
+        setup_failed = setup_error or (
+            stub_error if stub_error.startswith(SETUP_FAILED_PREFIX) else ""
+        )
+        if setup_failed:
+            # The pipeline's SETUP fail-fast (AISDLC-194): the type was broken before any
+            # wave ran, so the item was neither assessed nor reviewed and whatever review it
+            # carries (the stub, or one restored from an earlier run when the stub could not
+            # be written -- the run-level marker covers that) says nothing about it. No Jira
+            # write -- not even the needs-attention label the stub shape carries, which
+            # would flag every item of the batch for a fault in the descriptor -- and left
+            # unprocessed like an absent review, with its snapshot entry reset: a
+            # --reprocess fetch writes an unchanged issue as processed, and the next ordinary
+            # fetch must select it again once the type is fixed (invariant 7, the hold rule).
+            # Checked BEFORE the absent-review skip: under the run-level marker an item whose
+            # stub could not be written and that has no restored review is setup-failed too,
+            # and must be reset like the rest, not merely left alone.
+            plan.append(
+                {
+                    id_field: item_id,
+                    "title": title,
+                    "is_existing": is_existing,
+                    "priority": priority,
+                    "size": size,
+                    "action": "SKIP",
+                    "labels": [],
+                    "remove_labels": [],
+                    "skip_reason": (
+                        f"{setup_failed} — left unprocessed for the next run"
+                        f"{' (snapshot entry reset)' if is_existing else ''}"
+                    ),
+                    "task_path": task_path,
+                    "jira_key": jira_key,
+                    "attn_reason": None,
+                    "original_labels": task_data.get("original_labels") or [],
+                    "auto_approve": False,
+                    "jira_status": None,
+                    "leave_unprocessed": True,
+                    "reset_processed": is_existing,
+                }
+            )
+            continue
+
         if review_path is None:
             # No review file at all means this item never finished the
             # pipeline — interrupted mid-review, or its review was cleared
@@ -1628,46 +1692,6 @@ def main():
                     "auto_approve": False,
                     "jira_status": None,
                     "leave_unprocessed": True,
-                }
-            )
-            continue
-
-        stub_error = _review_error(args.artifacts_dir, item_id, cfg) or ""
-        setup_failed = setup_error or (
-            stub_error if stub_error.startswith(SETUP_FAILED_PREFIX) else ""
-        )
-        if setup_failed:
-            # The pipeline's SETUP fail-fast (AISDLC-194): the type was broken before any
-            # wave ran, so the item was neither assessed nor reviewed and whatever review it
-            # carries (the stub, or one restored from an earlier run when the stub could not
-            # be written -- the run-level marker covers that) says nothing about it. No Jira
-            # write -- not even the needs-attention label the stub shape carries, which
-            # would flag every item of the batch for a fault in the descriptor -- and left
-            # unprocessed like an absent review, with its snapshot entry reset: a
-            # --reprocess fetch writes an unchanged issue as processed, and the next ordinary
-            # fetch must select it again once the type is fixed (invariant 7, the hold rule).
-            plan.append(
-                {
-                    id_field: item_id,
-                    "title": title,
-                    "is_existing": is_existing,
-                    "priority": priority,
-                    "size": size,
-                    "action": "SKIP",
-                    "labels": [],
-                    "remove_labels": [],
-                    "skip_reason": (
-                        f"{setup_failed} — left unprocessed for the next run"
-                        f"{' (snapshot entry reset)' if is_existing else ''}"
-                    ),
-                    "task_path": task_path,
-                    "jira_key": jira_key,
-                    "attn_reason": None,
-                    "original_labels": task_data.get("original_labels") or [],
-                    "auto_approve": False,
-                    "jira_status": None,
-                    "leave_unprocessed": True,
-                    "reset_processed": is_existing,
                 }
             )
             continue
