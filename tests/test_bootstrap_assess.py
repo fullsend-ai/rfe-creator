@@ -646,15 +646,22 @@ class TestCallersDeclareType:
             # "the working directory is the skill directory's third parent" made it compare
             # a path it had not computed, so a checkout ran the call to be safe.
             assert self.LAYOUT_SKIP in text, name
+            assert "types/_schema/type.schema.json" in self._layout_paragraph(text), name
             assert "Unless the working directory is that root" not in text, name
             assert "scripts/bootstrap.sh` is not in the working directory" not in text, name
 
     # The skip condition every guarded body opens with (#248): in a checkout the skill
     # directory is <cwd>/.claude/skills/<name>; in a marketplace install it is under the
-    # plugin cache, outside the project, so the call still runs there exactly once.
+    # plugin cache, outside the project, so the call still runs there exactly once. The
+    # eval harness symlinks the checkout's .claude/skills/ into its run directory without
+    # types/, so "under .claude/skills/" alone would skip the call there; the condition
+    # also requires this plugin's own types/_schema/type.schema.json in the working
+    # directory, so the run directory (and a project with a foreign scripts/ or types/)
+    # still reaches the bootstrap.
     LAYOUT_SKIP = (
-        "**Layout check.** Skip it when `${CLAUDE_SKILL_DIR}` is under the working "
-        "directory's `.claude/skills/` (a checkout). Otherwise run once"
+        "**Layout check.** Skip it only when `${CLAUDE_SKILL_DIR}` is under the working "
+        "directory's `.claude/skills/` and the working directory has "
+        "`types/_schema/type.schema.json` (a checkout). Otherwise run once"
     )
 
     @classmethod
