@@ -31,6 +31,16 @@ from snapshot_fetch import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _credentials_pass_the_preflight(monkeypatch):
+    """cmd_fetch proves the credentials with /myself before the search (2026-10-26, the
+    expired bot token). The fetch tests fake the search, not the network: the preflight is
+    satisfied here, and TestFetchAuthGuard overrides it to exercise the refusal."""
+    monkeypatch.setattr(
+        snapshot_fetch, "require_authenticated", lambda *a, **kw: {"accountId": "t"}
+    )
+
+
 class TestComputeContentHash:
     def test_none_input(self):
         """None/empty ADF → hash of empty bytes."""
@@ -1658,3 +1668,122 @@ class TestHardFilterJqlWrapperIsByteStable:
             "AND (labels not in (initiative-ignore, initiative-split-quarantine) "
             "OR labels is EMPTY)"
         )
+
+
+class TestFetchAuthGuard:
+    """An invalid or expired token must stop the fetch (exit 2, nothing written), never pass
+    for a run with nothing to do: Jira answers the search with HTTP 200 and no issues then."""
+
+    def _args(self, tmp_path, jql="project = RHAIRFE AND issuetype = 'Feature Request'"):
+        import argparse
+
+        return argparse.Namespace(
+            jql=jql,
+            type="rfe",
+            ids_file=str(tmp_path / "all-ids.txt"),
+            changed_file=str(tmp_path / "changed-ids.txt"),
+            limit=None,
+            reprocess=False,
+            data_dir=None,
+        )
+
+    @pytest.mark.parametrize("code", [401, 403])
+    def test_rejected_credentials_exit_2_before_any_read_or_write(
+        self, tmp_path, monkeypatch, capsys, code
+    ):
+        import urllib.error
+
+        import jira_utils
+
+        def boom(*a, **kw):
+            raise AssertionError("must not be reached when the credentials are rejected")
+
+        for name in ("fetch_all_issues", "find_previous_snapshot", "load_snapshot_from_dir"):
+            monkeypatch.setattr(f"snapshot_fetch.{name}", boom)
+        monkeypatch.setattr("snapshot_fetch.require_env", lambda: ("https://j.example", "bot", "t"))
+        snap_dir = str(tmp_path / "auto-fix-runs")
+        monkeypatch.setattr("snapshot_fetch.SNAPSHOT_DIR", snap_dir)
+
+        def rejected(server, path, user, token, body=None, method=None):
+            assert path == "/myself"
+            raise urllib.error.HTTPError(
+                f"{server}/rest/api/3{path}",
+                code,
+                "Unauthorized",
+                {"X-Seraph-LoginReason": "AUTHENTICATED_FAILED"},
+                None,
+            )
+
+        monkeypatch.setattr(jira_utils, "api_call", rejected)
+        monkeypatch.setattr(
+            snapshot_fetch, "require_authenticated", jira_utils.require_authenticated
+        )
+        args = self._args(tmp_path)
+        with pytest.raises(SystemExit) as exc:
+            cmd_fetch(args)
+        assert exc.value.code == 2
+        out, err = capsys.readouterr()
+        assert out == ""
+        assert err.startswith(
+            f"Error: Jira rejected the credentials for bot at https://j.example (HTTP {code}"
+            " from /rest/api/3/myself, AUTHENTICATED_FAILED): the API token is invalid or expired."
+        )
+        assert "returns HTTP 200 with no issues" in err and "Renew the token" in err
+        assert not os.path.exists(snap_dir)
+        assert not os.path.exists(args.ids_file) and not os.path.exists(args.changed_file)
+
+    def test_the_preflight_runs_after_the_jql_check_and_before_the_search(
+        self, tmp_path, monkeypatch
+    ):
+        calls = []
+        monkeypatch.setattr("snapshot_fetch.require_env", lambda: ("https://j.example", "bot", "t"))
+        monkeypatch.setattr(
+            snapshot_fetch,
+            "require_authenticated",
+            lambda s, u, t: calls.append(("myself", s, u)) or {"accountId": "x"},
+        )
+        monkeypatch.setattr(
+            "snapshot_fetch.fetch_all_issues", lambda *a, **kw: calls.append(("search",)) or {}
+        )
+        monkeypatch.setattr("snapshot_fetch.SNAPSHOT_DIR", str(tmp_path / "auto-fix-runs"))
+        cmd_fetch(self._args(tmp_path))
+        assert calls == [("myself", "https://j.example", "bot"), ("search",)]
+
+    def test_other_http_failures_and_an_unreachable_instance_propagate_unchanged(
+        self, tmp_path, monkeypatch
+    ):
+        import urllib.error
+
+        import jira_utils
+
+        monkeypatch.setattr("snapshot_fetch.require_env", lambda: ("https://j.example", "bot", "t"))
+        monkeypatch.setattr(
+            snapshot_fetch, "require_authenticated", jira_utils.require_authenticated
+        )
+        monkeypatch.setattr(
+            jira_utils,
+            "api_call",
+            lambda *a, **kw: (_ for _ in ()).throw(
+                urllib.error.HTTPError("u", 503, "Service Unavailable", {}, None)
+            ),
+        )
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            cmd_fetch(self._args(tmp_path))
+        assert exc.value.code == 503
+        monkeypatch.setattr(
+            jira_utils,
+            "api_call",
+            lambda *a, **kw: (_ for _ in ()).throw(urllib.error.URLError("name resolution")),
+        )
+        with pytest.raises(urllib.error.URLError):
+            cmd_fetch(self._args(tmp_path))
+
+    def test_require_authenticated_returns_the_identity(self, monkeypatch):
+        import jira_utils
+
+        monkeypatch.setattr(
+            jira_utils, "api_call", lambda s, p, u, t, body=None, method=None: {"accountId": "me"}
+        )
+        assert jira_utils.require_authenticated("https://j.example", "bot", "t") == {
+            "accountId": "me"
+        }

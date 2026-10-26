@@ -116,6 +116,36 @@ def get_myself(server, user, token):
     return api_call_with_retry(server, "/myself", user, token)
 
 
+class JiraAuthError(Exception):
+    """Jira rejected the credentials: the API token is invalid or expired."""
+
+
+def require_authenticated(server, user, token):
+    """Prove the credentials before a search, and say so plainly when they fail.
+
+    Jira Cloud answers a JQL search made with an invalid or expired token with HTTP 200,
+    ``X-Seraph-LoginReason: AUTHENTICATED_FAILED`` and an empty issue list -- the shape of a
+    run with nothing to do -- while ``/myself`` answers 401. Every scheduled run of
+    2026-10-26 went green on an expired bot token that way. Call this before the first
+    search: a 401 or 403 becomes JiraAuthError with the fix in the message; any other
+    failure (an unreachable instance, a 5xx) propagates as it always did from the search
+    itself. Returns the identity on success.
+    """
+    try:
+        return api_call(server, "/myself", user, token)
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            reason = e.headers.get("X-Seraph-LoginReason", "") if e.headers else ""
+            raise JiraAuthError(
+                f"Jira rejected the credentials for {user} at {server} (HTTP {e.code} from"
+                f" /rest/api/3/myself{', ' + reason if reason else ''}): the API token is"
+                " invalid or expired. A JQL search with these credentials returns HTTP 200"
+                " with no issues, which would pass for a run with nothing to do; nothing was"
+                " fetched. Renew the token (JIRA_TOKEN) and re-run."
+            ) from e
+        raise
+
+
 def search_issues(server, user, token, jql, fields):
     """GET /search/jql — single page (recovery-sized queries, <=50 results).
 
