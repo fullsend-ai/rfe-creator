@@ -267,7 +267,8 @@ def _repo_url(value):
     credential, so everything that can hold one is dropped before the value is recorded:
     the userinfo of a URL (``https://user:TOKEN@host/...``) and of the scp-like spelling
     (``TOKEN@host:path``), and a URL's query and fragment (``?access_token=...``), none of
-    which identify a repository. The host keeps its brackets and port (the netloc is cut at
+    which identify a repository. A bare slug is turned into its GitHub URL first and goes
+    through the same sanitization. The host keeps its brackets and port (the netloc is cut at
     its last ``@``, never rebuilt), so an IPv6 literal or a malformed port cannot break the
     report; a URL the parser rejects outright, or one with no host or with a second URL in
     its path, is recorded as None. git's ``<transport>::<url>`` spelling is reduced to the URL.
@@ -293,10 +294,17 @@ def _repo_url(value):
             return None
         netloc = parts.netloc.rsplit("@", 1)[-1]
         return urlunsplit((parts.scheme, netloc, parts.path, "", ""))
-    m = re.fullmatch(r"(?:[^@/:\s]+@)?([^/:\s]+):(.+)", value)
-    if m:  # scp-like git spelling: user (or a token in its place) dropped
+    if "@" in value or ":" in value:
+        # scp-like git spelling, [userinfo@]host:path. Everything up to the LAST "@" is
+        # userinfo (a token may itself hold a ":"), so only the part after it is kept.
+        candidate = value.rpartition("@")[2] if "@" in value else value
+        m = re.fullmatch(r"([^/:\s]+):(.+)", candidate)
+        if not m or "@" in m.group(2):
+            return None  # not safely normalizable: no identity rather than the raw value
         return f"{m.group(1)}:{m.group(2)}"
-    return f"https://github.com/{value}"
+    # A bare owner/repo slug is a GitHub repository; the URL it stands for is sanitized like
+    # any other, so a query or fragment riding on the slug is dropped too.
+    return _repo_url(f"https://github.com/{value}")
 
 
 def _rubric_provenance(entry_type, env=None, context_dir=None):

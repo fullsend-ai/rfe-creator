@@ -1823,6 +1823,43 @@ class TestProvenanceHeader:
         )
         assert generate_run_report._repo_url(None) is None
 
+    @pytest.mark.parametrize(
+        ("override", "recorded", "secret"),
+        [
+            ("acme/assess?access_token=SECRET#PRIVATE", "https://github.com/acme/assess", "SECRET"),
+            (
+                "user:TOKEN@host.example:acme/assess.git",
+                "host.example:acme/assess.git",
+                "TOKEN",
+            ),
+            ("TOKEN@host.example:acme/assess.git", "host.example:acme/assess.git", "TOKEN"),
+        ],
+    )
+    def test_slug_and_scp_credentials_are_not_recorded_in_the_whole_report(
+        self, art_dir, monkeypatch, override, recorded, secret
+    ):
+        """A slug may carry a query or fragment, and an scp userinfo may hold a colon; neither
+        may reach the report (fullsend review on #256)."""
+        self._one_rfe(art_dir)
+        monkeypatch.setenv(generate_run_report.RUBRIC_REPO_ENV, override)
+        report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
+        assert report["provenance"]["rubric"]["repo"] == recorded
+        dumped = yaml.safe_dump(report)
+        assert secret not in dumped
+        assert "PRIVATE" not in dumped
+
+    def test_a_slug_without_a_credential_is_unchanged(self):
+        f = generate_run_report._repo_url
+        assert f("acme/assess") == "https://github.com/acme/assess"
+        assert f("acme/assess.git") == "https://github.com/acme/assess.git"
+
+    def test_an_scp_form_with_an_at_sign_in_the_path_is_none(self):
+        f = generate_run_report._repo_url
+        assert f("git@host.example:acme/as@sess.git") is None
+        assert f("host.example:acme/as@sess.git") is None
+        assert f("host.example:") is None  # empty path
+        assert f("@host.example") is None  # no path at all
+
     def test_a_plugin_directory_inside_another_repo_reports_no_commit(
         self, art_dir, tmp_path, monkeypatch
     ):
