@@ -1764,6 +1764,18 @@ class TestProvenanceHeader:
         assert report["provenance"]["rubric"]["repo"] == "git.example.com:x/assess.git"
         assert "scp-s3cr3t" not in yaml.safe_dump(report)
 
+    def test_a_url_the_parser_rejects_is_recorded_as_none_not_raised(self, art_dir, monkeypatch):
+        """urlsplit raises on an unmatched IPv6 bracket; that must cost the identity, not the
+        report, and the raw (possibly credential-bearing) value must not be written instead."""
+        assert generate_run_report._repo_url("https://u:t@[2001:db8::1/r.git") is None
+        self._one_rfe(art_dir)
+        monkeypatch.setenv(
+            generate_run_report.RUBRIC_REPO_ENV, "https://u:s3cr3t@[2001:db8::1/r.git"
+        )
+        report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
+        assert report["provenance"]["rubric"]["repo"] is None
+        assert "s3cr3t" not in yaml.safe_dump(report)
+
     def test_ipv6_hosts_ports_and_malformed_ports_survive_the_stripping(self):
         f = generate_run_report._repo_url
         assert f("ssh://git@[2001:db8::1]/rubric.git") == "ssh://[2001:db8::1]/rubric.git"

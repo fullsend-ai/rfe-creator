@@ -269,12 +269,18 @@ def _repo_url(value):
     (``TOKEN@host:path``), and a URL's query and fragment (``?access_token=...``), none of
     which identify a repository. The host keeps its brackets and port (the netloc is cut at
     its last ``@``, never rebuilt), so an IPv6 literal or a malformed port cannot break the
-    report.
+    report; a URL the parser rejects outright is recorded as None.
     """
     if not value:
         return value
     if "://" in value:
-        parts = urlsplit(value)
+        try:
+            parts = urlsplit(value)
+        except ValueError:
+            # A URL the parser rejects (an unmatched IPv6 bracket, say) cannot be made
+            # credential-free, so no identity is recorded -- never the raw value, and never
+            # an exception that would cost the whole report.
+            return None
         netloc = parts.netloc.rsplit("@", 1)[-1]
         return urlunsplit((parts.scheme, netloc, parts.path, "", ""))
     m = re.fullmatch(r"(?:[^@/:\s]+@)?([^/:\s]+):(.+)", value)
