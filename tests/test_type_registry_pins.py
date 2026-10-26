@@ -2319,12 +2319,14 @@ class TestSkillLayer:
         assert scorer["id"] == companion["id"] == "RHAIRFE-1234"
         assert scorer["subagent_type"] == cfg["subagent_type"]
         assert scorer["prompt_file"] == cfg["prompt"] == f"{SKELETON_DIR}/assess-agent.md"
-        # AISDLC-453: the listing shows the launch block once (common_vars, {ID} left in) and
-        # each agent's own lines; a phase var repeating a launch-block line stays in the block
+        # AISDLC-453: the listing shows the id-free launch lines once (common_vars, no {ID}) and
+        # each agent's own lines (the id-bearing launch lines rendered, then the phase's); a
+        # phase var repeating a launch-block line stays in the block
         block = launch(ctx.t, "auto-fix")
         _, own = pipeline_state._split_vars(block, cfg["vars"], "RHAIRFE-1234")
         rendered = dict(line.split("=", 1) for line in own)
         assert "PROMPT_PATH" in cfg["vars"] and "PROMPT_PATH" not in rendered
+        assert "{ID}" not in example["common_vars"]
         shown = dict(
             line.split("=", 1) for line in scorer["vars"].strip().splitlines() if "=" in line
         )

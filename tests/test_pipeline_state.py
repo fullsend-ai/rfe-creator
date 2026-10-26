@@ -2640,8 +2640,11 @@ class TestLaunchWaveFile:
     listing that carries the launch block once, so a large wave fits in one tool result."""
 
     # The printed listing of a 50-agent ASSESS wave (25 ids × scorer + feasibility). The full
-    # form was ~125 KB and the harness truncated it to a file the model then grepped.
-    LISTING_BOUND = 20_000
+    # form was ~125 KB and the harness truncated it to a file the model then grepped. The
+    # id-bearing launch lines (2 for rfe, 3 for initiative) are rendered per agent so the shared
+    # block carries no placeholder; that puts the initiative listing at ~29.5 KB, still one tool
+    # result.
+    LISTING_BOUND = 30_000
 
     CASES = [
         ("rfe", "RHAIRFE", 50, "rfe-scorer"),
@@ -2681,8 +2684,14 @@ class TestLaunchWaveFile:
         assert len(raw) < self.LISTING_BOUND, len(raw)
 
         launch_block = ps.type_registry.launch_vars(ps._TYPES.get(pipeline_type), "auto-fix")
-        assert result["common_vars"] == "".join(f"{k}={v}\n" for k, v in launch_block)
-        assert "{ID}" in result["common_vars"]  # left for the orchestrator to substitute
+        block_lines = [f"{k}={v}" for k, v in launch_block]
+        id_lines = [ln for ln in block_lines if "{ID}" in ln]
+        assert id_lines  # the launch block does carry id-bearing lines
+        # the shared block has no placeholder: the id-bearing lines moved to each agent
+        assert "{ID}" not in result["common_vars"]
+        assert result["common_vars"].splitlines() == [
+            ln for ln in block_lines if "{ID}" not in ln
+        ]
         assert raw.count("STAGE=auto-fix") == 1  # the launch block is printed once
 
         with open(ps.LAUNCH_WAVE_FILE) as f:
@@ -2707,10 +2716,14 @@ class TestLaunchWaveFile:
                     assert "subagent_type" not in entry and "subagent_type" not in short
                 # the file holds the agent's full vars, exactly the pre-AISDLC-453 rendering
                 assert entry["vars"] == ps._render_vars(launch_block, cfg["vars"], rid)
-                # and the listing reassembles to it: common_vars with {ID} substituted, then
-                # the agent's own lines (already substituted)
+                # and the listing reassembles to it verbatim (common_vars + vars, nothing
+                # substituted): the same set of lines — the id-bearing launch lines change
+                # position, they come with the agent's own lines
                 assert "{ID}" not in short["vars"] and "STAGE=" not in short["vars"]
-                assert result["common_vars"].replace("{ID}", rid) + short["vars"] == (entry["vars"])
+                reassembled = (result["common_vars"] + short["vars"]).splitlines()
+                assert sorted(reassembled) == sorted(entry["vars"].splitlines())
+                for ln in id_lines:
+                    assert ln.replace("{ID}", rid) in short["vars"].splitlines()
         # the alignment companion (initiative) was skipped: no parent key, poll stub written
         assert all("alignment" not in a["prompt_file"] for a in wave["agents"])
 
@@ -2741,9 +2754,8 @@ class TestLaunchWaveFile:
             block = _yaml.safe_load(one.stdout)
             assert block == {"agent": n, "agent_count": 50, **wave["agents"][n - 1]}
             short = result["agents"][n - 1]
-            assert (
-                block["vars"]
-                == result["common_vars"].replace("{ID}", short["id"]) + (short["vars"])
+            assert sorted((result["common_vars"] + short["vars"]).splitlines()) == sorted(
+                block["vars"].splitlines()
             )
         assert "vars: |" in read_launch("--agent", "1").stdout
         for bad in ("0", "51"):

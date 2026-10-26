@@ -272,8 +272,8 @@ def _launch_block(state):
 _LAUNCH_BLOCKS = {}
 
 
-def _split_vars(launch_block, phase_vars, rfe_id):
-    """``(common, own)`` ``KEY=value`` line lists: the launch block with ``{ID}`` left in, and
+def _collect_vars(launch_block, phase_vars, rfe_id):
+    """``(launch, phase)`` ``KEY=value`` line lists: the launch block with ``{ID}`` left in, and
     the phase's own values with ``{ID}`` substituted. A key defined twice with two values (a
     dimension shadowing a launch-block line, two dimensions that normalise to one stem) is an
     error, never two lines the agent has to pick between; a phase var that repeats a
@@ -283,23 +283,34 @@ def _split_vars(launch_block, phase_vars, rfe_id):
         if key in seen:
             raise ValueError(f"duplicate launch var(s) for {rfe_id}: {key}")
         seen[key] = value
-    common = [f"{k}={v}" for k, v in launch_block]
-    own = []
+    launch = [f"{k}={v}" for k, v in launch_block]
+    phase = []
     for key, value in phase_vars.items():
         if key in seen:
             if seen[key] != value:
                 raise ValueError(f"duplicate launch var(s) for {rfe_id}: {key}")
             continue
         seen[key] = value
-        own.append(f"{key}={value.replace('{ID}', rfe_id)}")
+        phase.append(f"{key}={value.replace('{ID}', rfe_id)}")
+    return launch, phase
+
+
+def _split_vars(launch_block, phase_vars, rfe_id):
+    """``(common, own)`` ``KEY=value`` line lists for the printed listing. ``common`` is the
+    launch-block lines with no ``{ID}`` — identical for every agent, printed once per wave, so
+    the orchestrator never substitutes anything. ``own`` is the agent's lines: the launch-block
+    lines that carry ``{ID}`` rendered with the id, then the phase's own values."""
+    launch, phase = _collect_vars(launch_block, phase_vars, rfe_id)
+    common = [ln for ln in launch if "{ID}" not in ln]
+    own = [ln.replace("{ID}", rfe_id) for ln in launch if "{ID}" in ln] + phase
     return common, own
 
 
 def _render_vars(launch_block, phase_vars, rfe_id):
     """``KEY=value`` lines: the launch block, then the phase's values; ``{ID}`` substituted
-    (the agent's full vars — see ``_split_vars``)."""
-    common, own = _split_vars(launch_block, phase_vars, rfe_id)
-    return "\n".join([ln.replace("{ID}", rfe_id) for ln in common] + own) + "\n"
+    (the agent's full vars, as written to the launch-wave file — see ``_collect_vars``)."""
+    launch, phase = _collect_vars(launch_block, phase_vars, rfe_id)
+    return "\n".join([ln.replace("{ID}", rfe_id) for ln in launch] + phase) + "\n"
 
 
 # ---------- Conditional parallel agent helpers ----------
@@ -1650,14 +1661,15 @@ def cmd_next_action(args):
             # Build agent entries. Every agent's vars are the type's launch block (the typed
             # literals the skeletons and typed files read — design §8.3, PR-5b) followed by
             # the phase's own values, with {ID} substituted throughout. The full blocks go to
-            # LAUNCH_WAVE_FILE; the printed listing carries the launch block once (common_vars,
-            # {ID} left in) and each agent's own lines, so a 50-agent wave fits in one tool
-            # result (AISDLC-453).
+            # LAUNCH_WAVE_FILE; the printed listing carries the launch-block lines that do not
+            # depend on the id once (common_vars, no placeholder) and each agent's own lines
+            # (the id-bearing launch lines, rendered, then the phase's), so a 50-agent wave
+            # fits in one tool result (AISDLC-453) and the orchestrator substitutes nothing.
             launch_block = _launch_block(state)
-            agents, listing = [], []
+            agents, listing, common = [], [], []
 
             def add_agent(agent_config, rfe_id):
-                _, own = _split_vars(launch_block, agent_config.get("vars", {}), rfe_id)
+                common[:], own = _split_vars(launch_block, agent_config.get("vars", {}), rfe_id)
                 full, short = {"id": rfe_id}, {"id": rfe_id}
                 for entry in (full, short):
                     if agent_config.get("subagent_type"):
@@ -1697,7 +1709,7 @@ def cmd_next_action(args):
                 "message": msg,
                 "agents_file": LAUNCH_WAVE_FILE,
                 "agent_count": len(agents),
-                "common_vars": "".join(f"{k}={v}\n" for k, v in launch_block),
+                "common_vars": "".join(f"{ln}\n" for ln in common),
                 "agents": listing,
             }
             print(
@@ -2370,7 +2382,7 @@ Resume the dispatch loop:
   3. If action == run_script: python3 scripts/pipeline_state.py run-phase, then go to 1
   4. If action == launch_wave:
      a. For each agent in agents: launch background Agent(prompt=common_vars \
-with {ID} replaced by the agent's id + the agent's vars \
++ the agent's vars \
 + "\\n\\nRead " + prompt_file + " and follow all instructions exactly.", \
 subagent_type if present). Every agent's full block is in agents_file \
 (tmp/pipeline-launch-wave.yaml); recover a lost listing with \

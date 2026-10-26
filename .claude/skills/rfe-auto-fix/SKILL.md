@@ -127,8 +127,8 @@ Parse the YAML output for: `action`, `phase`, `message`, `agents_file`, `agent_c
 **run_script**: Run `python3 scripts/pipeline_state.py run-phase`. Go to step 1.
 
 **launch_wave**: For each agent in the `agents` list:
-- Build prompt: `common_vars` with every `{ID}` replaced by the agent's `id`, then the agent's `vars`, then `"\n\nRead <prompt_file> and follow all instructions exactly."`
-- `common_vars` is the type's launch block, printed once per wave; `vars` are the agent's own pre-rendered KEY=VALUE lines, with `{ID}` already substituted.
+- Build prompt: `common_vars`, then the agent's `vars`, then `"\n\nRead <prompt_file> and follow all instructions exactly."`, verbatim — no substitution.
+- `common_vars` is the part of the type's launch block that is the same for every agent, printed once per wave; `vars` are the agent's own pre-rendered KEY=VALUE lines (the launch-block lines that carry the agent's id, then the phase's own), with the id already substituted.
 - Launch as background Agent (with `subagent_type` if present).
 - Every agent's full block is in `agents_file`. Recover a lost or compacted listing with `python3 scripts/state.py read-launch tmp/pipeline-launch-wave.yaml --agent <N>` (N = 1..`agent_count`, the agent's position in `agents`; omit `--agent` for the whole file), never by searching transcript or artifact files.
 
@@ -156,19 +156,21 @@ common_vars: |
   …
   PROMPT_PATH=.context/assess-rfe/skills/assess-rfe/scripts/agent_prompt.md
   …
-  DIMENSION_FEASIBILITY_FILE=artifacts/rfe-reviews/{ID}-feasibility.md
-  …
 agents:
   - id: RHAIRFE-1234
     subagent_type: rfe-scorer
     prompt_file: .claude/skills/rfe-review/prompts/assess-agent.md
     vars: |
+      DIMENSION_FEASIBILITY_FILE=artifacts/rfe-reviews/RHAIRFE-1234-feasibility.md
+      DIMENSION_FILES=feasibility: artifacts/rfe-reviews/RHAIRFE-1234-feasibility.md
       KEY=RHAIRFE-1234
       DATA_FILE=tmp/rfe-assess/single/RHAIRFE-1234.md
       RUN_DIR=tmp/rfe-assess/single
   - id: RHAIRFE-1234
     prompt_file: types/rfe/dimensions/feasibility.md
     vars: |
+      DIMENSION_FEASIBILITY_FILE=artifacts/rfe-reviews/RHAIRFE-1234-feasibility.md
+      DIMENSION_FILES=feasibility: artifacts/rfe-reviews/RHAIRFE-1234-feasibility.md
       ID=RHAIRFE-1234
 ```
 
