@@ -10,6 +10,7 @@ import sys
 from datetime import datetime, timezone
 from functools import partial
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 import yaml
 
@@ -238,10 +239,10 @@ def _head_of_checkout(root):
         return None
     if result.returncode != 0:
         return None
-    lines = result.stdout.split()
+    lines = [ln for ln in result.stdout.splitlines() if ln.strip()]
     if len(lines) != 2:
         return None
-    toplevel, sha = lines
+    toplevel, sha = lines[0].strip(), lines[1].strip()  # the path may contain spaces
     try:
         if Path(toplevel).resolve() != root:
             return None
@@ -259,8 +260,21 @@ def _plugin_commit():
 
 
 def _repo_url(value):
-    """bootstrap.sh's spelling rule: a bare ``owner/repo`` slug is a GitHub repository."""
-    if not value or "://" in value or re.search(r"@[^:]+:", value):
+    """bootstrap.sh's spelling rule: a bare ``owner/repo`` slug is a GitHub repository.
+    A URL's userinfo (``https://user:TOKEN@host/...``, the way an ad-hoc override may carry
+    a credential) is dropped before the value reaches a report that is pushed to a results
+    repository; the host and path identify the rubric, the credential never did."""
+    if not value:
+        return value
+    if "://" in value:
+        parts = urlsplit(value)
+        if parts.username is not None or parts.password is not None:
+            host = parts.hostname or ""
+            if parts.port:
+                host = f"{host}:{parts.port}"
+            value = urlunsplit((parts.scheme, host, parts.path, parts.query, parts.fragment))
+        return value
+    if re.search(r"@[^:]+:", value):  # scp-like git spelling, no secret in it
         return value
     return f"https://github.com/{value}"
 

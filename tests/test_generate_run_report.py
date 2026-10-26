@@ -1719,6 +1719,40 @@ class TestProvenanceHeader:
             is None
         )
 
+    def test_a_checkout_path_with_spaces_still_yields_its_head(
+        self, art_dir, tmp_path, monkeypatch
+    ):
+        """git prints the top level and the SHA on two lines; a path with spaces must not be
+        split into more tokens (fullsend review on #256)."""
+        self._one_rfe(art_dir)
+        checkout = tmp_path / "with space" / ".context" / "assess-rfe"
+        head = self._git_repo(checkout)
+        monkeypatch.setattr(generate_run_report, "ASSESS_CONTEXT_DIR", str(checkout))
+        rubric = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")["provenance"]["rubric"]
+        assert rubric["commit"] == head
+
+    def test_a_credential_in_the_repo_override_is_not_recorded(self, art_dir, monkeypatch):
+        self._one_rfe(art_dir)
+        monkeypatch.setenv(
+            generate_run_report.RUBRIC_REPO_ENV,
+            "https://user:s3cr3t-token@git.example.com/x/assess.git",
+        )
+        report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
+        assert report["provenance"]["rubric"]["repo"] == "https://git.example.com/x/assess.git"
+        assert "s3cr3t" not in yaml.safe_dump(report)
+
+    def test_scp_and_slug_spellings_are_kept_as_the_bootstrap_reads_them(self):
+        assert (
+            generate_run_report._repo_url("git@github.com:acme/assess.git")
+            == "git@github.com:acme/assess.git"
+        )
+        assert generate_run_report._repo_url("acme/assess") == "https://github.com/acme/assess"
+        assert (
+            generate_run_report._repo_url("https://h.example:8443/r.git")
+            == "https://h.example:8443/r.git"
+        )
+        assert generate_run_report._repo_url(None) is None
+
     def test_a_plugin_directory_inside_another_repo_reports_no_commit(
         self, art_dir, tmp_path, monkeypatch
     ):
