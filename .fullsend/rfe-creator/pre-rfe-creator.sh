@@ -13,7 +13,7 @@ cd -- "${TARGET_REPO_DIR}"
 # not trip `set -e`, so a registry failure would otherwise run the loop zero
 # times and let the script exit 0 with nothing vendored.
 types="$(python3 scripts/type_registry.py list)"
-if [ -z "${types}" ]; then
+if [[ -z "${types}" ]]; then
   echo "ERROR: the type registry listed no types in ${TARGET_REPO_DIR}" >&2
   echo "       (likely cause: no types/ directory beside scripts/)" >&2
   exit 1
