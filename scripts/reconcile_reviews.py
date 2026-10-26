@@ -4,8 +4,9 @@
 Two deterministic repairs that close the gaps the reassess loop leaves open:
 
 1. **Re-apply saved review state.** REASSESS_RESTORE re-applies ``before_score``,
-   ``before_scores``, ``auto_revised`` and the revision history after a re-review
-   and keeps the state file. A review agent that finishes late — the same wave's
+   ``before_scores``, ``auto_revised``, its ``auto_revised_cycle`` pass marker (only
+   the value a revise agent wrote, never lowered) and the revision history after a
+   re-review and keeps the state file. A review agent that finishes late — the same wave's
    agent writing a second time, or a previous cycle's agent — can rewrite the
    review afterwards and drop them again (seen twice on 2026-09-17). Restoring
    once more here, after every wave of the batch is over, makes the final review

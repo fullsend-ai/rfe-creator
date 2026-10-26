@@ -341,6 +341,56 @@ class TestInterruptedRevisionHold:
         assert "initiative-needs-attention" not in issue["fields"]["labels"]
 
 
+class TestSecondPassInterruptedHold:
+    """AISDLC-275 on the Initiative type: a second revise pass cut off after its body edit
+    (``auto_revised`` already true from pass 1, ``auto_revised_cycle`` behind the pass the
+    pipeline launched) is held under --hold-interrupted like a first-pass interruption; a
+    completed second pass is published. Mechanics: tests/test_submit_integration.py."""
+
+    ORIGINAL = TestInterruptedRevisionHold.ORIGINAL
+    REWRITE = TestInterruptedRevisionHold.REWRITE
+    _desc_text = staticmethod(TestInterruptedRevisionHold._desc_text)
+
+    def _seed(self, art_dir, jira, marker):
+        TestInterruptedRevisionHold._seed(self, art_dir, jira)
+        review = f"{art_dir}/initiative-reviews/RHOAIENG-1234-review.md"
+        with open(review) as f:
+            text = f.read()
+        text = text.replace("auto_revised: false", "auto_revised: true", 1)
+        text = text.replace(
+            "needs_attention:", f"auto_revised_cycle: {marker}\nneeds_attention:", 1
+        )
+        _write(review, text)
+        _write(
+            f"{art_dir}/tmp/pipeline-state.yaml",
+            "phase: DONE\ntype: initiative\nreassess_cycle: 2\n"
+            "revise_passes:\n  RHOAIENG-1234: 1\n",
+        )
+
+    def test_interrupted_second_pass_is_held(self, art_dir, jira):
+        self._seed(art_dir, jira, marker=0)
+        r = _run_submit(art_dir, jira.url, ["--hold-interrupted"])
+        assert r.returncode == 0, r.stderr
+        assert "revision interrupted (revise pass 1 never completed)" in r.stdout
+        assert "RHOAIENG-1234: Updated" not in r.stdout
+        issue = jira.get("RHOAIENG-1234")
+        assert "Original content." in self._desc_text(issue)
+        assert issue["fields"]["labels"] == ["initiative-needs-attention"]
+        fm = _read_frontmatter(f"{art_dir}/initiative-reviews/RHOAIENG-1234-review.md")
+        assert fm["pass"] is False
+        assert fm["error"].startswith("revision_interrupted:")
+        assert fm["needs_attention"] is True
+
+    def test_completed_second_pass_is_published(self, art_dir, jira):
+        self._seed(art_dir, jira, marker=1)
+        r = _run_submit(art_dir, jira.url, ["--hold-interrupted"])
+        assert r.returncode == 0, r.stderr
+        assert "RHOAIENG-1234: Updated" in r.stdout
+        issue = jira.get("RHOAIENG-1234")
+        assert "Rewritten" in self._desc_text(issue)
+        assert "initiative-auto-revised" in issue["fields"]["labels"]
+
+
 class TestConflictDetection:
     def test_conflict_prevents_update(self, art_dir, jira):
         """Jira description differs from original → skip, no PUT."""

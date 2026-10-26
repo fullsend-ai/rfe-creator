@@ -274,7 +274,8 @@ def _task_schema(desc):
 def _review_schema(desc):
     """The ``<type>-review`` schema. Field order: id, local_id, type, tracker_ref, the shared
     review fields (scores / before_scores nested over ``schema.review.score_fields``; the
-    needs_attention_source / needs_attention_dimension pair closes them), then
+    needs_attention_source / needs_attention_dimension pair and auto_revised_cycle close
+    them), then
     the type's extra fields appended last (initiative: alignment, whose default is the
     string "not_assessed" so an item with no RHAISTRAT parent reads the same here as in
     its alignment file)."""
@@ -316,6 +317,12 @@ def _review_schema(desc):
                 "required": False,
                 "enum": list(desc.score_fields),
             },
+            # AISDLC-275: the revise pass whose agent completed (the reassess cycle it ran
+            # in: 0 for REVISE, the cycle for REASSESS_REVISE), written by the revise agent
+            # with auto_revised=true. submit.py holds a changed body whose marker is behind
+            # the last pass the pipeline launched for the item. No `default` key: a review
+            # that never sets it stays byte-identical.
+            "auto_revised_cycle": {"type": "int", "required": False},
         }
     )
     schema.update(_extra_fields(desc, "schema.review.extra_fields"))

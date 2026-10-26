@@ -236,6 +236,31 @@ def test_keep_state_leaves_the_state_file_for_the_final_reconcile(workdir):
     assert rr.main(["--type", "rfe", "--keep-state", item_id]) == 0
 
 
+@pytest.mark.parametrize("type_name,item_id,id_field,reviews_dir", [RFE, INIT])
+def test_carries_only_the_agent_written_pass_marker(
+    workdir, type_name, item_id, id_field, reviews_dir
+):
+    """AISDLC-275: the reconcile re-applies the saved auto_revised_cycle onto a late rewrite,
+    never lowers a later pass's marker, and never makes one up."""
+    scores = RFE_ZERO_WHY if type_name == "rfe" else INIT_ZERO_SCOPE
+    state = {"before_score": 6, "auto_revised": True, "auto_revised_cycle": 0}
+    with open(prs.state_path(item_id), "w") as f:
+        json.dump(state, f)
+    _write(prs.review_path(item_id), _review(id_field, item_id, scores, auto_revised=False))
+    rr.reconcile([item_id], type_name, cycles=1, keep_state=True)
+    assert _fm(item_id)["auto_revised_cycle"] == 0
+    # Pass 1 completes after the restore: the final reconcile keeps its marker.
+    _write(prs.review_path(item_id), _review(id_field, item_id, scores, auto_revised_cycle=1))
+    rr.reconcile([item_id], type_name, cycles=1)
+    assert _fm(item_id)["auto_revised_cycle"] == 1
+    # A state file without a marker (an older run's) adds none.
+    with open(prs.state_path(item_id), "w") as f:
+        json.dump({"before_score": 6, "auto_revised": True}, f)
+    _write(prs.review_path(item_id), _review(id_field, item_id, scores))
+    rr.reconcile([item_id], type_name, cycles=1)
+    assert "auto_revised_cycle" not in _fm(item_id)
+
+
 def test_all_reconciles_every_id_with_a_state_file_under_an_artifacts_root(tmp_path, capsys):
     root = tmp_path / "elsewhere"
     reviews = root / "rfe-reviews"

@@ -16,7 +16,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
 import preserve_review_state as prs  # noqa: E402
-from artifact_utils import read_frontmatter  # noqa: E402
+from artifact_utils import read_frontmatter, update_frontmatter  # noqa: E402
 
 RFE_SCORES = "what: 2\n  why: 0\n  open_to_how: 1\n  not_a_task: 1\n  right_sized: 2"
 INIT_SCORES = "what: 2\n  why: 0\n  scope: 1\n  open_to_how: 1\n  right_sized: 2"
@@ -227,3 +227,71 @@ def test_cli_keep_state_flag(workdir, monkeypatch):
     monkeypatch.setattr(sys, "argv", ["preserve_review_state.py", "restore", item_id])
     prs.main()
     assert not os.path.exists(prs.state_path(item_id))
+
+
+# ── AISDLC-275: the per-pass marker rides through the re-review, never forged or lowered ──
+
+
+def _set(item_id, **fields):
+    schema = f"{prs._descriptor(item_id).name}-review"
+    update_frontmatter(prs.review_path(item_id), fields, schema)
+
+
+@pytest.mark.parametrize("item_id,id_field,reviews_dir,scores", CASES)
+def test_restore_carries_the_agent_written_marker(workdir, item_id, id_field, reviews_dir, scores):
+    _write(prs.review_path(item_id), _revised_review(id_field, item_id, scores, True))
+    _set(item_id, auto_revised_cycle=0)  # revise pass 0 completed
+    prs.save(item_id)
+    assert json.load(open(prs.state_path(item_id)))["auto_revised_cycle"] == 0
+    _write(prs.review_path(item_id), _fresh_review(id_field, item_id, scores))
+
+    prs.restore(item_id, keep_state=True)
+
+    data, _ = read_frontmatter(prs.review_path(item_id))
+    assert data["auto_revised"] is True and data["auto_revised_cycle"] == 0
+
+
+def test_restore_forges_no_marker_the_agent_never_wrote(workdir):
+    """A review without the marker (an older run's) restores to a review without it."""
+    item_id = "RHAIRFE-8"
+    _write(prs.review_path(item_id), _revised_review("rfe_id", item_id, RFE_SCORES, True))
+    prs.save(item_id)
+    assert json.load(open(prs.state_path(item_id)))["auto_revised_cycle"] is None
+    _write(prs.review_path(item_id), _fresh_review("rfe_id", item_id, RFE_SCORES))
+
+    prs.restore(item_id)
+
+    data, _ = read_frontmatter(prs.review_path(item_id))
+    assert data["auto_revised"] is True
+    assert "auto_revised_cycle" not in data
+    assert "auto_revised_cycle" not in open(prs.review_path(item_id)).read()
+
+
+def test_reconcile_restore_keeps_a_later_pass_marker(workdir):
+    """REASSESS_REVISE completes pass 1 after REASSESS_RESTORE re-applied pass 0's marker;
+    the COLLECT reconcile re-applies the same state file and must not lower it back."""
+    item_id = "RHAIRFE-9"
+    _write(prs.review_path(item_id), _revised_review("rfe_id", item_id, RFE_SCORES, True))
+    _set(item_id, auto_revised_cycle=0)
+    prs.save(item_id)
+    _write(prs.review_path(item_id), _fresh_review("rfe_id", item_id, RFE_SCORES))
+    prs.restore(item_id, keep_state=True)  # REASSESS_RESTORE
+    _set(item_id, auto_revised=True, auto_revised_cycle=1)  # pass 1's agent finishes
+
+    prs.restore(item_id)  # the COLLECT / REPORT reconcile
+
+    data, _ = read_frontmatter(prs.review_path(item_id))
+    assert data["auto_revised_cycle"] == 1
+
+
+def test_restore_tolerates_a_state_file_without_the_marker(workdir):
+    """State files written before the marker was saved restore as before."""
+    item_id = "RHAIRFE-10"
+    _write(prs.review_path(item_id), _fresh_review("rfe_id", item_id, RFE_SCORES))
+    with open(prs.state_path(item_id), "w") as f:
+        json.dump({"before_score": 5, "auto_revised": True, "revision_history": ""}, f)
+
+    prs.restore(item_id)
+
+    data, _ = read_frontmatter(prs.review_path(item_id))
+    assert data["auto_revised"] is True and "auto_revised_cycle" not in data

@@ -4973,6 +4973,79 @@ class TestReviseBaseline:
         assert "REASSESS_REVISE → REASSESS_FIXUP" in capsys.readouterr().err
 
 
+# ---------- AISDLC-275: the per-pass revision marker ----------
+
+
+class TestRevisePassMarker:
+    """The revise agent records the pass it completed (auto_revised_cycle, from the
+    REVISE_CYCLE launch var) and the dispatcher records, per id, the pass it launched last
+    (state ``revise_passes``); submit.py holds a changed body whose marker is behind it."""
+
+    def _vars(self, result):
+        return dict(line.split("=", 1) for line in result["agents"][0]["vars"].splitlines())
+
+    def test_review_to_revise_records_pass_zero_for_the_revise_ids_only(self, tmp_dir, monkeypatch):
+        write_ids("tmp/pipeline-active-ids.txt", ["RHAIRFE-1", "RHAIRFE-2"])
+        monkeypatch.setattr(ps, "_run_script", lambda cmd: "RHAIRFE-1")
+        monkeypatch.setattr(ps, "_save_originals", lambda ids, ptype: None)
+        state = make_state(phase="REVIEW")
+        ps.advance(state, dry_run=True)
+        assert ps.REVISE_PASSES_KEY not in state  # a preview records nothing
+        assert ps.advance(state)[0] == "REVISE"
+        assert state[ps.REVISE_PASSES_KEY] == {"RHAIRFE-1": 0}
+
+    def test_reassess_restore_records_the_cycle_per_item(self, tmp_dir, monkeypatch):
+        """An item whose first revision passed its re-review is not revised again and keeps
+        pass 0, while the batch-wide reassess_cycle moves on — why the record is per id."""
+        write_ids("tmp/pipeline-reassess-ids.txt", ["RHAIRFE-1", "RHAIRFE-2"])
+        monkeypatch.setattr(ps, "_run_script", lambda cmd: "RHAIRFE-1")
+        monkeypatch.setattr(ps, "_save_originals", lambda ids, ptype: None)
+        passes = {"RHAIRFE-1": 0, "RHAIRFE-2": 0}
+        state = make_state(phase="REASSESS_RESTORE", reassess_cycle=1, revise_passes=passes)
+        assert ps.advance(state)[0] == "REASSESS_REVISE"
+        assert state[ps.REVISE_PASSES_KEY] == {"RHAIRFE-1": 1, "RHAIRFE-2": 0}
+        # The last cycle launches no revision, so it records none.
+        state = make_state(
+            phase="REASSESS_RESTORE", reassess_cycle=2, revise_passes={"RHAIRFE-1": 1}
+        )
+        assert ps.advance(state)[0] == "REASSESS_REVISE"
+        assert state[ps.REVISE_PASSES_KEY] == {"RHAIRFE-1": 1}
+
+    def test_the_record_survives_the_next_batch(self, tmp_dir):
+        """BATCH_START resets reassess_cycle, but submit runs after every batch. Only the
+        batch's own ids start over (the retry batch re-runs ids from scratch)."""
+        write_ids("tmp/pipeline-batch-2-ids.txt", ["RHAIRFE-3"])
+        state = make_state(
+            phase="BATCH_START",
+            batch=1,
+            total_batches=2,
+            revise_passes={"RHAIRFE-1": 1, "RHAIRFE-3": 1},
+        )
+        assert ps.advance(state)[0] == "FETCH"
+        assert state["reassess_cycle"] == 0
+        assert state[ps.REVISE_PASSES_KEY] == {"RHAIRFE-1": 1}
+
+    @pytest.mark.parametrize(
+        "phase,cycle,expected",
+        [("REVISE", 0, "0"), ("REASSESS_REVISE", 1, "1"), ("SPLIT_REVISE", 0, "0")],
+    )
+    def test_revise_launches_carry_the_pass(self, tmp_dir, monkeypatch, phase, cycle, expected):
+        write_ids("tmp/pipeline-revise-ids.txt", ["RHAIRFE-1"])
+        write_ids("tmp/pipeline-active-ids.txt", ["RHAIRFE-1"])
+        _scored_review("RHAIRFE-1", 1_700_000_000.0, auto_revised=True)
+        ps._write_revise_baseline(["RHAIRFE-1"], "rfe")
+        ps._save_state(make_state(phase=phase, batch=1, reassess_cycle=cycle))
+        monkeypatch.setattr(ps, "_run_script", lambda cmd: "")
+        result = _run_next_action()
+        assert result["action"] == "launch_wave" and result["phase"] == phase
+        assert self._vars(result)["REVISE_CYCLE"] == expected
+
+    @pytest.mark.parametrize("bad", ["1; rm -rf", -1, True, 1.5])
+    def test_a_tampered_reassess_cycle_is_refused(self, tmp_dir, bad):
+        with pytest.raises(SystemExit):
+            ps._get_config(make_state(reassess_cycle=bad))
+
+
 # ---------- Skill prose: the idle run ----------
 
 

@@ -1849,6 +1849,233 @@ class TestApproveStateFromTheBinding:
         assert "No Memo task files found." in result.stderr  # startup passed, the scan ran
 
 
+class TestSecondPassInterruptedHold:
+    """AISDLC-275 (dry run): REASSESS_RESTORE puts ``auto_revised: true`` back before
+    REASSESS_REVISE, so a second revise pass cut off after its body edit reads like a
+    completed one. The revise agent records the pass it completed (``auto_revised_cycle``)
+    and the dispatcher the pass it launched last per id (``revise_passes`` in
+    tmp/pipeline-state.yaml); a marker behind the launched pass is held like a first-pass
+    interruption. The Jira side is covered against the emulator in
+    tests/test_submit_integration.py::TestSecondPassInterruptedHold."""
+
+    ORIGINAL = "## Problem\n\nOriginal content.\n"
+    REWRITE = "## Problem\n\nRewritten by revise pass 2, cut off before its marker.\n"
+
+    def _seed(self, art_dir, marker, launched, state_type="rfe"):
+        _write(f"{art_dir}/rfe-originals/RHAIRFE-1234.md", self.ORIGINAL)
+        _write(
+            f"{art_dir}/rfe-tasks/RHAIRFE-1234.md",
+            "---\nrfe_id: RHAIRFE-1234\ntitle: Test RFE\npriority: Major\nstatus: Ready\n"
+            f"---\n{self.REWRITE}",
+        )
+        review = REVIEW_FM.format(rfe_id="RHAIRFE-1234", auto_revised="true")
+        if marker is not None:
+            review = review.replace(
+                "needs_attention:", f"auto_revised_cycle: {marker}\nneeds_attention:", 1
+            )
+        _write(f"{art_dir}/rfe-reviews/RHAIRFE-1234-review.md", review)
+        if launched is not None:
+            _write(
+                f"{art_dir}/tmp/pipeline-state.yaml",
+                f"phase: DONE\ntype: {state_type}\nreassess_cycle: 2\n"
+                f"revise_passes:\n  RHAIRFE-1234: {launched}\n",
+            )
+        return f"{art_dir}/rfe-reviews/RHAIRFE-1234-review.md"
+
+    @pytest.mark.parametrize("switch", ["--auto-approve", "--hold-interrupted"])
+    def test_marker_behind_the_launched_pass_is_held(self, art_dir, switch):
+        review = self._seed(art_dir, marker=0, launched=1)
+        before = open(review).read()
+        stdout, stderr, rc = _run_submit(art_dir, [switch])
+        assert rc == 0, stderr
+        assert "Label only" in stdout
+        assert "revision interrupted (revise pass 1 never completed)" in stdout
+        assert "Would add labels: rfe-creator-needs-attention" in stdout
+        assert "Would post needs-attention comment" in stdout
+        assert "Would update" not in stdout
+        assert "rfe-creator-auto-revised" not in stdout
+        assert "Would transition" not in stdout
+        assert open(review).read() == before  # a dry run writes nothing
+
+    def test_completed_second_pass_is_published_with_the_auto_revised_label(self, art_dir):
+        self._seed(art_dir, marker=1, launched=1)
+        stdout, stderr, rc = _run_submit(art_dir, ["--auto-approve"])
+        assert rc == 0, stderr
+        assert "revision interrupted" not in stdout
+        assert "Would update" in stdout
+        assert "rfe-creator-auto-revised" in stdout
+
+    def test_first_revision_that_passed_keeps_pass_zero(self, art_dir):
+        """Pass 0 completed and passed its re-review, so no pass 1 was launched for this item
+        even though the batch went on to a second cycle (reassess_cycle 2 in the state)."""
+        self._seed(art_dir, marker=0, launched=0)
+        stdout, stderr, rc = _run_submit(art_dir, ["--hold-interrupted"])
+        assert rc == 0, stderr
+        assert "revision interrupted" not in stdout
+        assert "Would update" in stdout
+
+    @pytest.mark.parametrize(
+        "marker,launched,state_type",
+        [
+            (None, None, "rfe"),  # a review written before the marker existed, no pass launched
+            (0, None, "rfe"),  # no pipeline state (a manual submit job's workspace)
+            (0, 1, "initiative"),  # another type's pipeline run
+        ],
+        ids=["no-marker", "no-state", "other-type-state"],
+    )
+    def test_without_evidence_today_s_rule_stands(self, art_dir, marker, launched, state_type):
+        self._seed(art_dir, marker=marker, launched=launched, state_type=state_type)
+        stdout, stderr, rc = _run_submit(art_dir, ["--hold-interrupted"])
+        assert rc == 0, stderr
+        assert "revision interrupted" not in stdout
+        assert "Would update" in stdout
+        assert "rfe-creator-auto-revised" in stdout
+
+    # A bool marker (``true``) never gets this far from a file: the review schema types the
+    # field as int, so submit reads such a review as unreadable (warn and proceed, no hold);
+    # test_launched_pass_with_a_missing_marker covers it at the function level.
+    @pytest.mark.parametrize("marker", ["absent", "null", "-1"])
+    @pytest.mark.parametrize("switch", ["--auto-approve", "--hold-interrupted"])
+    def test_launched_pass_without_a_marker_is_held(self, art_dir, switch, marker):
+        """A launched pass whose review carries no usable marker never completed."""
+        review = self._seed(art_dir, marker=None if marker == "absent" else marker, launched=1)
+        before = open(review).read()
+        stdout, stderr, rc = _run_submit(art_dir, [switch])
+        assert rc == 0, stderr
+        assert "Label only" in stdout
+        assert "revision interrupted (revise pass 1 never completed)" in stdout
+        assert "Would update" not in stdout
+        assert "rfe-creator-auto-revised" not in stdout
+        assert open(review).read() == before  # a dry run writes nothing
+
+    @pytest.mark.parametrize("marker", ["absent", "null", "-1"])
+    def test_same_reviews_publish_when_no_pass_is_recorded(self, art_dir, marker):
+        self._seed(art_dir, marker=None if marker == "absent" else marker, launched=None)
+        stdout, stderr, rc = _run_submit(art_dir, ["--auto-approve"])
+        assert rc == 0, stderr
+        assert "revision interrupted" not in stdout
+        assert "Would update" in stdout
+        assert "rfe-creator-auto-revised" in stdout
+        assert "per-pass hold disabled" not in stderr
+
+    @pytest.mark.parametrize(
+        "state_text",
+        [
+            "phase: [unclosed\n",
+            "type: initiative\nrevise_passes:\n  RHAIRFE-1234: 1\n",
+            "type: rfe\nrevise_passes: [1, 2]\n",
+            "type: rfe\nrevise_passes:\n  RHAIRFE-1234: -1\n",
+            "type: rfe\nrevise_passes:\n  RHAIRFE-1234: true\n",
+        ],
+        ids=["unparsable", "other-type", "not-a-dict", "negative-entry", "bool-entry"],
+    )
+    @pytest.mark.parametrize("switch", ["--auto-approve", "--hold-interrupted"])
+    def test_unusable_state_warns_and_still_submits(self, art_dir, switch, state_text):
+        self._seed(art_dir, marker=0, launched=None)
+        _write(f"{art_dir}/tmp/pipeline-state.yaml", state_text)
+        stdout, stderr, rc = _run_submit(art_dir, [switch])
+        assert rc == 0, stderr
+        warnings = [ln for ln in stderr.splitlines() if "per-pass hold disabled" in ln]
+        assert len(warnings) == 1, stderr
+        assert warnings[0].startswith("Warning: per-pass hold disabled: tmp/pipeline-state.yaml ")
+        assert warnings[0].endswith("the auto_revised rule alone applies")
+        assert "Would update" in stdout  # the auto_revised rule alone publishes
+
+    def test_missing_state_is_silent(self, art_dir):
+        self._seed(art_dir, marker=0, launched=None)
+        stdout, stderr, rc = _run_submit(art_dir, ["--auto-approve"])
+        assert rc == 0, stderr
+        assert "per-pass hold disabled" not in stderr
+        assert "Would update" in stdout
+
+    def test_no_warning_without_a_hold_switch(self, art_dir):
+        self._seed(art_dir, marker=0, launched=None)
+        _write(f"{art_dir}/tmp/pipeline-state.yaml", "phase: [unclosed\n")
+        stdout, stderr, rc = _run_submit(art_dir)
+        assert rc == 0, stderr
+        assert "per-pass hold disabled" not in stderr
+
+    def test_interactive_submit_still_updates(self, art_dir):
+        self._seed(art_dir, marker=0, launched=1)
+        stdout, stderr, rc = _run_submit(art_dir)
+        assert rc == 0, stderr
+        assert "revision interrupted" not in stdout
+        assert "Would update" in stdout
+
+    def test_unchanged_body_is_never_held(self, art_dir):
+        self._seed(art_dir, marker=0, launched=1)
+        _write(
+            f"{art_dir}/rfe-tasks/RHAIRFE-1234.md",
+            "---\nrfe_id: RHAIRFE-1234\ntitle: Test RFE\npriority: Major\nstatus: Ready\n"
+            f"---\n{self.ORIGINAL}",
+        )
+        stdout, stderr, rc = _run_submit(art_dir, ["--hold-interrupted"])
+        assert rc == 0, stderr
+        assert "revision interrupted" not in stdout
+
+    def test_a_recorded_hold_holds_again_without_the_pipeline_state(self, art_dir):
+        """A re-run over held artifacts in a workspace without tmp/ (a manual submit job)
+        passing the switch holds again on the recorded ``revision_interrupted:`` error; a
+        switch-less re-run publishes, as for a first-pass hold."""
+        review = self._seed(art_dir, marker=0, launched=None)
+        text = open(review).read().replace("pass: true", "pass: false", 1)
+        text = text.replace(
+            "needs_attention: false",
+            "needs_attention: true\nerror: 'revision_interrupted: revise pass 1 never"
+            " completed (auto_revised_cycle 0)'\nneeds_attention_reason: 'Revision"
+            " interrupted: held'",
+            1,
+        )
+        _write(review, text)
+        stdout, stderr, rc = _run_submit(art_dir, ["--hold-interrupted"])
+        assert rc == 0, stderr
+        assert "revision interrupted (held by an earlier submit)" in stdout
+        assert "Would update" not in stdout
+        assert "Would post needs-attention comment" not in stdout  # posted once, by the hold
+        stdout, stderr, rc = _run_submit(art_dir)
+        assert rc == 0, stderr
+        assert "Would update" in stdout
+
+    def test_state_constants_match_the_dispatcher(self):
+        import pipeline_state
+        import submit
+
+        assert submit.PIPELINE_STATE_FILE == pipeline_state.STATE_FILE
+        assert submit.REVISE_PASSES_KEY == pipeline_state.REVISE_PASSES_KEY
+
+    @pytest.mark.parametrize(
+        "marker,launched,expected",
+        [(0, 1, (1, 0)), (1, 1, None), (0, 0, None), (None, 1, None), (0, None, None)],
+    )
+    def test_interrupted_revise_pass(self, marker, launched, expected):
+        import submit
+
+        review = {} if marker is None else {"auto_revised_cycle": marker}
+        assert submit._interrupted_revise_pass(review, launched) == expected
+
+    @pytest.mark.parametrize("marker", ["absent", None, -1, True, "1"])
+    def test_launched_pass_with_a_missing_marker(self, marker):
+        import submit
+
+        review = {"auto_revised": True}
+        if marker != "absent":
+            review["auto_revised_cycle"] = marker
+        assert submit._interrupted_revise_pass(review, 1) == (1, None)
+        assert submit._interrupted_revise_pass(review, None) is None
+        assert submit._interrupted_revise_pass({**review, "auto_revised": False}, 1) is None
+
+    def test_unreadable_or_foreign_state_reads_as_none(self, tmp_path):
+        import submit
+
+        path = tmp_path / "state.yaml"
+        assert submit._launched_revise_passes("rfe", str(path)) == {}
+        path.write_text("phase: [unclosed\n")
+        assert submit._launched_revise_passes("rfe", str(path)) == {}
+        path.write_text("type: rfe\nrevise_passes:\n  RHAIRFE-1: 1\n  RHAIRFE-2: x\n")
+        assert submit._launched_revise_passes("rfe", str(path)) == {"RHAIRFE-1": 1}
+        assert submit._launched_revise_passes("initiative", str(path)) == {}
+
+
 class TestReportCommandArgv:
     """_generate_reports spawns generate_run_report.py and generate_review_pdf.py.
 

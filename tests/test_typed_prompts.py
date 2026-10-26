@@ -227,6 +227,16 @@ _allow_command(
     f"{LEGACY}/initiative/review.md",
     "python3 scripts/check_revised.py --batch --ids-file tmp/initiative-review-reassess-ids.txt",
 )
+# AISDLC-275: the revise agent's final frontmatter set records the pass it completed
+# (auto_revised_cycle={REVISE_CYCLE}) beside auto_revised=true; the rest of the legacy invocation
+# is unchanged.
+for _t, _reviews in (("rfe", "rfe-reviews"), ("initiative", "initiative-reviews")):
+    _allow_command(
+        _t,
+        f"{LEGACY}/{_t}/prompts/revise-agent.md",
+        f"python3 scripts/frontmatter.py set artifacts/{_reviews}/{{}}-review.md auto_revised=true"
+        " needs_attention=<>",
+    )
 _allow("initiative", f"{LEGACY}/initiative/split.md", *_RESPLIT_INIT)
 # AISDLC-280: the fetch skeleton's MCP fallback requests Jira's parent for a type whose dimension
 # conditions read parent_key (PARENT_FIELD renders `,"parent"` for initiative), so the legacy

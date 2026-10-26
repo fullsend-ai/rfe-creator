@@ -15,7 +15,8 @@ Usage:
 
 --auto-approve transitions each qualifying item to the type's approved status and implies
 --hold-interrupted. --hold-interrupted holds an existing item whose body changed while its
-review never recorded auto_revised (an interrupted revision, pipeline correctness reference
+review never recorded auto_revised, or records a revise pass (auto_revised_cycle) behind the
+last one the pipeline launched for it (an interrupted revision, pipeline correctness reference
 §5.12) instead of publishing it: every non-interactive run that does not auto-approve must
 pass it. An interactive submit (the /rfe-submit skill) passes neither and keeps the update
 path: a user who edited the task file by hand is making a manual revision. --hold-splits
@@ -46,6 +47,8 @@ import os
 import re
 import subprocess
 import sys
+
+import yaml
 
 # Ensure progress output is visible immediately when stdout is redirected
 # to a file or pipe (Python defaults to full buffering in that case).
@@ -325,6 +328,81 @@ INTERRUPTED_HOLD_REASON = (
     "auto_revised, so the rewrite was not re-reviewed. The description was left "
     "as it was; re-run the pipeline on this item or review the local revision by hand."
 )
+# A later revise pass cut off after its body edit (AISDLC-275): auto_revised is already true
+# from the pass before, so only the per-pass marker shows the interruption.
+INTERRUPTED_PASS_HOLD_REASON = (
+    f"{INTERRUPTED_HOLD_REASON_PREFIX} the task body changed but the review never recorded "
+    "the completion of revise pass {launched} ({marker_text}), so "
+    "the rewrite was not re-reviewed. The description was left as it was; re-run the "
+    "pipeline on this item or review the local revision by hand."
+)
+
+# The dispatcher's state file and its per-id record of the revise pass it launched last
+# (pipeline_state.STATE_FILE / REVISE_PASSES_KEY; workspace-relative like every tmp/ file).
+PIPELINE_STATE_FILE = "tmp/pipeline-state.yaml"
+REVISE_PASSES_KEY = "revise_passes"
+
+
+def _is_revise_pass(value):
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _read_revise_passes(type_name, state_file=PIPELINE_STATE_FILE):
+    """``(passes, problem)``: id -> the revise pass the pipeline last launched for it
+    (AISDLC-275), read from the dispatcher's state file, and the reason the state could not be
+    used in full (None when it all was). ``passes`` is {} when there is no state file, it
+    cannot be read, or it belongs to another type's run: the hold then keys on
+    ``auto_revised`` alone, as before. A missing file is no problem (an interactive or
+    manual-job submit has none); every other shortfall is reported in ``problem``."""
+    try:
+        with open(state_file, encoding="utf-8") as f:
+            state = yaml.safe_load(f)
+    except FileNotFoundError:
+        return {}, None
+    except (OSError, UnicodeError, yaml.YAMLError):
+        return {}, "cannot be read or parsed"
+    if not isinstance(state, dict):
+        return {}, "cannot be parsed (not a mapping)"
+    state_type = state.get("type", "rfe")
+    if state_type != type_name:
+        return {}, f"belongs to another type ({state_type})"
+    passes = state.get(REVISE_PASSES_KEY)
+    if passes is None:
+        return {}, None
+    if not isinstance(passes, dict):
+        return {}, f"has a {REVISE_PASSES_KEY} value that is not a mapping"
+    valid = {str(k): v for k, v in passes.items() if _is_revise_pass(v)}
+    if len(valid) != len(passes):
+        bad = sorted(str(k) for k, v in passes.items() if not _is_revise_pass(v))
+        return valid, (
+            f"has {REVISE_PASSES_KEY} entries that are not non-negative ints "
+            f"(ids: {', '.join(bad)})"
+        )
+    return valid, None
+
+
+def _launched_revise_passes(type_name, state_file=PIPELINE_STATE_FILE):
+    """id -> the revise pass the pipeline last launched for it; see _read_revise_passes."""
+    return _read_revise_passes(type_name, state_file)[0]
+
+
+def _interrupted_revise_pass(review_data, launched):
+    """``(launched, marker)`` when the review's ``auto_revised_cycle`` — written only by a
+    revise agent that completed, carried through re-reviews by preserve_review_state — is
+    behind ``launched``, the last revise pass the pipeline started for the item: that pass
+    was cut off. A review with ``auto_revised`` true whose marker is absent, null, negative
+    or not an int is the same interruption seen from the other side (the pass never wrote
+    its marker): ``marker`` is None then. None when no pass was launched for the item (a
+    review written before AISDLC-275 keeps the ``auto_revised`` rule alone then), or when
+    ``auto_revised`` is false (the first-pass rule holds that one)."""
+    if not _is_revise_pass(launched):
+        return None
+    marker = review_data.get("auto_revised_cycle")
+    if _is_revise_pass(marker):
+        return (launched, marker) if marker < launched else None
+    if review_data.get("auto_revised"):
+        return launched, None
+    return None
 
 
 def _stale_verdict_labels(cfg, original_labels):
@@ -988,6 +1066,17 @@ def main():
     # flag it had set on an unchanged task (2026-09-21 stage dry run), and this flag is
     # what the auto-revised label is derived from. Lower-only; never raises.
     _lower_unrevised_flags(args.artifacts_dir, type_name)
+
+    # The revise pass the pipeline last launched per id, for the interrupted-revision hold.
+    revise_passes = {}
+    if hold_interrupted:
+        revise_passes, passes_problem = _read_revise_passes(type_name)
+        if passes_problem:
+            print(
+                f"Warning: per-pass hold disabled: {PIPELINE_STATE_FILE} {passes_problem}; "
+                "the auto_revised rule alone applies",
+                file=sys.stderr,
+            )
 
     # Scan task files
     tasks = scan_tasks(args.artifacts_dir, desc)
@@ -1745,24 +1834,67 @@ def main():
         # a human, and say why. An interactive submit, which passes neither switch, keeps
         # the update path: a human editing the task file before /rfe-submit is a manual
         # revision and carries no flag either.
+        #
+        # A later pass (AISDLC-275): REASSESS_RESTORE puts auto_revised back to true before
+        # REASSESS_REVISE, so a second pass cut off after its body edit still reads true.
+        # The revise agent also records the pass it completed (auto_revised_cycle); a
+        # marker behind the last pass the pipeline launched for the item is held the same
+        # way, and so is a launched pass whose marker is missing altogether (absent, null,
+        # negative or not an int). Without a recorded pass the auto_revised rule alone applies.
+        interrupted_pass = (
+            _interrupted_revise_pass(review_data, revise_passes.get(item_id))
+            if review_data
+            else None
+        )
+        # A submit re-run over artifacts a previous submit already held holds again,
+        # idempotently -- the labels are re-applied, the review is left as recorded and
+        # the comment is not posted a second time -- but only when the re-run itself
+        # passes --auto-approve or --hold-interrupted: the hold is a property of the
+        # invocation, not of the artifacts. A switch-less re-run (a manual submit job
+        # without --hold-interrupted) takes the update path and publishes the held
+        # rewrite, which is why every non-interactive invocation must pass one. The
+        # recorded hold is enough on its own: a later-pass hold rests on the pipeline
+        # state, which a re-run in another workspace does not have.
+        already_held = bool(review_data) and str(review_data.get("error") or "").startswith(
+            REVISION_INTERRUPTED_PREFIX
+        )
         if (
             hold_interrupted
             and is_existing
             and body_changed
             and review_data
-            and not review_data.get("auto_revised", False)
-        ):
-            # A submit re-run over artifacts a previous submit already held holds again,
-            # idempotently -- the labels are re-applied, the review is left as recorded and
-            # the comment is not posted a second time -- but only when the re-run itself
-            # passes --auto-approve or --hold-interrupted: the hold is a property of the
-            # invocation, not of the artifacts. A switch-less re-run (a manual submit job
-            # without --hold-interrupted) takes the update path and publishes the held
-            # rewrite, which is why every non-interactive invocation must pass one.
-            already_held = str(review_data.get("error") or "").startswith(
-                REVISION_INTERRUPTED_PREFIX
+            and (
+                not review_data.get("auto_revised", False)
+                or interrupted_pass is not None
+                or already_held
             )
-            reason = INTERRUPTED_HOLD_REASON
+        ):
+            if not review_data.get("auto_revised", False):
+                reason = INTERRUPTED_HOLD_REASON
+                hold_error = f"{REVISION_INTERRUPTED_PREFIX} auto_revised never recorded"
+                hold_note = "revision interrupted (auto_revised false)"
+            elif interrupted_pass is not None:
+                launched, marker = interrupted_pass
+                marker_text = (
+                    "the auto_revised_cycle marker is missing"
+                    if marker is None
+                    else f"the last completed pass is {marker}"
+                )
+                reason = INTERRUPTED_PASS_HOLD_REASON.format(
+                    launched=launched, marker_text=marker_text
+                )
+                hold_error = (
+                    f"{REVISION_INTERRUPTED_PREFIX} revise pass {launched} never completed"
+                    f" (auto_revised_cycle {'missing' if marker is None else marker})"
+                )
+                hold_note = f"revision interrupted (revise pass {launched} never completed)"
+            else:
+                # Held by an earlier submit; the record on the review stands as written.
+                reason = str(review_data.get("needs_attention_reason") or "") or (
+                    INTERRUPTED_HOLD_REASON
+                )
+                hold_error = str(review_data.get("error"))
+                hold_note = "revision interrupted (held by an earlier submit)"
             review_path = _find_review(args.artifacts_dir, item_id, cfg)
             # The planning path runs under --dry-run too: record the hold on the review
             # only when the run is real (CodeRabbit on #210). `pass: false` is what makes
@@ -1779,7 +1911,7 @@ def main():
                             # The run report maps this prefix to blocked_reason, which
                             # bootstrap_snapshot reads as not processed, as the live
                             # snapshot says (RHAIFIRST-571).
-                            "error": f"{REVISION_INTERRUPTED_PREFIX} auto_revised never recorded",
+                            "error": hold_error,
                             "needs_attention": True,
                             "needs_attention_reason": reason,
                         },
@@ -1821,7 +1953,7 @@ def main():
                     "labels": held_labels,
                     "remove_labels": held_remove,
                     "skip_reason": None,
-                    "note": "revision interrupted (auto_revised false): description not published",
+                    "note": f"{hold_note}: description not published",
                     "task_path": task_path,
                     "jira_key": jira_key,
                     # Posted once per hold, and also when the item already carried the
