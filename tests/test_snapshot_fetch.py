@@ -4,6 +4,7 @@ ID file writing, and snapshot loading from results directories."""
 
 import hashlib
 import inspect
+import io
 import os
 import subprocess
 import sys
@@ -1711,7 +1712,7 @@ class TestFetchAuthGuard:
                 code,
                 "Unauthorized",
                 {"X-Seraph-LoginReason": "AUTHENTICATED_FAILED"},
-                None,
+                io.BytesIO(b""),
             )
 
         monkeypatch.setattr(jira_utils, "api_call", rejected)
@@ -1724,9 +1725,13 @@ class TestFetchAuthGuard:
         assert exc.value.code == 2
         out, err = capsys.readouterr()
         assert out == ""
-        assert err.startswith(
+        # The retry wrapper logs the status it saw, then the guard says what it means.
+        assert err.endswith(
             f"Error: Jira rejected the credentials for bot at https://j.example (HTTP {code}"
-            " from /rest/api/3/myself, AUTHENTICATED_FAILED): the API token is invalid or expired."
+            " from /rest/api/3/myself, AUTHENTICATED_FAILED): the API token is invalid or"
+            " expired. A JQL search with these credentials returns HTTP 200 with no issues,"
+            " which would pass for a run with nothing to do; nothing was fetched. Renew the"
+            " token (JIRA_TOKEN) and re-run.\n"
         )
         assert "returns HTTP 200 with no issues" in err and "Renew the token" in err
         assert not os.path.exists(snap_dir)
@@ -1760,16 +1765,18 @@ class TestFetchAuthGuard:
         monkeypatch.setattr(
             snapshot_fetch, "require_authenticated", jira_utils.require_authenticated
         )
-        monkeypatch.setattr(
-            jira_utils,
-            "api_call",
-            lambda *a, **kw: (_ for _ in ()).throw(
-                urllib.error.HTTPError("u", 503, "Service Unavailable", {}, None)
-            ),
-        )
+        attempts = []
+
+        def flaky(*a, **kw):
+            attempts.append(1)
+            raise urllib.error.HTTPError("u", 503, "Service Unavailable", {}, io.BytesIO(b""))
+
+        monkeypatch.setattr(jira_utils, "api_call", flaky)
+        monkeypatch.setattr(jira_utils.time, "sleep", lambda s: None)
         with pytest.raises(urllib.error.HTTPError) as exc:
             cmd_fetch(self._args(tmp_path))
         assert exc.value.code == 503
+        assert len(attempts) > 1  # retried like the search, not fatal on the first blip
         monkeypatch.setattr(
             jira_utils,
             "api_call",
@@ -1777,6 +1784,32 @@ class TestFetchAuthGuard:
         )
         with pytest.raises(urllib.error.URLError):
             cmd_fetch(self._args(tmp_path))
+
+    def test_a_transient_failure_of_the_probe_is_retried_and_the_fetch_proceeds(
+        self, tmp_path, monkeypatch
+    ):
+        import urllib.error
+
+        import jira_utils
+
+        calls = []
+
+        def once_flaky(server, path, user, token, body=None, method=None):
+            calls.append(path)
+            if len(calls) == 1:
+                raise urllib.error.HTTPError("u", 503, "Service Unavailable", {}, io.BytesIO(b""))
+            return {"accountId": "me"}
+
+        monkeypatch.setattr(jira_utils, "api_call", once_flaky)
+        monkeypatch.setattr(jira_utils.time, "sleep", lambda s: None)
+        monkeypatch.setattr("snapshot_fetch.require_env", lambda: ("https://j.example", "bot", "t"))
+        monkeypatch.setattr(
+            snapshot_fetch, "require_authenticated", jira_utils.require_authenticated
+        )
+        monkeypatch.setattr("snapshot_fetch.fetch_all_issues", lambda *a, **kw: {})
+        monkeypatch.setattr("snapshot_fetch.SNAPSHOT_DIR", str(tmp_path / "auto-fix-runs"))
+        cmd_fetch(self._args(tmp_path))
+        assert calls == ["/myself", "/myself"]
 
     def test_require_authenticated_returns_the_identity(self, monkeypatch):
         import jira_utils
