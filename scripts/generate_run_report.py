@@ -2,11 +2,15 @@
 """Generate a structured YAML run report from review frontmatter."""
 
 import argparse
+import json
 import os
 import re
+import subprocess
 import sys
 from datetime import datetime, timezone
 from functools import partial
+from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 import yaml
 
@@ -189,6 +193,201 @@ def _binding_header(entry_type, env=None):
         env = os.environ
     binding = type_registry.resolve(_TYPES, explicit_type=entry_type, env=env).binding
     return {key: binding.get(key) for key in BINDING_HEADER_KEYS}
+
+
+PROVENANCE_RUBRIC_KEYS = ("repo", "ref", "path", "source", "commit")
+# Mirror of bootstrap.sh CONTEXT_DIR: where the bootstrap vendors the assess-rfe checkout.
+ASSESS_CONTEXT_DIR = ".context/assess-rfe"
+# The bootstrap's ad-hoc overrides of the descriptor's rubric pin (bootstrap.sh REPO_SOURCE /
+# REF_SOURCE): when either is set, the run scored against something other than the pin.
+RUBRIC_REPO_ENV = "ASSESS_RFE_REPO"
+RUBRIC_REF_ENV = "ASSESS_RFE_REF"
+# git's remote-helper prefix, <transport>::<rest>: a bare transport word at the very start.
+_TRANSPORT_PREFIX = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*::")
+
+
+def _plugin_version():
+    """The plugin manifest's ``version`` (the release marketplace users see), or None when
+    the manifest next to the scripts cannot be read."""
+    manifest = type_registry.PLUGIN_ROOT / ".claude-plugin" / "plugin.json"
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    version = data.get("version") if isinstance(data, dict) else None
+    return version if isinstance(version, str) else None
+
+
+def _head_of_checkout(root):
+    """HEAD of the git checkout whose top level is exactly ``root``, or None.
+
+    None when ``root`` is not a git checkout, when git is unavailable, and when git would
+    answer from an enclosing repository -- a plugin or rubric directory that is not a
+    checkout itself but sits inside one must not be attributed that repository's commit
+    (Qodo on #256). A linked worktree's top level is the worktree itself, so it qualifies.
+    """
+    try:
+        root = Path(root).resolve()
+    except OSError:
+        return None
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "--show-toplevel", "--verify", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    lines = [ln for ln in result.stdout.splitlines() if ln.strip()]
+    if len(lines) != 2:
+        return None
+    toplevel, sha = lines[0].strip(), lines[1].strip()  # the path may contain spaces
+    try:
+        if Path(toplevel).resolve() != root:
+            return None
+    except OSError:
+        return None
+    return sha if re.fullmatch(r"[0-9a-f]{40}", sha) else None
+
+
+def _plugin_commit():
+    """The commit of the rfe-creator tree the scripts run from, or None when that tree is
+    not a git checkout (a marketplace install under the plugin cache) or git is unavailable.
+    ``PLUGIN_ROOT`` is resolved through symlinks, so a working directory that only links
+    ``scripts/`` in (the eval harness's run directory) reports the linked checkout."""
+    return _head_of_checkout(type_registry.PLUGIN_ROOT)
+
+
+def _repo_url(value):
+    """A credential-free identity for the rubric repository, spelled as the bootstrap reads it.
+
+    bootstrap.sh's rule: a bare ``owner/repo`` slug is a GitHub repository. The report is
+    pushed to a results repository, and an ad-hoc ``ASSESS_RFE_REPO`` override may carry a
+    credential, so everything that can hold one is dropped before the value is recorded:
+    the userinfo of a URL (``https://user:TOKEN@host/...``) and of the scp-like spelling
+    (``TOKEN@host:path``), and a URL's query and fragment (``?access_token=...``), none of
+    which identify a repository. A bare slug is turned into its GitHub URL first and goes
+    through the same sanitization. The host keeps its brackets and port (the netloc is cut at
+    its last ``@``, never rebuilt), so an IPv6 literal cannot break the report; a URL the
+    parser rejects outright, one with a non-numeric port or an "@" in its query or fragment
+    (an unescaped ``?``/``#`` in the userinfo ended the authority early, leaving the
+    credential in the netloc), one with no host, or one with a second URL in its path, is
+    recorded as None. git's ``<transport>::<rest>`` spelling is reduced to
+    ``<rest>``, and a value without a scheme separator is cut at its first query or fragment
+    before anything else is read from it (an "@" after that first "?" or "#" records no
+    identity, and a value that is neither scp-like nor an owner/repo slug records none).
+    """
+    if not value:
+        return value
+    # git's remote-helper spelling, <transport>::<rest> (bootstrap.sh passes it through), in
+    # front of a URL or an scp-like value alike: the identity is what follows the prefix,
+    # sanitized on its own. Only a value that STARTS with a bare transport word and "::" has a
+    # prefix; a "::" anywhere else (a path, a query) is just part of the value.
+    prefix = _TRANSPORT_PREFIX.match(value)
+    if prefix:
+        return _repo_url(value[prefix.end() :]) or None
+    if "://" in value:
+        try:
+            parts = urlsplit(value)
+        except ValueError:
+            # A URL the parser rejects (an unmatched IPv6 bracket, say) cannot be made
+            # credential-free, so no identity is recorded -- never the raw value, and never
+            # an exception that would cost the whole report.
+            return None
+        try:
+            parts.port  # noqa: B018 -- reading it is the check: a non-numeric port raises
+        except ValueError:
+            # A colon-separated userinfo cut off from the host by an unescaped "?" or "#"
+            # leaves the credential in the netloc, and its tail reads as a non-numeric port.
+            return None
+        if "@" in parts.query or "@" in parts.fragment:
+            # The authority was ended early by an unescaped delimiter inside the userinfo,
+            # so the real host (and the rest of the credential) sits in the query/fragment.
+            return None
+        if not parts.netloc or "://" in parts.path or "@" in parts.path:
+            # Nothing a host could be cut from, or a second URL (with whatever it carries)
+            # hiding in the path: not safely normalizable, so no identity.
+            return None
+        netloc = parts.netloc.rsplit("@", 1)[-1]
+        return urlunsplit((parts.scheme, netloc, parts.path, "", ""))
+    # An "@" after the first "?" or "#" is either in the query or in a userinfo that holds the
+    # delimiter; the two cannot be told apart, so no identity (the URL branch's policy).
+    delimiter = re.search(r"[?#]", value)
+    if delimiter and "@" in value[delimiter.end() :]:
+        return None
+    # A query or fragment (``?access_token=...``) identifies no repository, and may itself hold
+    # a ":" or a "::": cut it FIRST, before the userinfo and host:path are read.
+    value = value[: delimiter.start()] if delimiter else value
+    if not value:
+        return None  # nothing usable left
+    if "@" in value or ":" in value:
+        # scp-like git spelling, [userinfo@]host:path. Everything up to the LAST "@" is
+        # userinfo (a token may itself hold a ":"), so only the part after it is kept.
+        candidate = value.rpartition("@")[2] if "@" in value else value
+        m = re.fullmatch(r"([^/:\s]+):(.+)", candidate)
+        if not m:
+            return None  # not safely normalizable: no identity rather than the raw value
+        path = m.group(2)
+        if "@" in path:
+            return None  # not safely normalizable: no identity
+        return f"{m.group(1)}:{path}"
+    # A bare owner/repo slug is a GitHub repository; the URL it stands for is sanitized like
+    # any other, so a query or fragment riding on the slug is dropped too. Only an owner/repo
+    # slug qualifies: anything else is not safely a repository, so no identity.
+    if not re.fullmatch(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+", value):
+        return None
+    return _repo_url(f"https://github.com/{value}")
+
+
+def _rubric_provenance(entry_type, env=None, context_dir=None, workspace_root=None):
+    """What the run scored against: the rubric the bootstrap was asked for and the checkout
+    it left behind. ``repo`` and ``ref`` are the descriptor's ``pipeline.rubric`` pin unless
+    the bootstrap's ad-hoc overrides (``ASSESS_RFE_REPO`` / ``ASSESS_RFE_REF``) were set, which
+    ``source`` records (``descriptor`` or ``env``), spelled as the bootstrap spells them.
+    ``commit`` is HEAD of the vendored checkout in ``context_dir`` (bootstrap.sh CONTEXT_DIR)
+    when it is a git checkout of its own -- the revision the scorer read, whatever was
+    requested -- and None when there is no such checkout or git cannot say (the bootstrap
+    then proceeded with the files as they were and said so in its log). A default
+    ``context_dir`` is looked up under ``workspace_root`` (the working directory when None),
+    where the bootstrap vendored it for the workspace the artifacts belong to."""
+    if env is None:
+        env = os.environ
+    if context_dir is None:
+        context_dir = os.path.join(workspace_root or os.getcwd(), ASSESS_CONTEXT_DIR)
+    desc = _TYPES.get(entry_type)
+    repo_override = env.get(RUBRIC_REPO_ENV) or None
+    ref_override = env.get(RUBRIC_REF_ENV) or None
+    if ref_override:
+        # Like the repo, the override is written to a pushed report: only a plausible git ref
+        # name (branch, tag, SHA) is recorded, never something that can carry a credential.
+        # ``source`` still reads "env", so the report shows an override was in effect.
+        ref = ref_override if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]*", ref_override) else None
+    else:
+        ref = desc.get("pipeline.rubric.ref", None)
+    return {
+        "repo": _repo_url(repo_override or desc.get("pipeline.rubric.repo", None)),
+        "ref": ref,
+        "path": desc.get("pipeline.rubric.path", None),
+        "source": "env" if (repo_override or ref_override) else "descriptor",
+        "commit": _head_of_checkout(context_dir),
+    }
+
+
+def _provenance_header(entry_type, env=None, workspace_root=None):
+    """The ``provenance`` header (AISDLC-193): what judged this run. ``pipeline_version``
+    is the plugin manifest's version and ``pipeline_commit`` the checkout's own commit (None
+    outside a git checkout); ``rubric`` is what the scorer read -- see _rubric_provenance.
+    A rubric or descriptor change can then be told apart from a model change after the
+    fact, from the report alone. Additive under ``report_schema_version`` 1: readers that
+    predate it ignore it. ``workspace_root`` is where the rubric checkout is looked up."""
+    return {
+        "pipeline_version": _plugin_version(),
+        "pipeline_commit": _plugin_commit(),
+        "rubric": _rubric_provenance(entry_type, env=env, workspace_root=workspace_root),
+    }
 
 
 def _parse_run_id(start_time):
@@ -429,6 +628,13 @@ def build_report(
         # order is unchanged. Readers that predate it ignore it (bootstrap_snapshot reads
         # ``type`` and the item list only); no schema version bump.
         "binding": _binding_header(entry_type),
+        # Additive too (AISDLC-193): the commit, plugin version and rubric pin that judged
+        # the run, right after the binding; no schema version bump.
+        # The rubric checkout sits in the workspace root: the parent of the artifacts
+        # directory (the current directory in every standard invocation).
+        "provenance": _provenance_header(
+            entry_type, workspace_root=os.path.dirname(os.path.abspath(artifacts_dir))
+        ),
         "run_id": _parse_run_id(start_time),
         "started": start_time,
         "completed": now,

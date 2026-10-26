@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Tests for scripts/generate_run_report.py — run report generation."""
 
+import json
 import os
+import re
 import subprocess
 import sys
 
@@ -1365,7 +1367,7 @@ class TestBindingHeader:
     tracker binding — ``{tracker, project, issue_type, source}`` — as an additive ``binding``
     key right after the self-describing header; everything else keeps its key order."""
 
-    HEADER = ["report_schema_version", "type", "report_stage", "binding"]
+    HEADER = ["report_schema_version", "type", "report_stage", "binding", "provenance"]
     BODY = ["run_id", "started", "completed", "input_count", "results"]
     BODY += ["before_scores_avg", "after_scores_avg"]
 
@@ -1420,7 +1422,7 @@ class TestBindingHeader:
             "source": "descriptor",
         }
 
-    def test_key_order_is_the_old_order_plus_binding_after_the_header(
+    def test_key_order_is_the_old_order_plus_the_additive_headers(
         self, no_override, art_dir, tmp_path
     ):
         self._one_rfe(art_dir)
@@ -1503,11 +1505,21 @@ class TestBindingHeader:
         assert result.stderr == ""  # no resolve line: the report is not an entry script (D3)
         with open(result.stdout.strip()) as f:
             text = f.read()
-        # The YAML block as written, right after the header.
+        # The YAML block as written, right after the header: binding, then the provenance
+        # header (AISDLC-193; its commit is the test tree's own), then the body.
+        # The CLI looks for the rubric checkout beside the artifacts directory, so the expected
+        # value is computed from the same workspace root.
+        prov = generate_run_report._provenance_header("rfe", workspace_root=os.path.dirname(art))
+        commit = prov["pipeline_commit"] or "null"
+        rubric = prov["rubric"]
         assert text.startswith(
             "report_schema_version: 1\ntype: rfe\nreport_stage: pre_submit\nbinding:\n"
             "  tracker: jira\n  project: RHAIRFE\n  issue_type: Feature Request\n"
-            "  source: descriptor\nrun_id: 20260818-090000\n"
+            "  source: descriptor\nprovenance:\n"
+            f"  pipeline_version: {prov['pipeline_version']}\n  pipeline_commit: {commit}\n"
+            f"  rubric:\n    repo: {rubric['repo']}\n    ref: {rubric['ref']}\n"
+            f"    path: {rubric['path']}\n    source: {rubric['source']}\n"
+            f"    commit: {rubric['commit'] or 'null'}\nrun_id: 20260818-090000\n"
         )
         env[type_registry.binding_env_var("rfe", "PROJECT")] = "KONFLUX"
         result = subprocess.run(cmd, capture_output=True, text=True, env=env)
@@ -1547,3 +1559,525 @@ class TestBindingHeader:
             "project key\n"
         )
         assert not os.path.exists(f"{art_dir}/auto-fix-runs")
+
+
+class TestProvenanceHeader:
+    """AISDLC-193: the report says what judged the run — the plugin version, the checkout's
+    commit and the descriptor's rubric pin — as an additive ``provenance`` key right after
+    ``binding``. No schema version bump; readers that predate it ignore it."""
+
+    def _one_rfe(self, art_dir):
+        _write(
+            f"{art_dir}/rfe-tasks/RHAIRFE-1234.md",
+            TASK_TEMPLATE.format(rfe_id="RHAIRFE-1234", extra=""),
+        )
+        _write(
+            f"{art_dir}/rfe-reviews/RHAIRFE-1234-review.md",
+            REVIEW_TEMPLATE.format(
+                rfe_id="RHAIRFE-1234",
+                score=9,
+                pass_val="true",
+                recommendation="submit",
+                right_sized=2,
+            ),
+        )
+
+    @pytest.fixture(autouse=True)
+    def _no_rubric_override_and_no_checkout(self, monkeypatch, tmp_path):
+        """The bootstrap's overrides and a vendored checkout belong to the tests that set
+        them up; a developer's shell or .context/ must not leak into the others."""
+        monkeypatch.delenv(generate_run_report.RUBRIC_REPO_ENV, raising=False)
+        monkeypatch.delenv(generate_run_report.RUBRIC_REF_ENV, raising=False)
+        monkeypatch.setattr(
+            generate_run_report, "ASSESS_CONTEXT_DIR", str(tmp_path / "no-such-checkout")
+        )
+
+    @staticmethod
+    def _git_repo(path):
+        """A git repository with one commit at ``path``; returns its HEAD."""
+        env = {
+            **os.environ,
+            "GIT_AUTHOR_NAME": "t",
+            "GIT_AUTHOR_EMAIL": "t@example.com",
+            "GIT_COMMITTER_NAME": "t",
+            "GIT_COMMITTER_EMAIL": "t@example.com",
+        }
+        os.makedirs(path, exist_ok=True)
+        for args in (["init", "-q"], ["commit", "-q", "--allow-empty", "-m", "one"]):
+            subprocess.run(["git", "-C", str(path), *args], check=True, env=env)
+        return subprocess.run(
+            ["git", "-C", str(path), "rev-parse", "HEAD"], capture_output=True, text=True
+        ).stdout.strip()
+
+    def test_rubric_is_the_descriptor_pin_for_each_type(self, art_dir, tmp_path):
+        self._one_rfe(art_dir)
+        report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
+        rfe = generate_run_report._TYPES.get("rfe")
+        assert report["provenance"]["rubric"] == {
+            "repo": rfe.get("pipeline.rubric.repo"),
+            "ref": rfe.get("pipeline.rubric.ref"),
+            "path": rfe.get("pipeline.rubric.path"),
+            "source": "descriptor",
+            "commit": None,  # no vendored checkout in this test tree
+        }
+        assert re.fullmatch(r"[0-9a-f]{40}", report["provenance"]["rubric"]["ref"])
+        for d in ["initiatives", "initiative-reviews"]:
+            os.makedirs(tmp_path / "artifacts" / d)
+        initiative = build_report(
+            [],
+            "2026-08-18T09:00:00Z",
+            artifacts_dir=str(tmp_path / "artifacts"),
+            entry_type="initiative",
+        )
+        ini = generate_run_report._TYPES.get("initiative")
+        assert initiative["provenance"]["rubric"]["path"] == ini.get("pipeline.rubric.path")
+        assert list(initiative["provenance"]) == ["pipeline_version", "pipeline_commit", "rubric"]
+        assert list(initiative["provenance"]["rubric"]) == list(
+            generate_run_report.PROVENANCE_RUBRIC_KEYS
+        )
+
+    def test_pipeline_version_is_the_manifest_version(self, art_dir):
+        self._one_rfe(art_dir)
+        manifest = json.loads(
+            (type_registry.PLUGIN_ROOT / ".claude-plugin" / "plugin.json").read_text()
+        )
+        report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
+        assert report["provenance"]["pipeline_version"] == manifest["version"]
+
+    def test_pipeline_commit_is_the_checkout_head(self, art_dir):
+        """The test tree is a git checkout (a worktree counts): the report names its HEAD."""
+        self._one_rfe(art_dir)
+        head = subprocess.run(
+            ["git", "-C", str(type_registry.PLUGIN_ROOT), "rev-parse", "--verify", "HEAD"],
+            capture_output=True,
+            text=True,
+        )
+        report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
+        if head.returncode == 0:
+            assert report["provenance"]["pipeline_commit"] == head.stdout.strip()
+        else:  # a tree that is not a checkout reports None, never a guess
+            assert report["provenance"]["pipeline_commit"] is None
+
+    def test_outside_a_checkout_the_commit_is_none_and_the_report_still_writes(
+        self, art_dir, monkeypatch
+    ):
+        self._one_rfe(art_dir)
+
+        def no_git(*args, **kwargs):
+            raise FileNotFoundError("git")
+
+        monkeypatch.setattr(generate_run_report.subprocess, "run", no_git)
+        report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
+        assert report["provenance"]["pipeline_commit"] is None
+        assert report["provenance"]["pipeline_version"] is not None
+
+    def test_an_unreadable_manifest_yields_none_not_a_crash(self, art_dir, monkeypatch):
+        self._one_rfe(art_dir)
+        monkeypatch.setattr(type_registry, "PLUGIN_ROOT", type_registry.PLUGIN_ROOT / "nope")
+        report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
+        assert report["provenance"]["pipeline_version"] is None
+        assert report["provenance"]["pipeline_commit"] is None
+        assert report["provenance"]["rubric"]["ref"]  # the descriptor pin needs no tree
+
+    def test_bootstrap_overrides_are_recorded_as_the_effective_rubric(self, art_dir, monkeypatch):
+        """ASSESS_RFE_REPO / ASSESS_RFE_REF send the bootstrap elsewhere for an ad-hoc run;
+        the report must say so instead of repeating the descriptor pin (Qodo on #256)."""
+        self._one_rfe(art_dir)
+        monkeypatch.setenv(generate_run_report.RUBRIC_REPO_ENV, "acme/assess-fork")
+        monkeypatch.setenv(generate_run_report.RUBRIC_REF_ENV, "experiment-branch")
+        rubric = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")["provenance"]["rubric"]
+        assert rubric["repo"] == "https://github.com/acme/assess-fork"  # bootstrap's slug rule
+        assert rubric["ref"] == "experiment-branch"
+        assert rubric["source"] == "env"
+        assert rubric["path"] == generate_run_report._TYPES.get("rfe").get("pipeline.rubric.path")
+
+    def test_one_override_alone_still_marks_the_source_as_env(self, art_dir, monkeypatch):
+        self._one_rfe(art_dir)
+        monkeypatch.setenv(generate_run_report.RUBRIC_REF_ENV, "abc123")
+        rubric = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")["provenance"]["rubric"]
+        assert rubric["source"] == "env"
+        assert rubric["ref"] == "abc123"
+        assert rubric["repo"] == generate_run_report._TYPES.get("rfe").get("pipeline.rubric.repo")
+
+    def test_rubric_commit_is_the_vendored_checkouts_head(self, art_dir, tmp_path, monkeypatch):
+        self._one_rfe(art_dir)
+        checkout = tmp_path / ".context" / "assess-rfe"
+        head = self._git_repo(checkout)
+        monkeypatch.setattr(generate_run_report, "ASSESS_CONTEXT_DIR", str(checkout))
+        rubric = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")["provenance"]["rubric"]
+        assert rubric["commit"] == head
+
+    def test_a_rubric_directory_inside_another_repo_is_not_given_that_repos_commit(
+        self, art_dir, tmp_path, monkeypatch
+    ):
+        outer = tmp_path / "outer"
+        self._git_repo(outer)
+        nested = outer / ".context" / "assess-rfe"
+        os.makedirs(nested)  # files copied in, no checkout of its own
+        self._one_rfe(art_dir)
+        monkeypatch.setattr(generate_run_report, "ASSESS_CONTEXT_DIR", str(nested))
+        assert (
+            build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")["provenance"]["rubric"]["commit"]
+            is None
+        )
+
+    def test_a_checkout_path_with_spaces_still_yields_its_head(
+        self, art_dir, tmp_path, monkeypatch
+    ):
+        """git prints the top level and the SHA on two lines; a path with spaces must not be
+        split into more tokens (fullsend review on #256)."""
+        self._one_rfe(art_dir)
+        checkout = tmp_path / "with space" / ".context" / "assess-rfe"
+        head = self._git_repo(checkout)
+        monkeypatch.setattr(generate_run_report, "ASSESS_CONTEXT_DIR", str(checkout))
+        rubric = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")["provenance"]["rubric"]
+        assert rubric["commit"] == head
+
+    def test_a_credential_in_the_repo_override_is_not_recorded(self, art_dir, monkeypatch):
+        self._one_rfe(art_dir)
+        monkeypatch.setenv(
+            generate_run_report.RUBRIC_REPO_ENV,
+            "https://user:s3cr3t-token@git.example.com/x/assess.git",
+        )
+        report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
+        assert report["provenance"]["rubric"]["repo"] == "https://git.example.com/x/assess.git"
+        assert "s3cr3t" not in yaml.safe_dump(report)
+
+    def test_query_and_fragment_credentials_are_not_recorded(self, art_dir, monkeypatch):
+        """A token can ride a URL's query or fragment as well as its userinfo (fullsend review
+        on #256); neither identifies a repository, so both are dropped, in the whole report."""
+        self._one_rfe(art_dir)
+        monkeypatch.setenv(
+            generate_run_report.RUBRIC_REPO_ENV,
+            "https://u:p4ss@git.example.com/x/assess.git?access_token=qu3ry-s3cr3t#fr4g-s3cr3t",
+        )
+        report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
+        assert report["provenance"]["rubric"]["repo"] == "https://git.example.com/x/assess.git"
+        dumped = yaml.safe_dump(report)
+        for secret in ("p4ss", "qu3ry-s3cr3t", "fr4g-s3cr3t"):
+            assert secret not in dumped
+
+    def test_an_scp_style_token_is_not_recorded_in_the_whole_report(self, art_dir, monkeypatch):
+        self._one_rfe(art_dir)
+        monkeypatch.setenv(
+            generate_run_report.RUBRIC_REPO_ENV, "scp-s3cr3t@git.example.com:x/assess.git"
+        )
+        report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
+        assert report["provenance"]["rubric"]["repo"] == "git.example.com:x/assess.git"
+        assert "scp-s3cr3t" not in yaml.safe_dump(report)
+
+    def test_a_url_the_parser_rejects_is_recorded_as_none_not_raised(self, art_dir, monkeypatch):
+        """urlsplit raises on an unmatched IPv6 bracket; that must cost the identity, not the
+        report, and the raw (possibly credential-bearing) value must not be written instead."""
+        assert generate_run_report._repo_url("https://u:t@[2001:db8::1/r.git") is None
+        self._one_rfe(art_dir)
+        monkeypatch.setenv(
+            generate_run_report.RUBRIC_REPO_ENV, "https://u:s3cr3t@[2001:db8::1/r.git"
+        )
+        report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
+        assert report["provenance"]["rubric"]["repo"] is None
+        assert "s3cr3t" not in yaml.safe_dump(report)
+
+    @pytest.mark.parametrize(
+        "override",
+        [
+            "https://user:CRED-1234?x@git.example.com/x/assess.git",
+            "https://user:CRED-1234#x@git.example.com/x/assess.git",
+            "https::https://user:CRED-1234?x@git.example.com/x/assess.git",
+            "https::https://user:CRED-1234#x@git.example.com/x/assess.git",
+        ],
+    )
+    def test_an_unescaped_delimiter_in_the_userinfo_does_not_record_the_credential(
+        self, art_dir, monkeypatch, override
+    ):
+        """An unescaped ``?`` or ``#`` in the userinfo ends the authority early: the netloc is
+        the userinfo itself, so the credential would be recorded as the host (fullsend review
+        on #256). Such a URL cannot be normalized safely, so no identity is recorded."""
+        self._one_rfe(art_dir)
+        monkeypatch.setenv(generate_run_report.RUBRIC_REPO_ENV, override)
+        report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
+        assert report["provenance"]["rubric"]["repo"] is None
+        assert "CRED-1234" not in yaml.safe_dump(report)
+
+    def test_a_numeric_port_and_a_bracketed_ipv6_literal_with_a_port_are_unchanged(self):
+        f = generate_run_report._repo_url
+        assert f("https://h.example:8443/r.git") == "https://h.example:8443/r.git"
+        assert f("https://[2001:db8::1]:8443/r.git") == "https://[2001:db8::1]:8443/r.git"
+
+    def test_the_remote_helper_spelling_is_reduced_to_a_credential_free_url(
+        self, art_dir, monkeypatch
+    ):
+        """git accepts ``<transport>::<url>``; urlsplit puts the inner URL, credential and all,
+        in the path (fullsend review on #256). The identity is the inner URL, sanitized."""
+        f = generate_run_report._repo_url
+        assert f("https::https://user:secret@host.example/x.git") == "https://host.example/x.git"
+        self._one_rfe(art_dir)
+        monkeypatch.setenv(
+            generate_run_report.RUBRIC_REPO_ENV,
+            "https::https://user:h3lp3r-s3cr3t@host.example/x.git",
+        )
+        report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
+        assert report["provenance"]["rubric"]["repo"] == "https://host.example/x.git"
+        assert "h3lp3r-s3cr3t" not in yaml.safe_dump(report)
+
+    def test_a_url_without_a_host_or_with_a_second_url_in_its_path_is_none(self):
+        f = generate_run_report._repo_url
+        assert f("https:///x.git") is None  # no host to cut a credential from
+        assert f("https://host.example/https://user:secret@other/x.git") is None
+        assert f("https://host.example/x@y.git") is None
+
+    def test_ipv6_hosts_ports_and_malformed_ports_survive_the_stripping(self):
+        f = generate_run_report._repo_url
+        assert f("ssh://git@[2001:db8::1]/rubric.git") == "ssh://[2001:db8::1]/rubric.git"
+        assert f("https://u:t@[2001:db8::1]:8443/r.git") == "https://[2001:db8::1]:8443/r.git"
+        # A non-numeric port is what a colon-separated userinfo cut off by an unescaped
+        # delimiter looks like, so it costs the identity rather than being kept.
+        assert f("https://u:t@h.example:notaport/r.git") is None
+        assert f("https://h.example:8443/r.git?x=1") == "https://h.example:8443/r.git"
+
+    def test_scp_and_slug_spellings_are_kept_as_the_bootstrap_reads_them(self):
+        # The scp spelling loses its user part: `git` carries no information and a token in
+        # its place must not reach the report.
+        assert (
+            generate_run_report._repo_url("git@github.com:acme/assess.git")
+            == "github.com:acme/assess.git"
+        )
+        assert (
+            generate_run_report._repo_url("s3cr3t-token@git.example.com:acme/assess.git")
+            == "git.example.com:acme/assess.git"
+        )
+        assert generate_run_report._repo_url("acme/assess") == "https://github.com/acme/assess"
+        assert (
+            generate_run_report._repo_url("https://h.example:8443/r.git")
+            == "https://h.example:8443/r.git"
+        )
+        assert generate_run_report._repo_url(None) is None
+
+    @pytest.mark.parametrize(
+        ("override", "recorded", "secret"),
+        [
+            ("acme/assess?access_token=SECRET#PRIVATE", "https://github.com/acme/assess", "SECRET"),
+            (
+                "user:TOKEN@host.example:acme/assess.git",
+                "host.example:acme/assess.git",
+                "TOKEN",
+            ),
+            ("TOKEN@host.example:acme/assess.git", "host.example:acme/assess.git", "TOKEN"),
+        ],
+    )
+    def test_slug_and_scp_credentials_are_not_recorded_in_the_whole_report(
+        self, art_dir, monkeypatch, override, recorded, secret
+    ):
+        """A slug may carry a query or fragment, and an scp userinfo may hold a colon; neither
+        may reach the report (fullsend review on #256)."""
+        self._one_rfe(art_dir)
+        monkeypatch.setenv(generate_run_report.RUBRIC_REPO_ENV, override)
+        report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
+        assert report["provenance"]["rubric"]["repo"] == recorded
+        dumped = yaml.safe_dump(report)
+        assert secret not in dumped
+        assert "PRIVATE" not in dumped
+
+    @pytest.mark.parametrize(
+        ("override", "recorded", "secret"),
+        [
+            (
+                "user:TOKEN@host.example:acme/assess.git?access_token=SECRET#PRIVATE",
+                "host.example:acme/assess.git",
+                "SECRET",
+            ),
+            (
+                "transport::host.example:acme/assess.git?access_token=SECRET",
+                "host.example:acme/assess.git",
+                "SECRET",
+            ),
+            (
+                "transport::user:TOKEN@host.example:acme/assess.git#SECRET",
+                "host.example:acme/assess.git",
+                "SECRET",
+            ),
+            ("host.example:?access_token=SECRET", None, "SECRET"),
+            ("host.example:#SECRET", None, "SECRET"),
+        ],
+    )
+    def test_scp_query_fragment_and_transport_prefix_are_not_recorded(
+        self, art_dir, monkeypatch, override, recorded, secret
+    ):
+        """git's ``<transport>::`` prefix also fronts an scp-like value, and an scp-like path
+        may carry a query or fragment; neither may reach the report (fullsend review on #256)."""
+        self._one_rfe(art_dir)
+        monkeypatch.setenv(generate_run_report.RUBRIC_REPO_ENV, override)
+        report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
+        assert report["provenance"]["rubric"]["repo"] == recorded
+        dumped = yaml.safe_dump(report)
+        assert secret not in dumped
+        assert "TOKEN" not in dumped
+        assert "PRIVATE" not in dumped
+
+    @pytest.mark.parametrize(
+        "ref", ["main", "release/1.2", "v1.0.0-rc.1", "0123456789abcdef0123456789abcdef01234567"]
+    )
+    def test_a_plausible_ref_override_is_recorded_as_given(self, art_dir, monkeypatch, ref):
+        self._one_rfe(art_dir)
+        monkeypatch.setenv(generate_run_report.RUBRIC_REF_ENV, ref)
+        rubric = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")["provenance"]["rubric"]
+        assert rubric["ref"] == ref
+        assert rubric["source"] == "env"
+
+    @pytest.mark.parametrize("ref", ["ref?token=SECRET", "-leading-dash", "a b", "x#SECRET"])
+    def test_an_implausible_ref_override_is_not_recorded_but_source_stays_env(
+        self, art_dir, monkeypatch, ref
+    ):
+        self._one_rfe(art_dir)
+        monkeypatch.setenv(generate_run_report.RUBRIC_REF_ENV, ref)
+        report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
+        assert report["provenance"]["rubric"]["ref"] is None
+        assert report["provenance"]["rubric"]["source"] == "env"
+        assert "SECRET" not in yaml.safe_dump(report)
+
+    def test_a_slug_without_a_credential_is_unchanged(self):
+        f = generate_run_report._repo_url
+        assert f("acme/assess") == "https://github.com/acme/assess"
+        assert f("acme/assess.git") == "https://github.com/acme/assess.git"
+
+    def test_an_scp_form_with_an_at_sign_in_the_path_is_none(self):
+        f = generate_run_report._repo_url
+        assert f("git@host.example:acme/as@sess.git") is None
+        assert f("host.example:acme/as@sess.git") is None
+        assert f("host.example:") is None  # empty path
+        assert f("@host.example") is None  # no path at all
+
+    @pytest.mark.parametrize(
+        ("override", "recorded"),
+        [
+            ("host.example:acme/assess.git?x=a::CRED-1234", "host.example:acme/assess.git"),
+            ("host.example:acme/assess.git#x=a::CRED-1234", "host.example:acme/assess.git"),
+            ("host.example:acme/assess.git?x=a@b:CRED-1234", None),
+            ("host.example:acme/assess.git#x=a@b:CRED-1234", None),
+            ("user@host.example:acme/assess.git?a=b@c:CRED-1234", None),
+        ],
+    )
+    def test_an_scp_query_is_cut_before_the_userinfo_and_path_are_read(
+        self, art_dir, monkeypatch, override, recorded
+    ):
+        """A query holding only a "::" must not be read as a transport prefix; one holding an
+        "@" cannot be told from a userinfo holding the delimiter, so it records no identity
+        (fullsend review on #256)."""
+        self._one_rfe(art_dir)
+        monkeypatch.setenv(generate_run_report.RUBRIC_REPO_ENV, override)
+        report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
+        assert report["provenance"]["rubric"]["repo"] == recorded
+        assert "CRED-1234" not in yaml.safe_dump(report)
+
+    @pytest.mark.parametrize(
+        "override",
+        [
+            "CRED-1234?x@host.example:acme/assess.git",
+            "CRED-1234#x@host.example:acme/assess.git",
+            "user:CRED-1234?x@host.example:acme/assess.git",
+            "user:CRED-1234#x@host.example:acme/assess.git",
+            "transport::CRED-1234?x@host.example:acme/assess.git",
+            "transport::user:CRED-1234#x@host.example:acme/assess.git",
+            "CRED-1234?x@acme/assess",
+            "CRED-1234#x@acme/assess",
+        ],
+    )
+    def test_a_delimiter_in_a_scheme_less_userinfo_does_not_record_the_credential(
+        self, art_dir, monkeypatch, override
+    ):
+        """An unescaped ``?`` or ``#`` in a scheme-less userinfo must not leave its prefix
+        to be recorded as a slug or an scp host (the URL branch refuses the same case)."""
+        self._one_rfe(art_dir)
+        monkeypatch.setenv(generate_run_report.RUBRIC_REPO_ENV, override)
+        report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
+        assert report["provenance"]["rubric"]["repo"] is None
+        assert "CRED-1234" not in yaml.safe_dump(report)
+
+    def test_only_an_owner_repo_slug_becomes_a_github_url(self):
+        f = generate_run_report._repo_url
+        assert f("assess") is None  # one segment
+        assert f("a/b/c") is None  # three segments
+        assert f("acme//assess") is None
+        assert f("acme/assess/") is None
+        assert f("acme/as sess") is None
+        assert f("acme/assess") == "https://github.com/acme/assess"
+        assert f("acme/assess.git") == "https://github.com/acme/assess.git"
+        assert f("acme/assess?x=1") == "https://github.com/acme/assess"
+        assert f("acme/assess.git#frag") == "https://github.com/acme/assess.git"
+
+    def test_the_transport_prefixed_url_form_is_still_credential_free(self, art_dir, monkeypatch):
+        self._one_rfe(art_dir)
+        monkeypatch.setenv(
+            generate_run_report.RUBRIC_REPO_ENV,
+            "https::https://user:CRED-1234@host.example/x.git",
+        )
+        report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
+        assert report["provenance"]["rubric"]["repo"] == "https://host.example/x.git"
+        assert "CRED-1234" not in yaml.safe_dump(report)
+
+    def test_a_double_colon_not_after_a_leading_transport_word_is_not_a_prefix(self):
+        f = generate_run_report._repo_url
+        # In the path of an scp-like value, and in front of a non-word start: kept as-is.
+        assert f("host.example:acme/x::y") == "host.example:acme/x::y"
+        assert f("1abc::x") == "1abc::x"
+        # Only the leading transport word is stripped, once per recursion.
+        assert f("ext::host.example:acme/x.git") == "host.example:acme/x.git"
+        # Nothing usable left after the query or fragment is cut.
+        assert f("?token=CRED-1234") is None
+        assert f("#CRED-1234") is None
+
+    def test_the_rubric_checkout_is_found_beside_the_artifacts_not_in_the_cwd(
+        self, tmp_path, monkeypatch
+    ):
+        """The report is built for the workspace whose artifacts it reads: the checkout is
+        looked up in the parent of the artifacts directory, not wherever the process runs."""
+        monkeypatch.setattr(
+            generate_run_report, "ASSESS_CONTEXT_DIR", ".context/assess-rfe"
+        )  # the real default, relative
+        first = tmp_path / "first"
+        second = tmp_path / "second"
+        first_head = self._git_repo(first / ".context" / "assess-rfe")
+        # A different commit message makes the two heads differ.
+        second_checkout = second / ".context" / "assess-rfe"
+        self._git_repo(second_checkout)
+        subprocess.run(
+            ["git", "-C", str(second_checkout), "commit", "-q", "--allow-empty", "-m", "two"],
+            check=True,
+            env={
+                **os.environ,
+                "GIT_AUTHOR_NAME": "t",
+                "GIT_AUTHOR_EMAIL": "t@example.com",
+                "GIT_COMMITTER_NAME": "t",
+                "GIT_COMMITTER_EMAIL": "t@example.com",
+            },
+        )
+        second_head = subprocess.run(
+            ["git", "-C", str(second_checkout), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        assert first_head != second_head
+        art = second / "artifacts"
+        self._one_rfe(str(art))
+        monkeypatch.chdir(first)
+        rubric = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z", artifacts_dir=str(art))[
+            "provenance"
+        ]["rubric"]
+        assert rubric["commit"] == second_head
+
+    def test_a_plugin_directory_inside_another_repo_reports_no_commit(
+        self, art_dir, tmp_path, monkeypatch
+    ):
+        """A marketplace install is not a checkout; if it sits inside some other repository,
+        git would answer with that repository's HEAD. The report says null instead."""
+        outer = tmp_path / "outer"
+        self._git_repo(outer)
+        nested = outer / "plugins" / "rfe-creator"
+        os.makedirs(nested / ".claude-plugin")
+        (nested / ".claude-plugin" / "plugin.json").write_text(json.dumps({"version": "9.9.9"}))
+        self._one_rfe(art_dir)
+        monkeypatch.setattr(type_registry, "PLUGIN_ROOT", nested)
+        prov = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")["provenance"]
+        assert prov["pipeline_commit"] is None
+        assert prov["pipeline_version"] == "9.9.9"
