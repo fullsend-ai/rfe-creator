@@ -1917,6 +1917,88 @@ class TestProvenanceHeader:
         assert f("host.example:") is None  # empty path
         assert f("@host.example") is None  # no path at all
 
+    @pytest.mark.parametrize(
+        "override",
+        [
+            "host.example:acme/assess.git?x=a::CRED-1234",
+            "host.example:acme/assess.git#x=a::CRED-1234",
+            "host.example:acme/assess.git?x=a@b:CRED-1234",
+            "host.example:acme/assess.git#x=a@b:CRED-1234",
+            "user@host.example:acme/assess.git?a=b@c:CRED-1234",
+        ],
+    )
+    def test_an_scp_query_is_cut_before_the_userinfo_and_path_are_read(
+        self, art_dir, monkeypatch, override
+    ):
+        """A query holding a "::" or an "@" and a ":" must not be read as a transport prefix
+        or as userinfo, which would keep what follows it (fullsend review on #256)."""
+        self._one_rfe(art_dir)
+        monkeypatch.setenv(generate_run_report.RUBRIC_REPO_ENV, override)
+        report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
+        assert report["provenance"]["rubric"]["repo"] == "host.example:acme/assess.git"
+        assert "CRED-1234" not in yaml.safe_dump(report)
+
+    def test_the_transport_prefixed_url_form_is_still_credential_free(self, art_dir, monkeypatch):
+        self._one_rfe(art_dir)
+        monkeypatch.setenv(
+            generate_run_report.RUBRIC_REPO_ENV,
+            "https::https://user:CRED-1234@host.example/x.git",
+        )
+        report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
+        assert report["provenance"]["rubric"]["repo"] == "https://host.example/x.git"
+        assert "CRED-1234" not in yaml.safe_dump(report)
+
+    def test_a_double_colon_not_after_a_leading_transport_word_is_not_a_prefix(self):
+        f = generate_run_report._repo_url
+        # In the path of an scp-like value, and in front of a non-word start: kept as-is.
+        assert f("host.example:acme/x::y") == "host.example:acme/x::y"
+        assert f("1abc::x") == "1abc::x"
+        # Only the leading transport word is stripped, once per recursion.
+        assert f("ext::host.example:acme/x.git") == "host.example:acme/x.git"
+        # Nothing usable left after the query or fragment is cut.
+        assert f("?token=CRED-1234") is None
+        assert f("#CRED-1234") is None
+
+    def test_the_rubric_checkout_is_found_beside_the_artifacts_not_in_the_cwd(
+        self, tmp_path, monkeypatch
+    ):
+        """The report is built for the workspace whose artifacts it reads: the checkout is
+        looked up in the parent of the artifacts directory, not wherever the process runs."""
+        monkeypatch.setattr(
+            generate_run_report, "ASSESS_CONTEXT_DIR", ".context/assess-rfe"
+        )  # the real default, relative
+        first = tmp_path / "first"
+        second = tmp_path / "second"
+        first_head = self._git_repo(first / ".context" / "assess-rfe")
+        # A different commit message makes the two heads differ.
+        second_checkout = second / ".context" / "assess-rfe"
+        self._git_repo(second_checkout)
+        subprocess.run(
+            ["git", "-C", str(second_checkout), "commit", "-q", "--allow-empty", "-m", "two"],
+            check=True,
+            env={
+                **os.environ,
+                "GIT_AUTHOR_NAME": "t",
+                "GIT_AUTHOR_EMAIL": "t@example.com",
+                "GIT_COMMITTER_NAME": "t",
+                "GIT_COMMITTER_EMAIL": "t@example.com",
+            },
+        )
+        second_head = subprocess.run(
+            ["git", "-C", str(second_checkout), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        assert first_head != second_head
+        art = second / "artifacts"
+        self._one_rfe(str(art))
+        monkeypatch.chdir(first)
+        rubric = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z", artifacts_dir=str(art))[
+            "provenance"
+        ]["rubric"]
+        assert rubric["commit"] == second_head
+
     def test_a_plugin_directory_inside_another_repo_reports_no_commit(
         self, art_dir, tmp_path, monkeypatch
     ):

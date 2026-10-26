@@ -202,6 +202,8 @@ ASSESS_CONTEXT_DIR = ".context/assess-rfe"
 # REF_SOURCE): when either is set, the run scored against something other than the pin.
 RUBRIC_REPO_ENV = "ASSESS_RFE_REPO"
 RUBRIC_REF_ENV = "ASSESS_RFE_REF"
+# git's remote-helper prefix, <transport>::<rest>: a bare transport word at the very start.
+_TRANSPORT_PREFIX = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*::")
 
 
 def _plugin_version():
@@ -272,16 +274,18 @@ def _repo_url(value):
     its last ``@``, never rebuilt), so an IPv6 literal or a malformed port cannot break the
     report; a URL the parser rejects outright, or one with no host or with a second URL in
     its path, is recorded as None. git's ``<transport>::<rest>`` spelling is reduced to
-    ``<rest>``, and the scp-like path is cut at a query or fragment.
+    ``<rest>``, and a value without a scheme separator is cut at its first query or fragment
+    before anything else is read from it.
     """
     if not value:
         return value
     # git's remote-helper spelling, <transport>::<rest> (bootstrap.sh passes it through), in
-    # front of a URL or an scp-like value alike: the identity is what follows the first
-    # ``::``, sanitized on its own. Only a "::" that precedes any "://" is a transport prefix.
-    sep_at, helper_at = value.find("://"), value.find("::")
-    if helper_at != -1 and (sep_at == -1 or helper_at < sep_at):
-        return _repo_url(value[helper_at + 2 :]) or None
+    # front of a URL or an scp-like value alike: the identity is what follows the prefix,
+    # sanitized on its own. Only a value that STARTS with a bare transport word and "::" has a
+    # prefix; a "::" anywhere else (a path, a query) is just part of the value.
+    prefix = _TRANSPORT_PREFIX.match(value)
+    if prefix:
+        return _repo_url(value[prefix.end() :]) or None
     if "://" in value:
         try:
             parts = urlsplit(value)
@@ -296,6 +300,11 @@ def _repo_url(value):
             return None
         netloc = parts.netloc.rsplit("@", 1)[-1]
         return urlunsplit((parts.scheme, netloc, parts.path, "", ""))
+    # A query or fragment (``?access_token=...``) identifies no repository, and may itself hold
+    # an "@", a ":" or a "::": cut it FIRST, before the userinfo and host:path are read.
+    value = re.split(r"[?#]", value, maxsplit=1)[0]
+    if not value:
+        return None  # nothing usable left
     if "@" in value or ":" in value:
         # scp-like git spelling, [userinfo@]host:path. Everything up to the LAST "@" is
         # userinfo (a token may itself hold a ":"), so only the part after it is kept.
@@ -303,18 +312,16 @@ def _repo_url(value):
         m = re.fullmatch(r"([^/:\s]+):(.+)", candidate)
         if not m:
             return None  # not safely normalizable: no identity rather than the raw value
-        # A query or fragment (``?access_token=...``) identifies no repository: cut the path
-        # at the first of either.
-        path = re.split(r"[?#]", m.group(2), maxsplit=1)[0]
-        if not path or "@" in path:
-            return None  # empty path, or not safely normalizable: no identity
+        path = m.group(2)
+        if "@" in path:
+            return None  # not safely normalizable: no identity
         return f"{m.group(1)}:{path}"
     # A bare owner/repo slug is a GitHub repository; the URL it stands for is sanitized like
     # any other, so a query or fragment riding on the slug is dropped too.
     return _repo_url(f"https://github.com/{value}")
 
 
-def _rubric_provenance(entry_type, env=None, context_dir=None):
+def _rubric_provenance(entry_type, env=None, context_dir=None, workspace_root=None):
     """What the run scored against: the rubric the bootstrap was asked for and the checkout
     it left behind. ``repo`` and ``ref`` are the descriptor's ``pipeline.rubric`` pin unless
     the bootstrap's ad-hoc overrides (``ASSESS_RFE_REPO`` / ``ASSESS_RFE_REF``) were set, which
@@ -322,11 +329,13 @@ def _rubric_provenance(entry_type, env=None, context_dir=None):
     ``commit`` is HEAD of the vendored checkout in ``context_dir`` (bootstrap.sh CONTEXT_DIR)
     when it is a git checkout of its own -- the revision the scorer read, whatever was
     requested -- and None when there is no such checkout or git cannot say (the bootstrap
-    then proceeded with the files as they were and said so in its log)."""
+    then proceeded with the files as they were and said so in its log). A default
+    ``context_dir`` is looked up under ``workspace_root`` (the working directory when None),
+    where the bootstrap vendored it for the workspace the artifacts belong to."""
     if env is None:
         env = os.environ
     if context_dir is None:
-        context_dir = ASSESS_CONTEXT_DIR
+        context_dir = os.path.join(workspace_root or os.getcwd(), ASSESS_CONTEXT_DIR)
     desc = _TYPES.get(entry_type)
     repo_override = env.get(RUBRIC_REPO_ENV) or None
     ref_override = env.get(RUBRIC_REF_ENV) or None
@@ -346,17 +355,17 @@ def _rubric_provenance(entry_type, env=None, context_dir=None):
     }
 
 
-def _provenance_header(entry_type, env=None):
+def _provenance_header(entry_type, env=None, workspace_root=None):
     """The ``provenance`` header (AISDLC-193): what judged this run. ``pipeline_version``
     is the plugin manifest's version and ``pipeline_commit`` the checkout's own commit (None
     outside a git checkout); ``rubric`` is what the scorer read -- see _rubric_provenance.
     A rubric or descriptor change can then be told apart from a model change after the
     fact, from the report alone. Additive under ``report_schema_version`` 1: readers that
-    predate it ignore it."""
+    predate it ignore it. ``workspace_root`` is where the rubric checkout is looked up."""
     return {
         "pipeline_version": _plugin_version(),
         "pipeline_commit": _plugin_commit(),
-        "rubric": _rubric_provenance(entry_type, env=env),
+        "rubric": _rubric_provenance(entry_type, env=env, workspace_root=workspace_root),
     }
 
 
@@ -600,7 +609,11 @@ def build_report(
         "binding": _binding_header(entry_type),
         # Additive too (AISDLC-193): the commit, plugin version and rubric pin that judged
         # the run, right after the binding; no schema version bump.
-        "provenance": _provenance_header(entry_type),
+        # The rubric checkout sits in the workspace root: the parent of the artifacts
+        # directory (the current directory in every standard invocation).
+        "provenance": _provenance_header(
+            entry_type, workspace_root=os.path.dirname(os.path.abspath(artifacts_dir))
+        ),
         "run_id": _parse_run_id(start_time),
         "started": start_time,
         "completed": now,
