@@ -1178,6 +1178,62 @@ class TestApprovedTransition:
         assert "Would transition to Approved" in stdout
         assert "rfe-creator-feasibility-pass" in stdout
 
+    def test_split_recommendation_no_transition(self, art_dir):
+        """A passing, feasible review that recommends a split blocks auto-approve (#251):
+        the item was not split in this run, so it gets its labels only — no rubric-pass
+        label, no transition — and the plan says why. The same review recommending
+        ``submit`` transitions, so the gate is the recommendation alone."""
+        body = "Original.\n"
+        _write(f"{art_dir}/rfe-originals/RHAIRFE-1234.md", body)
+        _write(
+            f"{art_dir}/rfe-tasks/RHAIRFE-1234.md",
+            "---\nrfe_id: RHAIRFE-1234\ntitle: Test RFE\n"
+            "priority: Major\nstatus: Ready\n---\nRevised.",
+        )
+        review = REVIEW_FM.format(rfe_id="RHAIRFE-1234", auto_revised="true")
+        _write(
+            f"{art_dir}/rfe-reviews/RHAIRFE-1234-review.md",
+            review.replace("recommendation: submit", "recommendation: split"),
+        )
+
+        stdout, stderr, rc = _run_submit(art_dir, ["--auto-approve"])
+        assert rc == 0, stderr
+        assert "Would transition to Approved" not in stdout
+        assert "rfe-creator-autofix-rubric-pass" not in stdout
+        assert "rfe-creator-feasibility-pass" in stdout
+        assert "split recommended but not split in this run: not auto-approved" in stdout
+
+        _write(f"{art_dir}/rfe-reviews/RHAIRFE-1234-review.md", review)
+        stdout, stderr, rc = _run_submit(art_dir, ["--auto-approve"])
+        assert rc == 0, stderr
+        assert "Would transition to Approved" in stdout
+        assert "rfe-creator-autofix-rubric-pass" in stdout
+        assert "split recommended" not in stdout
+
+    def test_split_recommendation_label_only_no_transition(self, art_dir):
+        """The label-only path (body unchanged) applies the same gate: a split-recommended
+        item's verdict labels are added, it is not transitioned, and the plan says why."""
+        body = "Same content.\n"
+        _write(f"{art_dir}/rfe-originals/RHAIRFE-1234.md", body)
+        _write(
+            f"{art_dir}/rfe-tasks/RHAIRFE-1234.md",
+            "---\nrfe_id: RHAIRFE-1234\ntitle: Test RFE\n"
+            f"priority: Major\nstatus: Ready\n---\n{body}",
+        )
+        _write(
+            f"{art_dir}/rfe-reviews/RHAIRFE-1234-review.md",
+            REVIEW_FM.format(rfe_id="RHAIRFE-1234", auto_revised="false").replace(
+                "recommendation: submit", "recommendation: split"
+            ),
+        )
+
+        stdout, stderr, rc = _run_submit(art_dir, ["--auto-approve"])
+        assert rc == 0, stderr
+        assert "Label only" in stdout
+        assert "Would transition to Approved" not in stdout
+        assert "rfe-creator-autofix-rubric-pass" not in stdout
+        assert "split recommended but not split in this run: not auto-approved" in stdout
+
     def test_no_flag_no_transition(self, art_dir):
         """Without --auto-approve → no transition even if review passes."""
         body = "Original.\n"

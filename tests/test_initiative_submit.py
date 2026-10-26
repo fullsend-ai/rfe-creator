@@ -408,6 +408,25 @@ class TestAutoApprove:
         assert rc == 0, stderr
         assert "Would transition to Approved" in stdout
 
+    def test_split_recommendation_no_transition(self, art_dir):
+        """Passing, feasible review recommending a split → labels only, no auto-approve.
+
+        Same gate as RFEs (#251): an item not split in this run is not transitioned,
+        gets no rubric-pass label, and the plan says why.
+        """
+        _write(f"{art_dir}/initiatives/INIT-001.md", TASK_FM.format(initiative_id="INIT-001"))
+        _write(
+            f"{art_dir}/initiative-reviews/INIT-001-review.md",
+            _default_review("INIT-001").replace("recommendation: submit", "recommendation: split"),
+        )
+
+        stdout, stderr, rc = _run_submit(art_dir, ["--auto-approve"])
+        assert rc == 0, stderr
+        assert "Would create" in stdout
+        assert "Would transition to Approved" not in stdout
+        assert "initiative-autofix-rubric-pass" not in stdout
+        assert "split recommended but not split in this run: not auto-approved" in stdout
+
 
 class TestGenerateReportFlag:
     def test_generate_report_without_timestamp_fails(self):

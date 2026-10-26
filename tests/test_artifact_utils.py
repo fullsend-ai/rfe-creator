@@ -20,6 +20,7 @@ from artifact_utils import (
     _migrate_fields,
     append_frontmatter_field,
     apply_defaults,
+    auto_approve_qualifies,
     find_artifact_file_including_archived,
     find_removed_context_yaml,
     find_review_file,
@@ -1284,6 +1285,30 @@ class TestLookupsUseDetect:
 # `type:` / `tracker_ref:` are read by the id-only routers when an id is ambiguous or
 # provisional, and written by rename_to_tracker_key on the two files it rewrites anyway.
 # Every pre-migration id and artifact behaves exactly as before.
+
+
+class TestAutoApproveQualifies:
+    """The one auto-approve gate (submit.py and split_submit.py): no error, pass, feasible,
+    and a ``submit`` recommendation (#251); an absent recommendation counts as ``submit``."""
+
+    PASSING = {"pass": True, "feasibility": "feasible", "recommendation": "submit"}
+
+    def test_passing_feasible_submit_qualifies(self):
+        assert auto_approve_qualifies(dict(self.PASSING))
+
+    def test_absent_recommendation_counts_as_submit(self):
+        review = {k: v for k, v in self.PASSING.items() if k != "recommendation"}
+        assert auto_approve_qualifies(review)
+
+    @pytest.mark.parametrize("rec", ["split", "revise", "reject", "autorevise_reject"])
+    def test_other_recommendations_do_not_qualify(self, rec):
+        assert not auto_approve_qualifies({**self.PASSING, "recommendation": rec})
+
+    def test_existing_conditions_still_apply(self):
+        assert not auto_approve_qualifies(None)
+        assert not auto_approve_qualifies({**self.PASSING, "error": "review_stalled"})
+        assert not auto_approve_qualifies({**self.PASSING, "pass": False})
+        assert not auto_approve_qualifies({**self.PASSING, "feasibility": "indeterminate"})
 
 
 class TestAppendFrontmatterField:
