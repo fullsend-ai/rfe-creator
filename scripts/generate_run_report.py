@@ -271,16 +271,18 @@ def _repo_url(value):
     through the same sanitization. The host keeps its brackets and port (the netloc is cut at
     its last ``@``, never rebuilt), so an IPv6 literal or a malformed port cannot break the
     report; a URL the parser rejects outright, or one with no host or with a second URL in
-    its path, is recorded as None. git's ``<transport>::<url>`` spelling is reduced to the URL.
+    its path, is recorded as None. git's ``<transport>::<rest>`` spelling is reduced to
+    ``<rest>``, and the scp-like path is cut at a query or fragment.
     """
     if not value:
         return value
+    # git's remote-helper spelling, <transport>::<rest> (bootstrap.sh passes it through), in
+    # front of a URL or an scp-like value alike: the identity is what follows the first
+    # ``::``, sanitized on its own. Only a "::" that precedes any "://" is a transport prefix.
+    sep_at, helper_at = value.find("://"), value.find("::")
+    if helper_at != -1 and (sep_at == -1 or helper_at < sep_at):
+        return _repo_url(value[helper_at + 2 :]) or None
     if "://" in value:
-        # git's remote-helper spelling, <transport>::<url> (bootstrap.sh passes it through):
-        # the identity is the URL after the first ``::``, sanitized on its own.
-        head, sep, rest = value.partition("://")
-        if "::" in head:
-            return _repo_url(value.split("::", 1)[1])
         try:
             parts = urlsplit(value)
         except ValueError:
@@ -299,9 +301,14 @@ def _repo_url(value):
         # userinfo (a token may itself hold a ":"), so only the part after it is kept.
         candidate = value.rpartition("@")[2] if "@" in value else value
         m = re.fullmatch(r"([^/:\s]+):(.+)", candidate)
-        if not m or "@" in m.group(2):
+        if not m:
             return None  # not safely normalizable: no identity rather than the raw value
-        return f"{m.group(1)}:{m.group(2)}"
+        # A query or fragment (``?access_token=...``) identifies no repository: cut the path
+        # at the first of either.
+        path = re.split(r"[?#]", m.group(2), maxsplit=1)[0]
+        if not path or "@" in path:
+            return None  # empty path, or not safely normalizable: no identity
+        return f"{m.group(1)}:{path}"
     # A bare owner/repo slug is a GitHub repository; the URL it stands for is sanitized like
     # any other, so a query or fragment riding on the slug is dropped too.
     return _repo_url(f"https://github.com/{value}")
@@ -323,9 +330,16 @@ def _rubric_provenance(entry_type, env=None, context_dir=None):
     desc = _TYPES.get(entry_type)
     repo_override = env.get(RUBRIC_REPO_ENV) or None
     ref_override = env.get(RUBRIC_REF_ENV) or None
+    if ref_override:
+        # Like the repo, the override is written to a pushed report: only a plausible git ref
+        # name (branch, tag, SHA) is recorded, never something that can carry a credential.
+        # ``source`` still reads "env", so the report shows an override was in effect.
+        ref = ref_override if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]*", ref_override) else None
+    else:
+        ref = desc.get("pipeline.rubric.ref", None)
     return {
         "repo": _repo_url(repo_override or desc.get("pipeline.rubric.repo", None)),
-        "ref": ref_override or desc.get("pipeline.rubric.ref", None),
+        "ref": ref,
         "path": desc.get("pipeline.rubric.path", None),
         "source": "env" if (repo_override or ref_override) else "descriptor",
         "commit": _head_of_checkout(context_dir),

@@ -1848,6 +1848,63 @@ class TestProvenanceHeader:
         assert secret not in dumped
         assert "PRIVATE" not in dumped
 
+    @pytest.mark.parametrize(
+        ("override", "recorded", "secret"),
+        [
+            (
+                "user:TOKEN@host.example:acme/assess.git?access_token=SECRET#PRIVATE",
+                "host.example:acme/assess.git",
+                "SECRET",
+            ),
+            (
+                "transport::host.example:acme/assess.git?access_token=SECRET",
+                "host.example:acme/assess.git",
+                "SECRET",
+            ),
+            (
+                "transport::user:TOKEN@host.example:acme/assess.git#SECRET",
+                "host.example:acme/assess.git",
+                "SECRET",
+            ),
+            ("host.example:?access_token=SECRET", None, "SECRET"),
+            ("host.example:#SECRET", None, "SECRET"),
+        ],
+    )
+    def test_scp_query_fragment_and_transport_prefix_are_not_recorded(
+        self, art_dir, monkeypatch, override, recorded, secret
+    ):
+        """git's ``<transport>::`` prefix also fronts an scp-like value, and an scp-like path
+        may carry a query or fragment; neither may reach the report (fullsend review on #256)."""
+        self._one_rfe(art_dir)
+        monkeypatch.setenv(generate_run_report.RUBRIC_REPO_ENV, override)
+        report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
+        assert report["provenance"]["rubric"]["repo"] == recorded
+        dumped = yaml.safe_dump(report)
+        assert secret not in dumped
+        assert "TOKEN" not in dumped
+        assert "PRIVATE" not in dumped
+
+    @pytest.mark.parametrize(
+        "ref", ["main", "release/1.2", "v1.0.0-rc.1", "0123456789abcdef0123456789abcdef01234567"]
+    )
+    def test_a_plausible_ref_override_is_recorded_as_given(self, art_dir, monkeypatch, ref):
+        self._one_rfe(art_dir)
+        monkeypatch.setenv(generate_run_report.RUBRIC_REF_ENV, ref)
+        rubric = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")["provenance"]["rubric"]
+        assert rubric["ref"] == ref
+        assert rubric["source"] == "env"
+
+    @pytest.mark.parametrize("ref", ["ref?token=SECRET", "-leading-dash", "a b", "x#SECRET"])
+    def test_an_implausible_ref_override_is_not_recorded_but_source_stays_env(
+        self, art_dir, monkeypatch, ref
+    ):
+        self._one_rfe(art_dir)
+        monkeypatch.setenv(generate_run_report.RUBRIC_REF_ENV, ref)
+        report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
+        assert report["provenance"]["rubric"]["ref"] is None
+        assert report["provenance"]["rubric"]["source"] == "env"
+        assert "SECRET" not in yaml.safe_dump(report)
+
     def test_a_slug_without_a_credential_is_unchanged(self):
         f = generate_run_report._repo_url
         assert f("acme/assess") == "https://github.com/acme/assess"
