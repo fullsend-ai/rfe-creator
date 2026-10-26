@@ -1861,7 +1861,7 @@ class TestSecondPassInterruptedHold:
     @pytest.mark.parametrize(
         "marker,launched,state_type",
         [
-            (None, 1, "rfe"),  # a review written before the marker existed
+            (None, None, "rfe"),  # a review written before the marker existed, no pass launched
             (0, None, "rfe"),  # no pipeline state (a manual submit job's workspace)
             (0, 1, "initiative"),  # another type's pipeline run
         ],
@@ -1874,6 +1874,70 @@ class TestSecondPassInterruptedHold:
         assert "revision interrupted" not in stdout
         assert "Would update" in stdout
         assert "rfe-creator-auto-revised" in stdout
+
+    # A bool marker (``true``) never gets this far from a file: the review schema types the
+    # field as int, so submit reads such a review as unreadable (warn and proceed, no hold);
+    # test_launched_pass_with_a_missing_marker covers it at the function level.
+    @pytest.mark.parametrize("marker", ["absent", "null", "-1"])
+    @pytest.mark.parametrize("switch", ["--auto-approve", "--hold-interrupted"])
+    def test_launched_pass_without_a_marker_is_held(self, art_dir, switch, marker):
+        """A launched pass whose review carries no usable marker never completed."""
+        review = self._seed(art_dir, marker=None if marker == "absent" else marker, launched=1)
+        before = open(review).read()
+        stdout, stderr, rc = _run_submit(art_dir, [switch])
+        assert rc == 0, stderr
+        assert "Label only" in stdout
+        assert "revision interrupted (revise pass 1 never completed)" in stdout
+        assert "Would update" not in stdout
+        assert "rfe-creator-auto-revised" not in stdout
+        assert open(review).read() == before  # a dry run writes nothing
+
+    @pytest.mark.parametrize("marker", ["absent", "null", "-1"])
+    def test_same_reviews_publish_when_no_pass_is_recorded(self, art_dir, marker):
+        self._seed(art_dir, marker=None if marker == "absent" else marker, launched=None)
+        stdout, stderr, rc = _run_submit(art_dir, ["--auto-approve"])
+        assert rc == 0, stderr
+        assert "revision interrupted" not in stdout
+        assert "Would update" in stdout
+        assert "rfe-creator-auto-revised" in stdout
+        assert "per-pass hold disabled" not in stderr
+
+    @pytest.mark.parametrize(
+        "state_text",
+        [
+            "phase: [unclosed\n",
+            "type: initiative\nrevise_passes:\n  RHAIRFE-1234: 1\n",
+            "type: rfe\nrevise_passes: [1, 2]\n",
+            "type: rfe\nrevise_passes:\n  RHAIRFE-1234: -1\n",
+            "type: rfe\nrevise_passes:\n  RHAIRFE-1234: true\n",
+        ],
+        ids=["unparsable", "other-type", "not-a-dict", "negative-entry", "bool-entry"],
+    )
+    @pytest.mark.parametrize("switch", ["--auto-approve", "--hold-interrupted"])
+    def test_unusable_state_warns_and_still_submits(self, art_dir, switch, state_text):
+        self._seed(art_dir, marker=0, launched=None)
+        _write(f"{art_dir}/tmp/pipeline-state.yaml", state_text)
+        stdout, stderr, rc = _run_submit(art_dir, [switch])
+        assert rc == 0, stderr
+        warnings = [ln for ln in stderr.splitlines() if "per-pass hold disabled" in ln]
+        assert len(warnings) == 1, stderr
+        assert warnings[0].startswith("Warning: per-pass hold disabled: tmp/pipeline-state.yaml ")
+        assert warnings[0].endswith("the auto_revised rule alone applies")
+        assert "Would update" in stdout  # the auto_revised rule alone publishes
+
+    def test_missing_state_is_silent(self, art_dir):
+        self._seed(art_dir, marker=0, launched=None)
+        stdout, stderr, rc = _run_submit(art_dir, ["--auto-approve"])
+        assert rc == 0, stderr
+        assert "per-pass hold disabled" not in stderr
+        assert "Would update" in stdout
+
+    def test_no_warning_without_a_hold_switch(self, art_dir):
+        self._seed(art_dir, marker=0, launched=None)
+        _write(f"{art_dir}/tmp/pipeline-state.yaml", "phase: [unclosed\n")
+        stdout, stderr, rc = _run_submit(art_dir)
+        assert rc == 0, stderr
+        assert "per-pass hold disabled" not in stderr
 
     def test_interactive_submit_still_updates(self, art_dir):
         self._seed(art_dir, marker=0, launched=1)
@@ -1932,6 +1996,17 @@ class TestSecondPassInterruptedHold:
 
         review = {} if marker is None else {"auto_revised_cycle": marker}
         assert submit._interrupted_revise_pass(review, launched) == expected
+
+    @pytest.mark.parametrize("marker", ["absent", None, -1, True, "1"])
+    def test_launched_pass_with_a_missing_marker(self, marker):
+        import submit
+
+        review = {"auto_revised": True}
+        if marker != "absent":
+            review["auto_revised_cycle"] = marker
+        assert submit._interrupted_revise_pass(review, 1) == (1, None)
+        assert submit._interrupted_revise_pass(review, None) is None
+        assert submit._interrupted_revise_pass({**review, "auto_revised": False}, 1) is None
 
     def test_unreadable_or_foreign_state_reads_as_none(self, tmp_path):
         import submit

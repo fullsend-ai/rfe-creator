@@ -1177,13 +1177,33 @@ class TestSecondPassInterruptedHold:
         assert "rfe-creator-auto-revised" in issue["fields"]["labels"]
         assert "rfe-creator-needs-attention" not in issue["fields"]["labels"]
 
-    def test_review_without_the_marker_behaves_as_today(self, art_dir, jira):
-        """An older run's review carries no marker: auto_revised true publishes, as before."""
-        self._seed(art_dir, jira, marker=None, launched=1)
+    def test_review_without_the_marker_behaves_as_today_when_no_pass_is_recorded(
+        self, art_dir, jira
+    ):
+        """An older run's review carries no marker and no pass was launched for the item:
+        auto_revised true publishes, as before."""
+        self._seed(art_dir, jira, marker=None, launched=None)
         r = _run_submit(art_dir, jira.url, ["--auto-approve"])
         assert r.returncode == 0, r.stderr
         assert "RHAIRFE-1234: Updated" in r.stdout
         assert "rfe-creator-auto-revised" in jira.get("RHAIRFE-1234")["fields"]["labels"]
+
+    @_HOLD_SWITCHES
+    def test_launched_pass_without_the_marker_is_held(self, art_dir, jira, hold_switch):
+        self._seed(art_dir, jira, marker=None, launched=1)
+        r = _run_submit(art_dir, jira.url, [hold_switch])
+        assert r.returncode == 0, r.stderr
+        assert "revision interrupted (revise pass 1 never completed)" in r.stdout
+        assert "RHAIRFE-1234: Updated" not in r.stdout
+        issue = jira.get("RHAIRFE-1234")
+        assert "Rewritten" not in self._desc_text(issue)
+        assert issue["fields"]["labels"] == ["rfe-creator-needs-attention"]
+        fm = _read_frontmatter(f"{art_dir}/rfe-reviews/RHAIRFE-1234-review.md")
+        assert fm["pass"] is False
+        assert fm["error"] == (
+            "revision_interrupted: revise pass 1 never completed (auto_revised_cycle missing)"
+        )
+        assert "marker is missing" in fm["needs_attention_reason"]
 
 
 class TestConflictDetection:

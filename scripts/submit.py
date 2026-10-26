@@ -332,7 +332,7 @@ INTERRUPTED_HOLD_REASON = (
 # from the pass before, so only the per-pass marker shows the interruption.
 INTERRUPTED_PASS_HOLD_REASON = (
     f"{INTERRUPTED_HOLD_REASON_PREFIX} the task body changed but the review never recorded "
-    "the completion of revise pass {launched} (the last completed pass is {marker}), so "
+    "the completion of revise pass {launched} ({marker_text}), so "
     "the rewrite was not re-reviewed. The description was left as it was; re-run the "
     "pipeline on this item or review the local revision by hand."
 )
@@ -347,32 +347,61 @@ def _is_revise_pass(value):
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
-def _launched_revise_passes(type_name, state_file=PIPELINE_STATE_FILE):
-    """id -> the revise pass the pipeline last launched for it (AISDLC-275), read from the
-    dispatcher's state file. {} when there is no state file, it cannot be read, or it belongs
-    to another type's run: the hold then keys on ``auto_revised`` alone, as before."""
+def _read_revise_passes(type_name, state_file=PIPELINE_STATE_FILE):
+    """``(passes, problem)``: id -> the revise pass the pipeline last launched for it
+    (AISDLC-275), read from the dispatcher's state file, and the reason the state could not be
+    used in full (None when it all was). ``passes`` is {} when there is no state file, it
+    cannot be read, or it belongs to another type's run: the hold then keys on
+    ``auto_revised`` alone, as before. A missing file is no problem (an interactive or
+    manual-job submit has none); every other shortfall is reported in ``problem``."""
     try:
         with open(state_file, encoding="utf-8") as f:
             state = yaml.safe_load(f)
+    except FileNotFoundError:
+        return {}, None
     except (OSError, UnicodeError, yaml.YAMLError):
-        return {}
-    if not isinstance(state, dict) or state.get("type", "rfe") != type_name:
-        return {}
+        return {}, "cannot be read or parsed"
+    if not isinstance(state, dict):
+        return {}, "cannot be parsed (not a mapping)"
+    state_type = state.get("type", "rfe")
+    if state_type != type_name:
+        return {}, f"belongs to another type ({state_type})"
     passes = state.get(REVISE_PASSES_KEY)
+    if passes is None:
+        return {}, None
     if not isinstance(passes, dict):
-        return {}
-    return {str(k): v for k, v in passes.items() if _is_revise_pass(v)}
+        return {}, f"has a {REVISE_PASSES_KEY} value that is not a mapping"
+    valid = {str(k): v for k, v in passes.items() if _is_revise_pass(v)}
+    if len(valid) != len(passes):
+        bad = sorted(str(k) for k, v in passes.items() if not _is_revise_pass(v))
+        return valid, (
+            f"has {REVISE_PASSES_KEY} entries that are not non-negative ints "
+            f"(ids: {', '.join(bad)})"
+        )
+    return valid, None
+
+
+def _launched_revise_passes(type_name, state_file=PIPELINE_STATE_FILE):
+    """id -> the revise pass the pipeline last launched for it; see _read_revise_passes."""
+    return _read_revise_passes(type_name, state_file)[0]
 
 
 def _interrupted_revise_pass(review_data, launched):
     """``(launched, marker)`` when the review's ``auto_revised_cycle`` — written only by a
     revise agent that completed, carried through re-reviews by preserve_review_state — is
     behind ``launched``, the last revise pass the pipeline started for the item: that pass
-    was cut off. None otherwise, and always None for a review without the marker (written
-    before AISDLC-275) or an item the pipeline launched no pass for."""
+    was cut off. A review with ``auto_revised`` true whose marker is absent, null, negative
+    or not an int is the same interruption seen from the other side (the pass never wrote
+    its marker): ``marker`` is None then. None when no pass was launched for the item (a
+    review written before AISDLC-275 keeps the ``auto_revised`` rule alone then), or when
+    ``auto_revised`` is false (the first-pass rule holds that one)."""
+    if not _is_revise_pass(launched):
+        return None
     marker = review_data.get("auto_revised_cycle")
-    if _is_revise_pass(marker) and _is_revise_pass(launched) and marker < launched:
-        return launched, marker
+    if _is_revise_pass(marker):
+        return (launched, marker) if marker < launched else None
+    if review_data.get("auto_revised"):
+        return launched, None
     return None
 
 
@@ -1039,7 +1068,15 @@ def main():
     _lower_unrevised_flags(args.artifacts_dir, type_name)
 
     # The revise pass the pipeline last launched per id, for the interrupted-revision hold.
-    revise_passes = _launched_revise_passes(type_name) if hold_interrupted else {}
+    revise_passes = {}
+    if hold_interrupted:
+        revise_passes, passes_problem = _read_revise_passes(type_name)
+        if passes_problem:
+            print(
+                f"Warning: per-pass hold disabled: {PIPELINE_STATE_FILE} {passes_problem}; "
+                "the auto_revised rule alone applies",
+                file=sys.stderr,
+            )
 
     # Scan task files
     tasks = scan_tasks(args.artifacts_dir, desc)
@@ -1793,7 +1830,8 @@ def main():
         # REASSESS_REVISE, so a second pass cut off after its body edit still reads true.
         # The revise agent also records the pass it completed (auto_revised_cycle); a
         # marker behind the last pass the pipeline launched for the item is held the same
-        # way. A review without the marker keeps the auto_revised rule alone.
+        # way, and so is a launched pass whose marker is missing altogether (absent, null,
+        # negative or not an int). Without a recorded pass the auto_revised rule alone applies.
         interrupted_pass = (
             _interrupted_revise_pass(review_data, revise_passes.get(item_id))
             if review_data
@@ -1828,10 +1866,17 @@ def main():
                 hold_note = "revision interrupted (auto_revised false)"
             elif interrupted_pass is not None:
                 launched, marker = interrupted_pass
-                reason = INTERRUPTED_PASS_HOLD_REASON.format(launched=launched, marker=marker)
+                marker_text = (
+                    "the auto_revised_cycle marker is missing"
+                    if marker is None
+                    else f"the last completed pass is {marker}"
+                )
+                reason = INTERRUPTED_PASS_HOLD_REASON.format(
+                    launched=launched, marker_text=marker_text
+                )
                 hold_error = (
                     f"{REVISION_INTERRUPTED_PREFIX} revise pass {launched} never completed"
-                    f" (auto_revised_cycle {marker})"
+                    f" (auto_revised_cycle {'missing' if marker is None else marker})"
                 )
                 hold_note = f"revision interrupted (revise pass {launched} never completed)"
             else:

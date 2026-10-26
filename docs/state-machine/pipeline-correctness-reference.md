@@ -1103,11 +1103,18 @@ per id, not the batch-wide `reassess_cycle`: an item whose first revision passed
 its re-review is not revised again while others go on to a second pass, and BATCH_START
 resets the counter for every batch while submit runs after all of them. In the hold
 branch, a changed body is held when `auto_revised` is false (the rule above, unchanged)
-**or** when the review's `auto_revised_cycle` is behind the pass recorded for the item —
-the same hold path, `revision_interrupted:` error (`revise pass N never completed`), labels,
-comment, snapshot reset and report fields. A review without the marker (written before
-AISDLC-275), an item with no recorded pass, or a workspace without the state file (or with
-another type's) keeps the `auto_revised` rule alone. A re-run that passes a hold switch also
+**or** when the review's `auto_revised_cycle` is behind the pass recorded for the item, or
+is missing (absent, null, negative or not an int) while `auto_revised` is true and a pass
+was recorded — the pass never wrote its marker. It is the same hold path, `revision_interrupted:`
+error (`revise pass N never completed`, followed by `(auto_revised_cycle missing)` for a missing
+marker), labels, comment, snapshot reset and report fields; the reason text says the marker is
+missing. A review without the marker (written before AISDLC-275) keeps the `auto_revised`
+rule alone only when no pass was launched for the item, as does a workspace without the
+state file (or with another type's). When a hold switch is in effect and the state file
+exists but cannot be parsed, belongs to another type, or has a `revise_passes` value that is
+not a mapping (or entries that are not non-negative ints), `submit.py` prints one stderr
+warning (`per-pass hold disabled: tmp/pipeline-state.yaml <reason>; the auto_revised rule
+alone applies`) and carries on; a missing state file is silent. A re-run that passes a hold switch also
 holds an item whose review already carries the `revision_interrupted:` record, so a
 later-pass hold stays held where the state file is gone (a manual submit job in another
 workspace).
