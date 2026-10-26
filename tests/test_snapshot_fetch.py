@@ -1777,11 +1777,11 @@ class TestFetchAuthGuard:
             cmd_fetch(self._args(tmp_path))
         assert exc.value.code == 503
         assert len(attempts) > 1  # retried like the search, not fatal on the first blip
-        monkeypatch.setattr(
-            jira_utils,
-            "api_call",
-            lambda *a, **kw: (_ for _ in ()).throw(urllib.error.URLError("name resolution")),
-        )
+
+        def unreachable(*a, **kw):
+            raise urllib.error.URLError("name resolution")
+
+        monkeypatch.setattr(jira_utils, "api_call", unreachable)
         with pytest.raises(urllib.error.URLError):
             cmd_fetch(self._args(tmp_path))
 

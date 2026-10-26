@@ -132,9 +132,10 @@ def require_authenticated(server, user, token):
     itself. Returns the identity on success.
     """
     try:
-        # Through the retry wrapper: a 429 or a 502/503/504 on this one call is retried exactly
-        # as it would be on the search, so a transient blip does not abort a fetch (Qodo on #259).
-        return api_call_with_retry(server, "/myself", user, token)
+        # get_myself goes through the retry wrapper: a 429 or a 502/503/504 on this one call
+        # is retried exactly as it would be on the search, so a transient blip does not abort
+        # a fetch (Qodo on #259).
+        return get_myself(server, user, token)
     except urllib.error.HTTPError as e:
         if e.code in (401, 403):
             reason = e.headers.get("X-Seraph-LoginReason", "") if e.headers else ""
