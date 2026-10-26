@@ -548,6 +548,18 @@ These invariants must hold and should guide future refactors:
    `update_snapshot_hashes` (called by `submit.py`) is the sole path
    to marking an issue as processed.
 
+## Authentication guard
+
+`cmd_fetch` proves the credentials with `GET /rest/api/3/myself` before the first search.
+Jira Cloud answers a search made with an invalid or expired token with HTTP 200,
+`X-Seraph-LoginReason: AUTHENTICATED_FAILED` and an empty issue list, which this command
+would otherwise turn into `TOTAL=0` and an idle run (every scheduled run of 2026-10-26 went
+green that way on an expired bot token). A 401 or 403 from `/myself` is reported as
+`Error: Jira rejected the credentials ...` and exits 2 before any snapshot is read or any
+ID file written, so invariant 1 holds trivially (nothing was selected) and the run stops
+instead of going idle. Any other failure of that call propagates as a search failure
+always did.
+
 ## Known Gaps
 
 - **Split children not added to snapshot.** `split_submit.py` creates

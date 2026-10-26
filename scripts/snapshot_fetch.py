@@ -46,9 +46,11 @@ import yaml
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import type_registry
 from jira_utils import (
+    JiraAuthError,
     adf_to_markdown,
     api_call_with_retry,
     normalize_for_compare,
+    require_authenticated,
     require_env,
 )
 
@@ -552,6 +554,16 @@ def cmd_fetch(args):
     if not all([server, user, token]):
         print("Error: JIRA_SERVER, JIRA_USER, and JIRA_TOKEN required", file=sys.stderr)
         sys.exit(1)
+
+    # The credentials must be proven before the search: with an invalid or expired token
+    # Jira answers the search with HTTP 200 and no issues, which this command would turn into
+    # TOTAL=0 and an idle run (every scheduled run of 2026-10-26 did). Exit 2, before any
+    # snapshot is read or any ID file written, so the run stops instead of going idle.
+    try:
+        require_authenticated(server, user, token)
+    except JiraAuthError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(2)
 
     # Load previous snapshot
     prev_path, prev_data = find_previous_snapshot(prefix=prefix)
