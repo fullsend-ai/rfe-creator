@@ -1776,6 +1776,28 @@ class TestProvenanceHeader:
         assert report["provenance"]["rubric"]["repo"] is None
         assert "s3cr3t" not in yaml.safe_dump(report)
 
+    def test_the_remote_helper_spelling_is_reduced_to_a_credential_free_url(
+        self, art_dir, monkeypatch
+    ):
+        """git accepts ``<transport>::<url>``; urlsplit puts the inner URL, credential and all,
+        in the path (fullsend review on #256). The identity is the inner URL, sanitized."""
+        f = generate_run_report._repo_url
+        assert f("https::https://user:secret@host.example/x.git") == "https://host.example/x.git"
+        self._one_rfe(art_dir)
+        monkeypatch.setenv(
+            generate_run_report.RUBRIC_REPO_ENV,
+            "https::https://user:h3lp3r-s3cr3t@host.example/x.git",
+        )
+        report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
+        assert report["provenance"]["rubric"]["repo"] == "https://host.example/x.git"
+        assert "h3lp3r-s3cr3t" not in yaml.safe_dump(report)
+
+    def test_a_url_without_a_host_or_with_a_second_url_in_its_path_is_none(self):
+        f = generate_run_report._repo_url
+        assert f("https:///x.git") is None  # no host to cut a credential from
+        assert f("https://host.example/https://user:secret@other/x.git") is None
+        assert f("https://host.example/x@y.git") is None
+
     def test_ipv6_hosts_ports_and_malformed_ports_survive_the_stripping(self):
         f = generate_run_report._repo_url
         assert f("ssh://git@[2001:db8::1]/rubric.git") == "ssh://[2001:db8::1]/rubric.git"

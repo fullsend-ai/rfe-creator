@@ -269,17 +269,27 @@ def _repo_url(value):
     (``TOKEN@host:path``), and a URL's query and fragment (``?access_token=...``), none of
     which identify a repository. The host keeps its brackets and port (the netloc is cut at
     its last ``@``, never rebuilt), so an IPv6 literal or a malformed port cannot break the
-    report; a URL the parser rejects outright is recorded as None.
+    report; a URL the parser rejects outright, or one with no host or with a second URL in
+    its path, is recorded as None. git's ``<transport>::<url>`` spelling is reduced to the URL.
     """
     if not value:
         return value
     if "://" in value:
+        # git's remote-helper spelling, <transport>::<url> (bootstrap.sh passes it through):
+        # the identity is the URL after the first ``::``, sanitized on its own.
+        head, sep, rest = value.partition("://")
+        if "::" in head:
+            return _repo_url(value.split("::", 1)[1])
         try:
             parts = urlsplit(value)
         except ValueError:
             # A URL the parser rejects (an unmatched IPv6 bracket, say) cannot be made
             # credential-free, so no identity is recorded -- never the raw value, and never
             # an exception that would cost the whole report.
+            return None
+        if not parts.netloc or "://" in parts.path or "@" in parts.path:
+            # Nothing a host could be cut from, or a second URL (with whatever it carries)
+            # hiding in the path: not safely normalizable, so no identity.
             return None
         netloc = parts.netloc.rsplit("@", 1)[-1]
         return urlunsplit((parts.scheme, netloc, parts.path, "", ""))
