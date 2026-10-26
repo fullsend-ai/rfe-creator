@@ -9,7 +9,16 @@ set -euo pipefail
 echo "rfe-creator pre-script: bootstrapping ${TARGET_REPO_DIR}"
 
 cd -- "${TARGET_REPO_DIR}"
-for t in $(python3 scripts/type_registry.py list); do
+# Captured on its own line: a command substitution inside a `for` list does
+# not trip `set -e`, so a registry failure would otherwise run the loop zero
+# times and let the script exit 0 with nothing vendored.
+types="$(python3 scripts/type_registry.py list)"
+if [ -z "${types}" ]; then
+  echo "ERROR: the type registry listed no types in ${TARGET_REPO_DIR}" >&2
+  echo "       (likely cause: no types/ directory beside scripts/)" >&2
+  exit 1
+fi
+for t in ${types}; do
   bash scripts/bootstrap.sh --type "$t"
 done
 bash scripts/fetch-architecture-context.sh
