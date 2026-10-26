@@ -277,7 +277,8 @@ def _repo_url(value):
     credential in the netloc), one with no host, or one with a second URL in its path, is
     recorded as None. git's ``<transport>::<rest>`` spelling is reduced to
     ``<rest>``, and a value without a scheme separator is cut at its first query or fragment
-    before anything else is read from it.
+    before anything else is read from it (an "@" after that first "?" or "#" records no
+    identity, and a value that is neither scp-like nor an owner/repo slug records none).
     """
     if not value:
         return value
@@ -312,9 +313,14 @@ def _repo_url(value):
             return None
         netloc = parts.netloc.rsplit("@", 1)[-1]
         return urlunsplit((parts.scheme, netloc, parts.path, "", ""))
+    # An "@" after the first "?" or "#" is either in the query or in a userinfo that holds the
+    # delimiter; the two cannot be told apart, so no identity (the URL branch's policy).
+    delimiter = re.search(r"[?#]", value)
+    if delimiter and "@" in value[delimiter.end() :]:
+        return None
     # A query or fragment (``?access_token=...``) identifies no repository, and may itself hold
-    # an "@", a ":" or a "::": cut it FIRST, before the userinfo and host:path are read.
-    value = re.split(r"[?#]", value, maxsplit=1)[0]
+    # a ":" or a "::": cut it FIRST, before the userinfo and host:path are read.
+    value = value[: delimiter.start()] if delimiter else value
     if not value:
         return None  # nothing usable left
     if "@" in value or ":" in value:
@@ -329,7 +335,10 @@ def _repo_url(value):
             return None  # not safely normalizable: no identity
         return f"{m.group(1)}:{path}"
     # A bare owner/repo slug is a GitHub repository; the URL it stands for is sanitized like
-    # any other, so a query or fragment riding on the slug is dropped too.
+    # any other, so a query or fragment riding on the slug is dropped too. Only an owner/repo
+    # slug qualifies: anything else is not safely a repository, so no identity.
+    if not re.fullmatch(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+", value):
+        return None
     return _repo_url(f"https://github.com/{value}")
 
 

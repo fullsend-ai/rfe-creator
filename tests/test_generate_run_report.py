@@ -1948,25 +1948,62 @@ class TestProvenanceHeader:
         assert f("@host.example") is None  # no path at all
 
     @pytest.mark.parametrize(
-        "override",
+        ("override", "recorded"),
         [
-            "host.example:acme/assess.git?x=a::CRED-1234",
-            "host.example:acme/assess.git#x=a::CRED-1234",
-            "host.example:acme/assess.git?x=a@b:CRED-1234",
-            "host.example:acme/assess.git#x=a@b:CRED-1234",
-            "user@host.example:acme/assess.git?a=b@c:CRED-1234",
+            ("host.example:acme/assess.git?x=a::CRED-1234", "host.example:acme/assess.git"),
+            ("host.example:acme/assess.git#x=a::CRED-1234", "host.example:acme/assess.git"),
+            ("host.example:acme/assess.git?x=a@b:CRED-1234", None),
+            ("host.example:acme/assess.git#x=a@b:CRED-1234", None),
+            ("user@host.example:acme/assess.git?a=b@c:CRED-1234", None),
         ],
     )
     def test_an_scp_query_is_cut_before_the_userinfo_and_path_are_read(
-        self, art_dir, monkeypatch, override
+        self, art_dir, monkeypatch, override, recorded
     ):
-        """A query holding a "::" or an "@" and a ":" must not be read as a transport prefix
-        or as userinfo, which would keep what follows it (fullsend review on #256)."""
+        """A query holding only a "::" must not be read as a transport prefix; one holding an
+        "@" cannot be told from a userinfo holding the delimiter, so it records no identity
+        (fullsend review on #256)."""
         self._one_rfe(art_dir)
         monkeypatch.setenv(generate_run_report.RUBRIC_REPO_ENV, override)
         report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
-        assert report["provenance"]["rubric"]["repo"] == "host.example:acme/assess.git"
+        assert report["provenance"]["rubric"]["repo"] == recorded
         assert "CRED-1234" not in yaml.safe_dump(report)
+
+    @pytest.mark.parametrize(
+        "override",
+        [
+            "CRED-1234?x@host.example:acme/assess.git",
+            "CRED-1234#x@host.example:acme/assess.git",
+            "user:CRED-1234?x@host.example:acme/assess.git",
+            "user:CRED-1234#x@host.example:acme/assess.git",
+            "transport::CRED-1234?x@host.example:acme/assess.git",
+            "transport::user:CRED-1234#x@host.example:acme/assess.git",
+            "CRED-1234?x@acme/assess",
+            "CRED-1234#x@acme/assess",
+        ],
+    )
+    def test_a_delimiter_in_a_scheme_less_userinfo_does_not_record_the_credential(
+        self, art_dir, monkeypatch, override
+    ):
+        """An unescaped ``?`` or ``#`` in a scheme-less userinfo must not leave its prefix
+        to be recorded as a slug or an scp host (the URL branch refuses the same case)."""
+        self._one_rfe(art_dir)
+        monkeypatch.setenv(generate_run_report.RUBRIC_REPO_ENV, override)
+        report = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")
+        assert report["provenance"]["rubric"]["repo"] is None
+        assert "CRED-1234" not in yaml.safe_dump(report)
+
+    def test_only_an_owner_repo_slug_becomes_a_github_url(self):
+        f = generate_run_report._repo_url
+        assert f("assess") is None  # one segment
+        assert f("a/b/c") is None  # three segments
+        assert f("acme//assess") is None
+        assert f("acme/assess/") is None
+        assert f("acme/as sess") is None
+        assert f("acme/assess") == "https://github.com/acme/assess"
+        assert f("acme/assess.git") == "https://github.com/acme/assess.git"
+        assert f("acme/assess?x=1") == "https://github.com/acme/assess"
+        assert f("acme/assess.git#frag") == "https://github.com/acme/assess.git"
 
     def test_the_transport_prefixed_url_form_is_still_credential_free(self, art_dir, monkeypatch):
         self._one_rfe(art_dir)
