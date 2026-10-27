@@ -1735,6 +1735,101 @@ class TestMissingJsonschema:
         report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
         assert report.ok and report.warnings == [validate_types.SHAPE_CHECK_SKIPPED]
 
+    @pytest.mark.parametrize(
+        "section, key, value",
+        [
+            ("snapshot", "prefix", "*"),
+            ("snapshot", "prefix", "issue-snapshot"),  # no trailing dash
+            ("snapshot", "report_prefix", "Report-"),
+            ("snapshot", "results_subdir", "../escape"),
+            ("pipeline", "poll_prefix", "rfe"),  # no trailing dash
+            ("pipeline", "state_prefix", "Initiative-"),
+            ("pipeline", "scorer_agent", "a/b"),
+            ("pipeline", "scorer_agent", 7),  # not a string
+        ],
+    )
+    def test_a_path_bound_value_outside_the_schema_grammar_is_a_finding_without_jsonschema(
+        self, monkeypatch, types_copy, section, key, value
+    ):
+        """snapshot.prefix '*' reached snapshot_fetch's {prefix}*.yaml glob when --verify ran
+        without the shape check (fullsend on #266, round 3)."""
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        dotted = f"{section}.{key}"
+        _mutate(types_copy, "rfe", lambda d: d.setdefault(section, {}).__setitem__(key, value))
+        report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
+        hits = _assert_finding(report, f"{dotted} must ", "rfe")
+        assert validate_types.PATH_VALUE_PATTERNS[dotted] in hits[0].message
+        assert hits[0].message.endswith(f"got {value!r}")
+
+    @pytest.mark.parametrize("dotted", ["pipeline.poll_prefix", "pipeline.state_prefix"])
+    def test_an_empty_poll_or_state_prefix_passes_without_jsonschema(
+        self, monkeypatch, types_copy, dotted
+    ):
+        """The schema allows '' for both (grandfathered for rfe)."""
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        section, key = dotted.split(".")
+        _mutate(types_copy, "rfe", lambda d: d.setdefault(section, {}).__setitem__(key, ""))
+        report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
+        assert not _find(report, f"{dotted} must", "rfe")
+        assert report.ok
+
+    def test_a_lowercase_local_prefix_is_a_grammar_finding_without_jsonschema(
+        self, monkeypatch, types_copy
+    ):
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        _mutate(types_copy, "rfe", lambda d: d["identity"].__setitem__("local_prefix", "rfe-"))
+        report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
+        _assert_finding(
+            report,
+            "identity.local_prefix must match "
+            + validate_types.PATH_VALUE_PATTERNS["identity.local_prefix"]
+            + ", got 'rfe-'",
+            "rfe",
+        )
+
+    def test_an_empty_local_prefix_is_reported_once_without_jsonschema(
+        self, monkeypatch, types_copy
+    ):
+        """The required check owns the empty case; the grammar check does not repeat it."""
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        _mutate(types_copy, "rfe", lambda d: d["identity"].__setitem__("local_prefix", ""))
+        report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
+        assert len(_find(report, "identity.local_prefix", "rfe")) == 1
+
+    def test_path_value_patterns_equal_the_schemas_own(self):
+        """Drift pin: every PATH_VALUE_PATTERNS regex is the pattern the schema carries for
+        that field, so a schema change cannot silently diverge from the degraded check."""
+        schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+        found = {}  # property/def names from the root (structure keys omitted) -> patterns
+
+        def walk(node, names):
+            if not isinstance(node, dict):
+                return
+            if "pattern" in node and isinstance(node["pattern"], str) and names:
+                found.setdefault(tuple(names), set()).add(node["pattern"])
+            for container in ("properties", "$defs"):
+                children = node.get(container)
+                if isinstance(children, dict):
+                    for name, child in children.items():
+                        walk(child, names + [name])
+            walk(node.get("items"), names)
+            for combinator in ("allOf", "anyOf", "oneOf"):
+                for child in node.get(combinator) or []:
+                    walk(child, names)
+
+        walk(schema, [])
+        for dotted, pattern in validate_types.PATH_VALUE_PATTERNS.items():
+            parts = tuple(dotted.split("."))
+            # A single name is a root property; otherwise the dotted tail ends the path.
+            tails = {
+                names: patterns
+                for names, patterns in found.items()
+                if (names == parts if len(parts) == 1 else names[-len(parts) :] == parts)
+            }
+            assert tails, f"no schema pattern found for {dotted}"
+            for names, patterns in tails.items():
+                assert patterns == {pattern}, f"{dotted} drifted from the schema at {names}"
+
     def test_what_degraded_mode_does_not_catch_is_documented(self, monkeypatch, types_copy):
         """An unknown top-level key is a schema finding only: without jsonschema it passes.
         Pinned so the limit stays deliberate (and the full lint still catches it)."""

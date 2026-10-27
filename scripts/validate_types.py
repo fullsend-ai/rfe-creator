@@ -72,12 +72,16 @@ design-proposals/work-item-types-unified.md §3.3:
       the dev dependency, so --verify skips only the JSON-Schema shape check (one
       WARN line, named in the verdict) and still applies every structural rule above
       -- the rubric pin, the file references, the prefixes are what the gate exists
-      for -- plus two shape rules the structural rules rely on (schema_version is 1,
-      the identity strings are present and non-empty). Each rule runs on its own there,
-      so one that trips over a malformed shape is one finding and the rest still decide.
+      for -- plus three shape rules the structural rules rely on (schema_version is 1,
+      the identity strings are present and non-empty, and the values that end up in file
+      names and globs match the schema's regex: PATH_VALUE_PATTERNS -- type, the identity
+      prefix and id field, the pipeline and snapshot prefixes, scorer_agent,
+      results_subdir -- so snapshot.prefix '*' cannot reach a glob). Each rule runs on its
+      own there, so one that trips over a malformed shape is one finding and the rest
+      still decide.
       Not covered without jsonschema: unknown keys, enum values other than kind's, required
-      keys other than the identity strings, nested shapes no structural rule reads. The
-      full lint (no --verify) keeps requiring it.
+      keys other than the identity strings, patterns of other fields, nested shapes no
+      structural rule reads. The full lint (no --verify) keeps requiring it.
 
 Usage:
     python3 scripts/validate_types.py [--root DIR] [--extra-roots A:B]
@@ -225,6 +229,22 @@ SUPPORTED_SCHEMA_VERSION = 1
 # jira (the schema requires both for a Jira binding).
 IDENTITY_STRING_FIELDS = ("identity.local_prefix", "identity.id_field")
 JIRA_IDENTITY_STRING_FIELDS = ("identity.jira.project", "identity.jira.issue_type")
+# The descriptor values that end up in file names and globs (the snapshot glob
+# ``{prefix}*.yaml``, tmp/ state files, report names, results subtrees), each with the
+# schema's own regex, copied verbatim from types/_schema/type.schema.json. Checked without
+# the shape check so a value such as snapshot.prefix '*' cannot reach a glob; a test pins
+# every entry to the schema so the two cannot drift.
+PATH_VALUE_PATTERNS = {
+    "type": r"^[a-z][a-z0-9-]*$",
+    "identity.local_prefix": r"^[A-Z][A-Z0-9]*-$",
+    "identity.id_field": r"^[a-z][a-z0-9_]*$",
+    "pipeline.poll_prefix": r"^([a-z][a-z0-9]*-)?$",
+    "pipeline.state_prefix": r"^([a-z][a-z0-9]*-)?$",
+    "pipeline.scorer_agent": r"^[a-z][a-z0-9-]*$",
+    "snapshot.prefix": r"^[a-z][a-z0-9-]*-$",
+    "snapshot.report_prefix": r"^([a-z][a-z0-9-]*-)?$",
+    "snapshot.results_subdir": r"^([a-z][a-z0-9-]*)?$",
+}
 
 
 @dataclass
@@ -700,11 +720,13 @@ def error_stub_messages(desc, artifact_utils):
 
 
 def shape_messages(desc):
-    """The two shape constraints the structural rules depend on, for a run without the
+    """The shape constraints the structural rules depend on, for a run without the
     JSON-Schema shape check (gate 3 in the pipeline's sandbox): the descriptor's
-    ``schema_version`` is the supported one, and the identity strings the cross-type rules
+    ``schema_version`` is the supported one; the identity strings the cross-type rules
     hash are present and non-empty (the local pair always, the Jira pair for a Jira
-    tracker). With the schema present these are its findings instead."""
+    tracker); and each path-bound value in PATH_VALUE_PATTERNS, when present, is a string
+    that full-matches the schema's own regex (a name, prefix or subdir that becomes part of
+    a file name or glob). With the schema present these are its findings instead."""
     messages = []
     version = _opt(desc, "schema_version")
     # A YAML boolean is not the integer 1 (True == 1 in Python, but the schema's const rejects it).
@@ -720,12 +742,25 @@ def shape_messages(desc):
     required = list(IDENTITY_STRING_FIELDS)
     if _opt(desc, "identity.tracker") == "jira" or _opt(desc, "identity.jira") is not None:
         required += list(JIRA_IDENTITY_STRING_FIELDS)
+    reported = set()
     for dotted in required:
         value = _opt(desc, dotted)
         if value is None:
             messages.append(f"{dotted} is required, got None")
+            reported.add(dotted)
         elif not isinstance(value, str) or not value.strip():
             messages.append(f"{dotted} must be a non-empty string, got {value!r}")
+            reported.add(dotted)
+    for dotted, pattern in PATH_VALUE_PATTERNS.items():
+        value = _opt(desc, dotted)
+        # Absent is the schema's call (required or optional); the identity pair is already
+        # reported above when missing, null, empty or not a string.
+        if value is None or dotted in reported:
+            continue
+        if not isinstance(value, str):
+            messages.append(f"{dotted} must be a string matching {pattern}, got {value!r}")
+        elif not re.fullmatch(pattern, value):
+            messages.append(f"{dotted} must match {pattern}, got {value!r}")
     return messages
 
 
