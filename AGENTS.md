@@ -175,13 +175,21 @@ When `tmp/pipeline-state.yaml` exists and the phase is not DONE:
    end a turn to "wait" — block on the barrier in rule 2 instead.
 2. After launching each wave of agents, your next Bash call MUST be
    `python3 scripts/pipeline_state.py wait-for-wave`. This is a blocking
-   synchronization barrier that reads artifact files on disk. On exit 3,
-   re-run the same command. An exit 0 preceded by a `wait-for-wave: STALL`
-   line on stderr is normal: the barrier has re-dispatched or escalated the
-   stuck ids itself (docs/wave-stall-guard.md); continue with next-action.
-3. Do not wait for agent-completion notifications — the wait-for-wave command
+   synchronization barrier that reads artifact files on disk. An exit 0
+   preceded by a `wait-for-wave: STALL` line on stderr is normal: the barrier
+   has re-dispatched or escalated the stuck ids itself
+   (docs/wave-stall-guard.md); continue with next-action.
+3. Barrier contract: On exit 3 the wave is still pending: wait by re-running
+   `python3 scripts/pipeline_state.py wait-for-wave`. The barrier re-dispatches
+   a stuck agent itself after the stall window and escalates when it cannot
+   (docs/wave-stall-guard.md). While a wave is pending, launch no agent, read
+   no artifact and run no command other than the barrier. If the launch list
+   is lost mid-launch, recover it with
+   `python3 scripts/state.py read-launch tmp/pipeline-launch-wave.yaml --agent <N>`,
+   never by searching files.
+4. Do not wait for agent-completion notifications — the wait-for-wave command
    is unrelated to the Agent tool's notification system.
-4. Rule 1 is enforced when `RFE_CREATOR_ENABLE_CONTEXT_HOOK=1` is set (production,
+5. Rule 1 is enforced when `RFE_CREATOR_ENABLE_CONTEXT_HOOK=1` is set (production,
    the evals): a `Stop` hook (`python3 scripts/pipeline_state.py stop-guard`) answers a
    turn that ends while the phase is not DONE with the recovery banner, so the loop
    resumes instead of the session ending. It lets a run go after six unchanged blocks.

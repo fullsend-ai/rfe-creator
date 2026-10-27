@@ -2655,7 +2655,16 @@ subagent_type if present). Every agent's full block is in agents_file \
 python3 scripts/state.py read-launch tmp/pipeline-launch-wave.yaml --agent N \
 (N = 1..agent_count), never by searching files
      b. python3 scripts/pipeline_state.py wait-for-wave \
-(re-run on exit 3), then go to 1"""
+(re-run on exit 3), then go to 1
+
+Barrier contract: On exit 3 the wave is still pending: wait by re-running \
+`python3 scripts/pipeline_state.py wait-for-wave`. The barrier re-dispatches \
+a stuck agent itself after the stall window and escalates when it cannot \
+(docs/wave-stall-guard.md). While a wave is pending, launch no agent, read \
+no artifact and run no command other than the barrier. If the launch list \
+is lost mid-launch, recover it with \
+`python3 scripts/state.py read-launch tmp/pipeline-launch-wave.yaml --agent <N>`, \
+never by searching files."""
 
 
 def cmd_dispatch_context(args):
