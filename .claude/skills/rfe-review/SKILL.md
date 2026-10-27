@@ -64,7 +64,7 @@ Substitute: <the step's substitutions>
 Read .claude/skills/rfe-review/prompts/<prompt>.md and follow all instructions exactly.
 ```
 
-**Polling rule.** After every wave: write the poll file once, run the checker, sleep the `NEXT_POLL` seconds it reports before polling again, print a status line only when the COMPLETED count changes, and wait for all to complete; check the status of any agent running longer than 5 minutes.
+**Polling rule.** After every wave: write the poll file once, run the checker, sleep the `NEXT_POLL` seconds it reports before polling again, print a status line only when the COMPLETED count changes, and wait for all to complete; check the status of any agent running longer than 5 minutes. Wait for the poll: launch no agent and read no artifact between polls.
 
 ## Review Step 1: Fetch Missing Items
 
@@ -154,7 +154,7 @@ For any ID where the review file is missing or has no frontmatter, write error: 
 
 ## Review Step 3.5: Launch Revise Agents
 
-After all review agents complete, re-read the ID list from disk (context compression may have corrupted in-memory lists), then determine which IDs need revision:
+After all review agents complete, re-read the ID list from disk, then determine which IDs need revision:
 
 ```bash
 python3 scripts/state.py read-ids tmp/{STATE_PREFIX}review-all-ids.txt
@@ -198,7 +198,7 @@ python3 scripts/state.py read tmp/{STATE_PREFIX}review-config.yaml
 python3 scripts/state.py set tmp/{STATE_PREFIX}review-config.yaml reassess_cycle=<N+1>
 ```
 
-For cycle 1, persist the reassess IDs to disk (needed across 4a–4e, may be lost to compression during agents):
+For cycle 1, persist the reassess IDs to disk (needed across 4a–4e):
 
 ```bash
 python3 scripts/state.py write-ids tmp/{STATE_PREFIX}review-reassess-ids.txt <all_reassess_IDs>

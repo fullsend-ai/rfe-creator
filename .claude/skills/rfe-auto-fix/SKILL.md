@@ -139,7 +139,9 @@ python3 scripts/pipeline_state.py wait-for-wave
 ```
 
 On exit 0 (complete): go to step 1.
-On exit 3 (still pending): re-run `python3 scripts/pipeline_state.py wait-for-wave`.
+
+Barrier contract: On exit 3 the wave is still pending: wait by re-running `python3 scripts/pipeline_state.py wait-for-wave`. The barrier re-dispatches a stuck agent itself after the stall window and escalates when it cannot (docs/wave-stall-guard.md). While a wave is pending, launch no agent, read no artifact and run no command other than the barrier. If the launch list is lost mid-launch, recover it with `python3 scripts/state.py read-launch tmp/pipeline-launch-wave.yaml --agent <N>`, never by searching files.
+
 Any other exit code is an error.
 
 ### Example `launch_wave` output
