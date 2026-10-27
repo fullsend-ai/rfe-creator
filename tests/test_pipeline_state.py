@@ -2365,6 +2365,23 @@ def _run_next_action():
     return _yaml.safe_load(buf.getvalue())
 
 
+def _finish_wave(state, wave_ids):
+    """Write every output the barrier polls for ``wave_ids`` in the state's phase, so
+    check_review_progress reports the wave completed (a review output carries a score)."""
+    import check_review_progress as crp
+
+    config = ps._get_config(state)[state["phase"]]
+    polls = [config["poll_phase"]] + [
+        p["poll_phase"] for p in config.get("parallel", []) if p.get("poll_phase")
+    ]
+    for rid in wave_ids:
+        for poll in polls:
+            path = crp.PHASE_CHECKS[poll](rid)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w") as f:
+                f.write("---\nscore: 5\n---\nbody\n")
+
+
 class TestNextActionDone:
     def test_done_phase(self, tmp_dir):
         """DONE phase returns action=done."""
@@ -2647,6 +2664,292 @@ class TestNextActionAgent:
         assert "vars: |" in raw_output or "vars: |\n" in raw_output
 
 
+class TestLaunchWaveFile:
+    """AISDLC-453: next-action writes the full wave to tmp/pipeline-launch-wave.yaml and prints a
+    listing that carries the launch block once, so a large wave fits in one tool result."""
+
+    # The printed listing of a default ASSESS wave (batch_size 50: 25 rfe ids × scorer +
+    # feasibility; 17 initiative ids, the alignment companion skipped for want of a parent).
+    # The full form was ~125 KB and the harness truncated it to a file the model then grepped.
+    # The id-bearing launch lines are rendered per agent so the shared block carries no
+    # placeholder; the listing stays under this bound, one tool result.
+    LISTING_BOUND = 30_000
+
+    CASES = [
+        ("rfe", "RHAIRFE", 25, "rfe-scorer"),
+        ("initiative", "RHOAIENG", 17, "initiative-scorer"),  # 2 parallel: ceil(50/3) = 17 ids
+    ]
+
+    def _wave(self, monkeypatch, pipeline_type, key, n):
+        ids = [f"{key}-{1000 + i}" for i in range(n)]
+        write_ids("tmp/pipeline-active-ids.txt", ids)
+        ps._save_state(make_state(phase="ASSESS", type=pipeline_type, batch=1))
+        monkeypatch.setattr(ps, "_run_script", lambda cmd: "")
+        import io
+        from contextlib import redirect_stdout
+
+        import yaml as _yaml
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            ps.cmd_next_action([])
+        raw = buf.getvalue()
+        return ids, raw, _yaml.safe_load(raw)
+
+    @pytest.mark.parametrize("pipeline_type,key,n_ids,scorer", CASES)
+    def test_large_assess_wave_fits_and_the_file_holds_every_block(
+        self, tmp_dir, monkeypatch, pipeline_type, key, n_ids, scorer
+    ):
+        import yaml as _yaml
+
+        ids, raw, result = self._wave(monkeypatch, pipeline_type, key, n_ids)
+        assert (result["action"], result["phase"]) == ("launch_wave", "ASSESS")
+        assert result["message"] == f"ASSESS: wave 1/1 ({n_ids} IDs)"
+        assert read_ids(ps.WAVE_IDS_FILE) == ids
+        assert result["agents_file"] == ps.LAUNCH_WAVE_FILE == "tmp/pipeline-launch-wave.yaml"
+        assert result["agent_count"] == len(result["agents"]) == 2 * n_ids
+        assert len(raw) < self.LISTING_BOUND, len(raw)
+
+        launch_block = ps.type_registry.launch_vars(ps._TYPES.get(pipeline_type), "auto-fix")
+        block_lines = [f"{k}={v}" for k, v in launch_block]
+        id_lines = [ln for ln in block_lines if "{ID}" in ln]
+        assert id_lines  # the launch block does carry id-bearing lines
+        # the shared block has no placeholder: the id-bearing lines moved to each agent
+        assert "{ID}" not in result["common_vars"]
+        assert result["common_vars"].splitlines() == [ln for ln in block_lines if "{ID}" not in ln]
+        assert raw.count("STAGE=auto-fix") == 1  # the launch block is printed once
+
+        with open(ps.LAUNCH_WAVE_FILE) as f:
+            wave = _yaml.safe_load(f)
+        assert (wave["phase"], wave["message"]) == ("ASSESS", result["message"])
+        assert wave["agent_count"] == len(wave["agents"]) == 2 * n_ids
+        config = ps._get_config(ps._load_state())["ASSESS"]
+        feasibility = config["parallel"][0]
+        for i, rid in enumerate(ids):
+            for j, (cfg, entry, short) in enumerate(
+                zip(
+                    (config, feasibility),
+                    wave["agents"][2 * i : 2 * i + 2],
+                    result["agents"][2 * i : 2 * i + 2],
+                )
+            ):
+                assert entry["id"] == short["id"] == rid
+                assert entry["prompt_file"] == short["prompt_file"] == cfg["prompt"]
+                if j == 0:
+                    assert entry["subagent_type"] == short["subagent_type"] == scorer
+                else:
+                    assert "subagent_type" not in entry and "subagent_type" not in short
+                # the file holds the agent's full vars, exactly the pre-AISDLC-453 rendering
+                assert entry["vars"] == ps._render_vars(launch_block, cfg["vars"], rid)
+                # and the listing reassembles to it verbatim (common_vars + vars, nothing
+                # substituted): the same set of lines — the id-bearing launch lines change
+                # position, they come with the agent's own lines
+                assert "{ID}" not in short["vars"] and "STAGE=" not in short["vars"]
+                reassembled = (result["common_vars"] + short["vars"]).splitlines()
+                assert sorted(reassembled) == sorted(entry["vars"].splitlines())
+                for ln in id_lines:
+                    assert ln.replace("{ID}", rid) in short["vars"].splitlines()
+        # the alignment companion (initiative) was skipped: no parent key, poll stub written
+        assert all("alignment" not in a["prompt_file"] for a in wave["agents"])
+
+    @pytest.mark.parametrize("pipeline_type,key,n_ids,scorer", CASES)
+    def test_state_read_launch_returns_the_file(
+        self, tmp_dir, monkeypatch, pipeline_type, key, n_ids, scorer
+    ):
+        import yaml as _yaml
+
+        ids, _, result = self._wave(monkeypatch, pipeline_type, key, n_ids)
+        state_py = os.path.join(os.path.dirname(ps.__file__), "state.py")
+
+        def read_launch(*extra):
+            return subprocess.run(
+                ["python3", state_py, "read-launch", ps.LAUNCH_WAVE_FILE, *extra],
+                capture_output=True,
+                text=True,
+            )
+
+        whole = read_launch()
+        assert whole.returncode == 0, whole.stderr
+        with open(ps.LAUNCH_WAVE_FILE) as f:
+            assert whole.stdout == f.read()
+        wave = _yaml.safe_load(whole.stdout)
+        for n in (1, 2, 2 * n_ids):
+            one = read_launch("--agent", str(n))
+            assert one.returncode == 0, one.stderr
+            block = _yaml.safe_load(one.stdout)
+            assert block == {"agent": n, "agent_count": 2 * n_ids, **wave["agents"][n - 1]}
+            short = result["agents"][n - 1]
+            assert sorted((result["common_vars"] + short["vars"]).splitlines()) == sorted(
+                block["vars"].splitlines()
+            )
+        assert "vars: |" in read_launch("--agent", "1").stdout
+        for bad in ("0", str(2 * n_ids + 1)):
+            out = read_launch("--agent", bad)
+            assert out.returncode == 1 and f"agent_count: {2 * n_ids}" in out.stderr
+
+    @pytest.mark.parametrize("pipeline_type,key", [("rfe", "RHAIRFE"), ("initiative", "RHOAIENG")])
+    @pytest.mark.parametrize(
+        "phase", ["REVIEW", "REASSESS_REVIEW", "SPLIT_REVIEW", "SPLIT_RE_REVIEW", "ASSESS"]
+    )
+    def test_every_agent_phase_listing_fits_at_the_default_batch_size(
+        self, tmp_dir, monkeypatch, pipeline_type, key, phase
+    ):
+        """Issue #247: a wave at the default batch_size stays under the listing bound for every
+        agent phase and both shipped types; a wave whose listing would not fit is cut to the ids
+        that do, and the rest launch in the next wave."""
+        import io
+        from contextlib import redirect_stdout
+
+        import yaml as _yaml
+
+        state = make_state(phase=phase, type=pipeline_type, batch=1)
+        ps._save_state(state)
+        config = ps._get_config(state)[phase]
+        ids = [f"{key}-{1000 + i}" for i in range(ps._wave_size(state, config))]
+        write_ids(config["ids_file"], ids)
+        monkeypatch.setattr(ps, "_run_script", lambda cmd: "")
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            ps.cmd_next_action([])
+        raw = buf.getvalue()
+        result = _yaml.safe_load(raw)
+        assert len(raw) < self.LISTING_BOUND, len(raw)
+        wave_ids = read_ids(ps.WAVE_IDS_FILE)
+        assert wave_ids == ids[: len(wave_ids)] and wave_ids
+        # every id of the wave is launched, none is dropped from the listing
+        assert {a["id"] for a in result["agents"]} == set(wave_ids)
+        assert result["message"].startswith(f"{phase}: wave 1/")
+        assert f"({len(wave_ids)} IDs)" in result["message"]
+
+    def test_a_wave_too_big_for_the_listing_is_cut_and_the_rest_follows(self, tmp_dir, monkeypatch):
+        import yaml as _yaml
+
+        ids = [f"RHOAIENG-{1000 + i}" for i in range(50)]
+        write_ids("tmp/pipeline-active-ids.txt", ids)
+        ps._save_state(make_state(phase="REVIEW", type="initiative", batch=1))
+        monkeypatch.setattr(ps, "_run_script", lambda cmd: "")
+        first = _run_next_action()
+        cut = read_ids(ps.WAVE_IDS_FILE)
+        assert 0 < len(cut) < 50 and cut == ids[: len(cut)]
+        assert first["message"] == f"REVIEW: wave 1/2 ({len(cut)} IDs)"
+
+        # Complete the first wave: the next dispatch is wave 2 of 2 over the rest, however the
+        # cut shortened the first call (the count is kept, not derived from the fitted size).
+        state = ps._load_state()
+        assert state["wave_ordinal"] == 1 and state["batch_size"] == 50
+        _finish_wave(state, cut)
+        second = _run_next_action()
+        rest = read_ids(ps.WAVE_IDS_FILE)
+        assert rest == ids[len(cut) : len(cut) + len(rest)] and rest
+        assert second["message"] == f"REVIEW: wave 2/2 ({50 - len(cut)} IDs)"
+        with open(ps.LAUNCH_WAVE_FILE) as f:
+            assert _yaml.safe_load(f)["message"] == second["message"]
+
+    def test_waves_are_counted_in_order_without_a_cut(self, tmp_dir, monkeypatch):
+        """6 ids at batch_size 4 in ASSESS (2 per wave): 1/3, 2/3, 3/3, as the divisor gave."""
+        ids = [f"RHAIRFE-{i}" for i in range(1, 7)]
+        write_ids("tmp/pipeline-active-ids.txt", ids)
+        ps._save_state(make_state(phase="ASSESS", batch=1, batch_size=4))
+        monkeypatch.setattr(ps, "_run_script", lambda cmd: "")
+        for n in (1, 2, 3):
+            result = _run_next_action()
+            assert result["message"] == f"ASSESS: wave {n}/3 (2 IDs)"
+            _finish_wave(ps._load_state(), read_ids(ps.WAVE_IDS_FILE))
+
+    def test_the_same_pending_wave_listed_again_keeps_its_number(self, tmp_dir, monkeypatch):
+        """Two next-action calls over one pending wave (a compaction, say) are one wave: the
+        ordinal in the state and the launch-wave file both stay at 1."""
+        import yaml as _yaml
+
+        ids = [f"RHAIRFE-{i}" for i in range(1, 7)]
+        write_ids("tmp/pipeline-active-ids.txt", ids)
+        ps._save_state(make_state(phase="ASSESS", batch=1, batch_size=4))
+        monkeypatch.setattr(ps, "_run_script", lambda cmd: "")
+        first = _run_next_action()
+        second = _run_next_action()
+        assert first["message"] == second["message"] == "ASSESS: wave 1/3 (2 IDs)"
+        assert ps._load_state()["wave_ordinal"] == 1
+        with open(ps.LAUNCH_WAVE_FILE) as f:
+            assert _yaml.safe_load(f)["message"] == "ASSESS: wave 1/3 (2 IDs)"
+        # a different id list is a new wave
+        _finish_wave(ps._load_state(), read_ids(ps.WAVE_IDS_FILE))
+        assert _run_next_action()["message"] == "ASSESS: wave 2/3 (2 IDs)"
+        assert ps._load_state()["wave_ordinal"] == 2
+
+    def test_a_failed_pre_script_does_not_consume_a_wave_number(self, tmp_dir, monkeypatch):
+        ids = [f"RHAIRFE-{i}" for i in range(1, 7)]
+        write_ids("tmp/pipeline-active-ids.txt", ids)
+        ps._save_state(make_state(phase="ASSESS", batch=1, batch_size=4))
+        config = ps._get_config(ps._load_state())["ASSESS"]
+        monkeypatch.setitem(config, "pre_script", "true {ID}")
+        monkeypatch.setattr(ps, "_get_config", lambda state: {"ASSESS": config})
+        calls = []
+
+        def flaky(cmd):
+            calls.append(cmd)
+            if len(calls) == 1:
+                raise RuntimeError("pre_script failed")
+            return ""
+
+        monkeypatch.setattr(ps, "_run_script", flaky)
+        with pytest.raises(RuntimeError):
+            _run_next_action()
+        assert not os.path.exists(ps.WAVE_IDS_FILE)
+        assert ps._load_state().get("wave_ordinal", 0) == 0
+        assert _run_next_action()["message"] == "ASSESS: wave 1/3 (2 IDs)"
+        assert ps._load_state()["wave_ordinal"] == 1
+
+    def test_the_total_counts_every_cut_wave(self, tmp_dir, monkeypatch):
+        """An initiative REVIEW batch of 100 ids is cut to the listing budget into three waves:
+        the total is exact from the first call, and each wave reads its own number."""
+        ids = [f"RHOAIENG-{1000 + i}" for i in range(100)]
+        write_ids("tmp/pipeline-active-ids.txt", ids)
+        ps._save_state(make_state(phase="REVIEW", type="initiative", batch=1, batch_size=100))
+        monkeypatch.setattr(ps, "_run_script", lambda cmd: "")
+        seen = []
+        for n in (1, 2, 3):
+            result = _run_next_action()
+            wave = read_ids(ps.WAVE_IDS_FILE)
+            assert result["message"] == f"REVIEW: wave {n}/3 ({len(wave)} IDs)"
+            seen.extend(wave)
+            _finish_wave(ps._load_state(), wave)
+        assert seen == ids
+
+    def test_wave_count_restarts_in_the_next_agent_phase(self, tmp_dir, monkeypatch):
+        """The ordinal resets on entering a phase: REVIEW's first wave reads wave 1/..., even
+        after ASSESS dispatched two waves."""
+        ids = [f"RHAIRFE-{i}" for i in range(1, 5)]
+        write_ids("tmp/pipeline-active-ids.txt", ids)
+        ps._save_state(make_state(phase="ASSESS", batch=1, batch_size=2))
+        monkeypatch.setattr(ps, "_run_script", lambda cmd: "")
+        assert _run_next_action()["message"] == "ASSESS: wave 1/4 (1 IDs)"
+        _finish_wave(ps._load_state(), read_ids(ps.WAVE_IDS_FILE))
+        assert _run_next_action()["message"] == "ASSESS: wave 2/4 (1 IDs)"
+        for _ in range(4):
+            _finish_wave(ps._load_state(), read_ids(ps.WAVE_IDS_FILE))
+            result = _run_next_action()
+            if result["phase"] != "ASSESS":
+                break
+        assert result["phase"] == "REVIEW"
+        assert result["message"].startswith("REVIEW: wave 1/")
+
+    def test_the_file_is_overwritten_per_wave(self, tmp_dir, monkeypatch):
+        import yaml as _yaml
+
+        self._wave(monkeypatch, "rfe", "RHAIRFE", 25)
+        write_ids("tmp/pipeline-active-ids.txt", ["RHAIRFE-1001"])
+        ps._save_state(make_state(phase="REVIEW", batch=1))
+        result = _run_next_action()
+        assert (result["action"], result["phase"], result["agent_count"]) == (
+            "launch_wave",
+            "REVIEW",
+            1,
+        )
+        with open(ps.LAUNCH_WAVE_FILE) as f:
+            wave = _yaml.safe_load(f)
+        assert wave["phase"] == "REVIEW" and [a["id"] for a in wave["agents"]] == ["RHAIRFE-1001"]
+
+
 class TestNextActionWaveSize:
     def test_wave_size_respects_batch_size(self, tmp_dir, monkeypatch):
         """Wave size is batch_size / (1 + n_parallel)."""
@@ -2872,6 +3175,11 @@ class TestDispatchContextNextAction:
         assert "wait-for-wave" in output
         assert "run-phase" in output
         assert "launch_wave" in output
+        # AISDLC-453: the banner describes the compact listing and the read-back command
+        assert "common_vars" in output and "agents_file" in output
+        assert (
+            "python3 scripts/state.py read-launch tmp/pipeline-launch-wave.yaml --agent N" in output
+        )
 
     def test_shows_batch_info(self, tmp_dir):
         """dispatch-context shows batch progress."""

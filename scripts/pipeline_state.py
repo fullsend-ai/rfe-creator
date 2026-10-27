@@ -63,6 +63,11 @@ WAVE_LAUNCH_FILE = "tmp/pipeline-wave-launch.txt"
 # any such file older than the entry is a previous cycle's late write and must not count as
 # done — otherwise the id is never launched and the phase advances on the stale verdict.
 PHASE_ENTRY_FILE = "tmp/pipeline-phase-entry.txt"
+# The current wave's full agent list (AISDLC-453): one block per agent with its complete vars,
+# overwritten per wave. next-action prints a compact listing (the launch block once, then each
+# agent's own lines) so a large wave fits in one tool result; `state.py read-launch` reads the
+# full blocks back after a compaction.
+LAUNCH_WAVE_FILE = "tmp/pipeline-launch-wave.yaml"
 DISPATCH_MARKER = "tmp/.dispatch-marker"
 
 MAX_NEXT_ACTION_ITERATIONS = 50
@@ -272,26 +277,107 @@ def _launch_block(state):
 _LAUNCH_BLOCKS = {}
 
 
-def _render_vars(launch_block, phase_vars, rfe_id):
-    """``KEY=value`` lines: the launch block, then the phase's values; ``{ID}`` substituted.
-    A key defined twice with two values (a dimension shadowing a launch-block line, two
-    dimensions that normalise to one stem) is an error, never two lines the agent has to pick
-    between; a phase var that repeats a launch-block line verbatim (the assess PROMPT_PATH) is
-    emitted once."""
+def _collect_vars(launch_block, phase_vars, rfe_id):
+    """``(launch, phase)`` ``KEY=value`` line lists: the launch block with ``{ID}`` left in, and
+    the phase's own values with ``{ID}`` substituted. A key defined twice with two values (a
+    dimension shadowing a launch-block line, two dimensions that normalise to one stem) is an
+    error, never two lines the agent has to pick between; a phase var that repeats a
+    launch-block line verbatim (the assess PROMPT_PATH) is left to the launch block."""
     seen = {}
     for key, value in launch_block:
         if key in seen:
             raise ValueError(f"duplicate launch var(s) for {rfe_id}: {key}")
         seen[key] = value
-    lines = [f"{k}={v.replace('{ID}', rfe_id)}" for k, v in launch_block]
+    launch = [f"{k}={v}" for k, v in launch_block]
+    phase = []
     for key, value in phase_vars.items():
         if key in seen:
             if seen[key] != value:
                 raise ValueError(f"duplicate launch var(s) for {rfe_id}: {key}")
             continue
         seen[key] = value
-        lines.append(f"{key}={value.replace('{ID}', rfe_id)}")
-    return "\n".join(lines) + "\n"
+        phase.append(f"{key}={value.replace('{ID}', rfe_id)}")
+    return launch, phase
+
+
+def _split_vars(launch_block, phase_vars, rfe_id):
+    """``(common, own)`` ``KEY=value`` line lists for the printed listing. ``common`` is the
+    launch-block lines with no ``{ID}`` — identical for every agent, printed once per wave, so
+    the orchestrator never substitutes anything. ``own`` is the agent's lines: the launch-block
+    lines that carry ``{ID}`` rendered with the id, then the phase's own values."""
+    launch, phase = _collect_vars(launch_block, phase_vars, rfe_id)
+    common = [ln for ln in launch if "{ID}" not in ln]
+    own = [ln.replace("{ID}", rfe_id) for ln in launch if "{ID}" in ln] + phase
+    return common, own
+
+
+# The printed launch_wave listing must fit one tool result (issue #247: well under 30,000
+# characters); a wave whose listing would not is cut to the ids that do fit, and the rest
+# launch in the next wave.
+LAUNCH_LISTING_BUDGET = 28_000
+
+
+def _fit_wave_ids(config, launch_block, wave_ids, phase, state):
+    """The leading part of ``wave_ids`` whose printed listing stays within
+    ``LAUNCH_LISTING_BUDGET`` characters (at least one id). A parallel companion whose
+    condition does not hold for an id is not launched, so it is not counted. The agent listing
+    entries hold only the id-bearing launch lines and the phase's own values, so the cost is
+    per id; the shared ``common_vars`` block is paid once."""
+    agent_configs = [config, *config.get("parallel", [])]
+    common = _split_vars(launch_block, config.get("vars", {}), wave_ids[0])[0]
+    used = len(
+        yaml.dump(
+            {
+                "action": "launch_wave",
+                "phase": phase,
+                "message": f"{phase}: wave 999/999 ({len(wave_ids)} IDs)",
+                "agents_file": LAUNCH_WAVE_FILE,
+                "agent_count": 9999,
+                "common_vars": "".join(f"{ln}\n" for ln in common),
+                "agents": [],
+            },
+            Dumper=_BlockDumper,
+            default_flow_style=False,
+            sort_keys=False,
+        )
+    )
+    for fitted, rfe_id in enumerate(wave_ids):
+        entries = []
+        for agent_config in agent_configs:
+            cond = agent_config.get("condition")
+            if cond and not _check_condition(cond, rfe_id, state):
+                continue
+            entry = {"id": rfe_id}
+            if agent_config.get("subagent_type"):
+                entry["subagent_type"] = agent_config["subagent_type"]
+            entry["prompt_file"] = agent_config["prompt"]
+            own = _split_vars(launch_block, agent_config.get("vars", {}), rfe_id)[1]
+            entry["vars"] = "".join(f"{ln}\n" for ln in own)
+            entries.append(entry)
+        used += len(
+            yaml.dump(entries, Dumper=_BlockDumper, default_flow_style=False, sort_keys=False)
+        )
+        if used > LAUNCH_LISTING_BUDGET:
+            return wave_ids[: max(1, fitted)]
+    return wave_ids
+
+
+def _count_fitted_waves(config, launch_block, ids, phase, state, nominal):
+    """How many waves ``ids`` take when partitioned the way the dispatcher does: repeatedly
+    the leading ``nominal`` ids, cut by ``_fit_wave_ids``, until none is left."""
+    count, start = 0, 0
+    while start < len(ids):
+        chunk = ids[start : start + nominal]
+        start += len(_fit_wave_ids(config, launch_block, chunk, phase, state))
+        count += 1
+    return count
+
+
+def _render_vars(launch_block, phase_vars, rfe_id):
+    """``KEY=value`` lines: the launch block, then the phase's values; ``{ID}`` substituted
+    (the agent's full vars, as written to the launch-wave file — see ``_collect_vars``)."""
+    launch, phase = _collect_vars(launch_block, phase_vars, rfe_id)
+    return "\n".join([ln.replace("{ID}", rfe_id) for ln in launch] + phase) + "\n"
 
 
 # ---------- Conditional parallel agent helpers ----------
@@ -837,8 +923,12 @@ def _read_phase_entry(phase):
 
 
 def _enter_phase(state, next_phase):
-    """Move ``state`` to ``next_phase`` and save; stamp the entry time of an agent phase."""
+    """Move ``state`` to ``next_phase`` and save; stamp the entry time of an agent phase.
+
+    Entering a phase restarts its wave count (``wave_ordinal``, bumped by each launch_wave).
+    """
     state["phase"] = next_phase
+    state["wave_ordinal"] = 0
     _save_state(state)
     if _get_config(state).get(next_phase, {}).get("type") == "agent":
         _write_phase_entry(next_phase)
@@ -1798,9 +1888,22 @@ def cmd_next_action(args):
 
             wave_size = _wave_size(state, config)
 
+            launch_block = _launch_block(state)
             wave_ids = remaining[:wave_size]
-            wave_num = 1 + (len(all_ids) - len(remaining)) // wave_size
-            total_waves = max(1, -(-len(all_ids) // wave_size))  # ceil div
+            fitted_ids = _fit_wave_ids(config, launch_block, wave_ids, phase, state)
+            if len(fitted_ids) < len(wave_ids):
+                wave_ids = fitted_ids
+            # Waves are counted as they are generated, not derived from a divisor: a wave cut
+            # to fit the listing budget is shorter than the nominal size, so a divisor would
+            # shift or restart the numbering on the next call. The same pending wave listed
+            # again (after a compaction, say) keeps its number. The total is this wave plus
+            # the waves the remaining ids take under the dispatcher's own partition.
+            ordinal = int(state.get("wave_ordinal", 0))
+            relisted = ordinal > 0 and _read_ids(WAVE_IDS_FILE) == wave_ids
+            wave_num = ordinal if relisted else ordinal + 1
+            total_waves = wave_num + _count_fitted_waves(
+                config, launch_block, remaining[len(wave_ids) :], phase, state, wave_size
+            )
 
             # Run pre_script for each ID in the wave
             if config.get("pre_script"):
@@ -1817,20 +1920,35 @@ def cmd_next_action(args):
             _write_ids(WAVE_IDS_FILE, wave_ids)
             _write_wave_launch()
             _clear_wave_progress()
+            # Saved only now that the wave exists: a pre_script failure above leaves the
+            # ordinal alone, so the retry gets the same number.
+            state["wave_ordinal"] = wave_num
+            _save_state(state)
 
             # Build agent entries. Every agent's vars are the type's launch block (the typed
             # literals the skeletons and typed files read — design §8.3, PR-5b) followed by
-            # the phase's own values, with {ID} substituted throughout.
-            launch_block = _launch_block(state)
-            agents = []
+            # the phase's own values, with {ID} substituted throughout. The full blocks go to
+            # LAUNCH_WAVE_FILE; the printed listing carries the launch-block lines that do not
+            # depend on the id once (common_vars, no placeholder) and each agent's own lines
+            # (the id-bearing launch lines, rendered, then the phase's), so a 50-agent wave
+            # fits in one tool result (AISDLC-453) and the orchestrator substitutes nothing.
+            agents, listing, common = [], [], []
+
+            def add_agent(agent_config, rfe_id):
+                common[:], own = _split_vars(launch_block, agent_config.get("vars", {}), rfe_id)
+                full, short = {"id": rfe_id}, {"id": rfe_id}
+                for entry in (full, short):
+                    if agent_config.get("subagent_type"):
+                        entry["subagent_type"] = agent_config["subagent_type"]
+                    entry["prompt_file"] = agent_config["prompt"]
+                full["vars"] = _render_vars(launch_block, agent_config.get("vars", {}), rfe_id)
+                short["vars"] = "".join(f"{ln}\n" for ln in own)
+                agents.append(full)
+                listing.append(short)
+
             for rfe_id in wave_ids:
                 # Main agent
-                entry = {}
-                if config.get("subagent_type"):
-                    entry["subagent_type"] = config["subagent_type"]
-                entry["prompt_file"] = config["prompt"]
-                entry["vars"] = _render_vars(launch_block, config.get("vars", {}), rfe_id)
-                agents.append(entry)
+                add_agent(config, rfe_id)
 
                 # Parallel agents
                 for par in config.get("parallel", []):
@@ -1839,19 +1957,26 @@ def cmd_next_action(args):
                         if par.get("poll_phase"):
                             _write_poll_stub(par["poll_phase"], rfe_id, par.get("skip_stub"))
                         continue
-                    pentry = {}
-                    if par.get("subagent_type"):
-                        pentry["subagent_type"] = par["subagent_type"]
-                    pentry["prompt_file"] = par["prompt"]
-                    pentry["vars"] = _render_vars(launch_block, par.get("vars", {}), rfe_id)
-                    agents.append(pentry)
+                    add_agent(par, rfe_id)
 
             msg = f"{phase}: wave {wave_num}/{total_waves} ({len(wave_ids)} IDs)"
+            os.makedirs(os.path.dirname(LAUNCH_WAVE_FILE), exist_ok=True)
+            with open(LAUNCH_WAVE_FILE, "w") as f:
+                yaml.dump(
+                    {"phase": phase, "message": msg, "agent_count": len(agents), "agents": agents},
+                    f,
+                    Dumper=_BlockDumper,
+                    default_flow_style=False,
+                    sort_keys=False,
+                )
             output = {
                 "action": "launch_wave",
                 "phase": phase,
                 "message": msg,
-                "agents": agents,
+                "agents_file": LAUNCH_WAVE_FILE,
+                "agent_count": len(agents),
+                "common_vars": "".join(f"{ln}\n" for ln in common),
+                "agents": listing,
             }
             print(
                 yaml.dump(output, Dumper=_BlockDumper, default_flow_style=False, sort_keys=False),
@@ -2522,9 +2647,13 @@ Resume the dispatch loop:
   2. If action == done: exit loop, run teardown
   3. If action == run_script: python3 scripts/pipeline_state.py run-phase, then go to 1
   4. If action == launch_wave:
-     a. For each agent in agents: launch background Agent(prompt=vars \
+     a. For each agent in agents: launch background Agent(prompt=common_vars \
++ the agent's vars \
 + "\\n\\nRead " + prompt_file + " and follow all instructions exactly.", \
-subagent_type if present)
+subagent_type if present). Every agent's full block is in agents_file \
+(tmp/pipeline-launch-wave.yaml); recover a lost listing with \
+python3 scripts/state.py read-launch tmp/pipeline-launch-wave.yaml --agent N \
+(N = 1..agent_count), never by searching files
      b. python3 scripts/pipeline_state.py wait-for-wave \
 (re-run on exit 3), then go to 1"""
 
