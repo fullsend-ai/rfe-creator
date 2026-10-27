@@ -1585,25 +1585,97 @@ class TestMissingJsonschema:
         assert report.warnings == [validate_types.SHAPE_CHECK_SKIPPED]
         assert report.to_dict()["warnings"] == [validate_types.SHAPE_CHECK_SKIPPED]
 
-    def test_a_shape_fault_without_the_shape_check_is_a_finding_not_a_traceback(
+    def test_a_rule_that_raises_without_the_shape_check_is_a_finding_not_a_traceback(
         self, monkeypatch, types_copy
     ):
-        """A descriptor the schema would have rejected can reach a rule that assumes the
-        shape: the rule's exception becomes a finding against the type."""
+        """Every structural rule reads the descriptor through _opt and tolerates a bad shape
+        on its own; this pins the isolation for a rule that does raise: one finding naming
+        the rule, the others still decide, never a traceback."""
         monkeypatch.setitem(sys.modules, "jsonschema", None)
-        _mutate(types_copy, "rfe", lambda d: d.__setitem__("pipeline", "not-a-mapping"))
+
+        def boom(*args, **kwargs):
+            raise TypeError("unhashable type: 'list'")
+
+        monkeypatch.setattr(validate_types, "error_stub_messages", boom)
         report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
-        assert not report.ok
         assert report.warnings == [validate_types.SHAPE_CHECK_SKIPPED]
-        assert any(
-            "could not be checked without the JSON-Schema shape check" in f.message
-            or "pipeline" in f.message
-            for f in report.findings
+        hits = _assert_finding(
+            report,
+            "review error stub: could not be checked without the JSON-Schema shape check: "
+            "TypeError: unhashable type: 'list'",
+            "rfe",
         )
+        assert len(hits) == 1 and len(report.findings) == 1  # the other rules passed
 
     def test_the_full_lint_still_requires_jsonschema(self, monkeypatch):
         monkeypatch.setitem(sys.modules, "jsonschema", None)
         assert validate_types.main(["--no-eval-sync"]) == 2
+
+    @pytest.mark.parametrize(
+        "dotted, value",
+        [
+            ("identity.local_prefix", []),
+            ("identity.jira.project", ["RHAIRFE"]),
+            ("identity.id_field", ""),
+        ],
+    )
+    def test_a_malformed_identity_string_is_a_finding_not_a_traceback(
+        self, monkeypatch, types_copy, dotted, value
+    ):
+        """The cross-type rules hash these; without the shape check a list or an empty
+        string reached _duplicates as a TypeError (fullsend and Qodo on #266)."""
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+
+        def set_dotted(d):
+            node = d
+            parts = dotted.split(".")
+            for part in parts[:-1]:
+                node = node[part]
+            node[parts[-1]] = value
+
+        _mutate(types_copy, "rfe", set_dotted)
+        report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
+        assert not report.ok
+        _assert_finding(report, f"{dotted} must be a non-empty string, got {value!r}", "rfe")
+        assert not _find(report, "could not be checked")  # every rule ran to a verdict
+
+    def test_one_failing_rule_does_not_hide_the_rubric_pin_diagnosis(self, monkeypatch, types_copy):
+        """Rules run on their own without the shape check: a rule that raises on a malformed
+        shape is its own finding and the bad pin is still diagnosed (Qodo on #266)."""
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+
+        def boom(*args, **kwargs):
+            raise AttributeError("'list' object has no attribute 'get'")
+
+        monkeypatch.setattr(validate_types, "alignment_labels_messages", boom)
+        _mutate(types_copy, "rfe", lambda d: d["pipeline"]["rubric"].__setitem__("ref", "e27d7"))
+        report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
+        _assert_finding(
+            report, "pipeline.rubric.ref must be a 7-40 character lowercase hex commit SHA", "rfe"
+        )
+        _assert_finding(
+            report,
+            "conventions.labels.alignment: could not be checked without the JSON-Schema shape "
+            "check: AttributeError",
+            "rfe",
+        )
+        assert len(report.findings) == 2
+
+    def test_an_unsupported_schema_version_is_caught_without_jsonschema(
+        self, monkeypatch, types_copy
+    ):
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        _mutate(types_copy, "rfe", lambda d: d.__setitem__("schema_version", 2))
+        report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
+        _assert_finding(report, "schema_version must be 1 (the v1 descriptor shape), got 2", "rfe")
+
+    def test_what_degraded_mode_does_not_catch_is_documented(self, monkeypatch, types_copy):
+        """An unknown top-level key is a schema finding only: without jsonschema it passes.
+        Pinned so the limit stays deliberate (and the full lint still catches it)."""
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        _mutate(types_copy, "rfe", lambda d: d.__setitem__("bogus_key", 1))
+        report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
+        assert report.ok and report.warnings == [validate_types.SHAPE_CHECK_SKIPPED]
 
     def test_jsonschema_is_listed_in_requirements_dev(self):
         text = (REPO_ROOT / "requirements-dev.txt").read_text(encoding="utf-8")

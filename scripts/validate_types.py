@@ -72,7 +72,11 @@ design-proposals/work-item-types-unified.md §3.3:
       the dev dependency, so --verify skips only the JSON-Schema shape check (one
       WARN line, named in the verdict) and still applies every structural rule above
       -- the rubric pin, the file references, the prefixes are what the gate exists
-      for. The full lint (no --verify) keeps requiring jsonschema.
+      for -- plus two shape rules the structural rules rely on (schema_version is 1,
+      the identity strings are non-empty strings). Each rule runs on its own there, so
+      one that trips over a malformed shape is one finding and the rest still decide.
+      Not covered without jsonschema: unknown keys, enum values beyond kind, nested
+      shapes no structural rule reads. The full lint (no --verify) keeps requiring it.
 
 Usage:
     python3 scripts/validate_types.py [--root DIR] [--extra-roots A:B]
@@ -211,6 +215,17 @@ SHAPE_CHECK_SKIPPED = (
     "structural rules (pip install -r requirements-dev.txt restores the shape check)"
 )
 SHAPE_CHECK_SKIPPED_SHORT = "JSON-Schema shape check skipped: jsonschema not installed"
+# The descriptor shape the schema pins as a const; checked structurally when the shape check
+# cannot run (types/_schema/type.schema.json "schema_version").
+SUPPORTED_SCHEMA_VERSION = 1
+# The identity strings the cross-type rules hash; checked structurally without the shape
+# check so a malformed one is a diagnosis, not a TypeError in _duplicates.
+IDENTITY_STRING_FIELDS = (
+    "identity.local_prefix",
+    "identity.id_field",
+    "identity.jira.project",
+    "identity.jira.issue_type",
+)
 
 
 @dataclass
@@ -682,6 +697,25 @@ def error_stub_messages(desc, artifact_utils):
     ]
 
 
+def shape_messages(desc):
+    """The two shape constraints the structural rules depend on, for a run without the
+    JSON-Schema shape check (gate 3 in the pipeline's sandbox): the descriptor's
+    ``schema_version`` is the supported one, and the identity strings the cross-type rules
+    hash are non-empty strings. With the schema present these are its findings instead."""
+    messages = []
+    version = _opt(desc, "schema_version")
+    if version != SUPPORTED_SCHEMA_VERSION:
+        messages.append(
+            f"schema_version must be {SUPPORTED_SCHEMA_VERSION} (the v1 descriptor shape), "
+            f"got {version!r}"
+        )
+    for dotted in IDENTITY_STRING_FIELDS:
+        value = _opt(desc, dotted)
+        if value is not None and (not isinstance(value, str) or not value.strip()):
+            messages.append(f"{dotted} must be a non-empty string, got {value!r}")
+    return messages
+
+
 def per_type_findings(
     desc,
     schema,
@@ -690,25 +724,48 @@ def per_type_findings(
     fragment_schema=None,
     skeleton_text=None,
     eval_sync=False,
+    isolate=False,
 ):
+    """Gate 1 for one descriptor. ``isolate`` (a run without the JSON-Schema shape check)
+    runs every rule on its own: a rule that trips over a shape the schema would have
+    rejected becomes one message naming the rule, and the remaining rules still run, so a
+    malformed dimension cannot hide a bad rubric pin."""
     messages = []
     declared = desc.data.get("type") if isinstance(desc.data, dict) else None
     if declared != desc.name:
         messages.append(f"type field {declared!r} does not match the directory name {desc.name!r}")
+    rules = [
+        ("kind", lambda: kind_messages(desc)),
+        ("file references", lambda: path_messages(desc, repo_root)),
+        ("stage skills", lambda: stage_skill_messages(desc, repo_root)),
+        ("typed prompts", lambda: typed_prompt_messages(desc, repo_root)),
+        ("schema.review.score_fields", lambda: score_fields_messages(desc)),
+        ("identity.local_id_pattern", lambda: local_id_pattern_messages(desc)),
+        ("conventions.labels.alignment", lambda: alignment_labels_messages(desc)),
+        ("pipeline.rubric", lambda: rubric_ref_messages(desc)),
+        ("review error stub", lambda: error_stub_messages(desc, artifact_utils)),
+        (
+            "eval fragment",
+            lambda: eval_fragment_messages(
+                desc, fragment_schema, skeleton_text, repo_root, eval_sync
+            ),
+        ),
+    ]
     if schema is not None:
-        messages.extend(schema_messages(desc, schema))
-    messages.extend(kind_messages(desc))
-    messages.extend(path_messages(desc, repo_root))
-    messages.extend(stage_skill_messages(desc, repo_root))
-    messages.extend(typed_prompt_messages(desc, repo_root))
-    messages.extend(score_fields_messages(desc))
-    messages.extend(local_id_pattern_messages(desc))
-    messages.extend(alignment_labels_messages(desc))
-    messages.extend(rubric_ref_messages(desc))
-    messages.extend(error_stub_messages(desc, artifact_utils))
-    messages.extend(
-        eval_fragment_messages(desc, fragment_schema, skeleton_text, repo_root, eval_sync)
-    )
+        rules.insert(0, ("schema", lambda: schema_messages(desc, schema)))
+    else:
+        rules.insert(0, ("shape", lambda: shape_messages(desc)))
+    for label, rule in rules:
+        if not isolate:
+            messages.extend(rule())
+            continue
+        try:
+            messages.extend(rule())
+        except Exception as exc:
+            messages.append(
+                f"{label}: could not be checked without the JSON-Schema shape check: "
+                f"{type(exc).__name__}: {exc}"
+            )
     return [Finding(desc.name, m, 1, frozenset({desc.name})) for m in messages]
 
 
@@ -786,11 +843,21 @@ def _identity_key(binding):
     return (tracker, binding.get("repo", binding.get("project")), str(binding.get("kind")))
 
 
+def _hashable(key):
+    try:
+        hash(key)
+    except TypeError:
+        return False
+    return True
+
+
 def _duplicates(pairs):
-    """[(key, name)] -> {key: [names]} for keys owned by more than one type."""
+    """[(key, name)] -> {key: [names]} for keys owned by more than one type. An unhashable
+    key (a list-valued identity field in a descriptor the shape check did not see) is
+    compared by its repr rather than raising: the shape finding is reported elsewhere."""
     owners = {}
     for key, name in pairs:
-        owners.setdefault(key, []).append(name)
+        owners.setdefault(key if _hashable(key) else repr(key), []).append(name)
     return {k: v for k, v in owners.items() if len(v) > 1}
 
 
@@ -1144,49 +1211,56 @@ def validate_all(
         # other rule reads the descriptor through the registry and runs as usual.
         schema = fragment_schema = None
 
+    def guarded(label, run):
+        """A later pass, run as is with the shape check in place. Without it a malformed
+        descriptor can reach code that assumes the shape (an unhashable identity value in
+        the cross-type rules): that is one finding naming the pass, never a traceback that
+        would exit 1 with no diagnosis. The finding concerns every type, so --verify keeps it."""
+        if have_jsonschema:
+            return run()
+        try:
+            return run()
+        except Exception as exc:
+            return [
+                Finding(
+                    "*",
+                    f"{label} could not be checked without the JSON-Schema shape check: "
+                    f"{type(exc).__name__}: {exc}",
+                    1,
+                    frozenset(names),
+                )
+            ]
+
     artifact_utils = _load_artifact_utils()
     for desc in registry:
         if only is not None and desc.name != only:
             continue
-        try:
-            findings.extend(
-                per_type_findings(
-                    desc,
-                    schema,
-                    repo_root,
-                    artifact_utils,
-                    fragment_schema=fragment_schema,
-                    skeleton_text=skeleton_text,
-                    eval_sync=eval_sync,
-                )
+        findings.extend(
+            per_type_findings(
+                desc,
+                schema,
+                repo_root,
+                artifact_utils,
+                fragment_schema=fragment_schema,
+                skeleton_text=skeleton_text,
+                eval_sync=eval_sync,
+                isolate=not have_jsonschema,
             )
-        except Exception as exc:
-            if have_jsonschema:
-                raise
-            # Without the shape check a malformed descriptor can reach a rule that assumes
-            # the shape: that is a finding against the type, never a traceback that would
-            # exit 1 with no diagnosis.
-            findings.append(
-                Finding(
-                    desc.name,
-                    "could not be checked without the JSON-Schema shape check: "
-                    f"{type(exc).__name__}: {exc}",
-                    1,
-                    frozenset({desc.name}),
-                )
-            )
+        )
 
-    for finding in data_only_findings(registry):
+    for finding in guarded("data-only roots", lambda: data_only_findings(registry)):
         if only is None or only in finding.types:
             findings.append(finding)
 
-    for finding in cross_type_findings(registry, env):
+    for finding in guarded("cross-type rules", lambda: cross_type_findings(registry, env)):
         if only is None or only in finding.types:
             findings.append(finding)
 
     if with_deps:
         assess_dir = DEFAULT_ASSESS_DIR if assess_dir is None else assess_dir
-        for finding in with_deps_findings(registry, assess_dir, repo_root):
+        for finding in guarded(
+            "gate 2", lambda: with_deps_findings(registry, assess_dir, repo_root)
+        ):
             if only is None or not finding.types or only in finding.types:
                 findings.append(finding)
 
