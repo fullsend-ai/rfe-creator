@@ -73,15 +73,18 @@ design-proposals/work-item-types-unified.md §3.3:
       WARN line, named in the verdict) and still applies every structural rule above
       -- the rubric pin, the file references, the prefixes are what the gate exists
       for -- plus three shape rules the structural rules rely on (schema_version is 1,
-      the identity strings are present and non-empty, and the values that end up in file
-      names and globs match the schema's regex: PATH_VALUE_PATTERNS -- type, the identity
-      prefix and id field, the pipeline and snapshot prefixes, scorer_agent,
-      results_subdir -- so snapshot.prefix '*' cannot reach a glob). Each rule runs on its
-      own there, so one that trips over a malformed shape is one finding and the rest
-      still decide.
+      the identity strings are present and non-empty, and every value that ends up in a
+      path, a glob or an id matches the schema's regex: PATH_VALUE_PATTERNS -- type, the
+      identity prefix and id field, the pipeline and snapshot prefixes, scorer_agent,
+      results_subdir -- so snapshot.prefix '*' cannot reach a glob; and the containment
+      grammars of _path_bound_values -- the dirs, the prompt, rubric, eval, dimension and
+      context-source paths, the dimension names -- so a path cannot be absolute or escape
+      the repo root). Each rule runs on its own there, so one that trips over a malformed
+      shape is one finding and the rest still decide.
       Not covered without jsonschema: unknown keys, enum values other than kind's, required
-      keys other than the identity strings, patterns of other fields, nested shapes no
-      structural rule reads. The full lint (no --verify) keeps requiring it.
+      keys other than the identity strings, other values than the ones above (the label and
+      template grammars among them), nested shapes no structural rule reads. The full lint
+      (no --verify) keeps requiring it.
 
 Usage:
     python3 scripts/validate_types.py [--root DIR] [--extra-roots A:B]
@@ -245,6 +248,14 @@ PATH_VALUE_PATTERNS = {
     "snapshot.report_prefix": r"^([a-z][a-z0-9-]*-)?$",
     "snapshot.results_subdir": r"^([a-z][a-z0-9-]*)?$",
 }
+# The schema's containment grammars (``$defs.repo_path``, ``$defs.artifact_dir``,
+# ``$defs.dimension.properties.name``), copied verbatim like PATH_VALUE_PATTERNS and pinned to
+# the schema by the same kind of test. They bind the values that become a path, a glob or an id
+# (a file read from the repo root, an artifacts/ subdirectory, a dimension's poll phase and
+# output file name); _path_bound_values lists every descriptor value each one binds.
+REPO_PATH_PATTERN = r"^(?!/)(?!\.\.(/|$))(?!.*/\.\.(/|$))\S+$"
+ARTIFACT_DIR_PATTERN = r"^artifacts/[A-Za-z0-9_.-]+$"
+DIMENSION_NAME_PATTERN = r"^[a-z][a-z0-9_-]*$"
 
 
 @dataclass
@@ -719,14 +730,97 @@ def error_stub_messages(desc, artifact_utils):
     ]
 
 
+def _check_grammar(messages, label, value, pattern):
+    """Append one finding when ``value`` is not a string that full-matches ``pattern``."""
+    if not isinstance(value, str):
+        messages.append(f"{label} must be a string matching {pattern}, got {value!r}")
+    elif not re.fullmatch(pattern, value):
+        messages.append(f"{label} must match {pattern}, got {value!r}")
+
+
+def _path_bound_values(desc):
+    """Every descriptor value the schema binds to a containment grammar, as
+    ``(label, value, pattern)`` triples, plus one message per mapping or list that is not
+    the mapping or list the schema declares there. Absent keys are skipped (the schema
+    decides whether they are required); an explicit null is yielded, and the caller reports
+    it as a non-string -- except ``pipeline.rubric.export``, where null is a valid value.
+
+    * repo paths (REPO_PATH_PATTERN): pipeline.prompts.<key>, pipeline.rubric.path,
+      eval.config, eval.dataset, pipeline.dimensions[i].prompt / .setup /
+      .condition.context_exists, pipeline.context_sources[i].bootstrap
+    * artifact dirs (ARTIFACT_DIR_PATTERN): dirs.<key>, pipeline.rubric.export
+    * dimension names (DIMENSION_NAME_PATTERN): pipeline.dimensions[i].name"""
+    values = []
+    problems = []
+
+    def read(node, key, label, pattern, null_ok=False):
+        value = node.get(key, _ABSENT)
+        if value is _ABSENT or (value is None and null_ok):
+            return
+        values.append((label, value, pattern))
+
+    def container(dotted, kind):
+        node = _opt(desc, dotted, _ABSENT)
+        if node is _ABSENT:
+            return None
+        if not isinstance(node, kind):
+            problems.append(
+                f"{dotted} must be a {'mapping' if kind is dict else 'list'}, got {node!r}"
+            )
+            return None
+        return node
+
+    dirs = container("dirs", dict)
+    for key in dirs or {}:
+        read(dirs, key, f"dirs.{key}", ARTIFACT_DIR_PATTERN)
+    prompts = container("pipeline.prompts", dict)
+    for key in prompts or {}:
+        read(prompts, key, f"pipeline.prompts.{key}", REPO_PATH_PATTERN)
+    rubric = container("pipeline.rubric", dict)
+    if rubric is not None:
+        read(rubric, "path", "pipeline.rubric.path", REPO_PATH_PATTERN)
+        read(rubric, "export", "pipeline.rubric.export", ARTIFACT_DIR_PATTERN, null_ok=True)
+    evaluation = container("eval", dict)
+    if evaluation is not None:
+        read(evaluation, "config", "eval.config", REPO_PATH_PATTERN)
+        read(evaluation, "dataset", "eval.dataset", REPO_PATH_PATTERN)
+    for i, dim in enumerate(container("pipeline.dimensions", list) or []):
+        label = f"pipeline.dimensions[{i}]"
+        if not isinstance(dim, dict):
+            problems.append(f"{label} must be a mapping, got {dim!r}")
+            continue
+        read(dim, "name", f"{label}.name", DIMENSION_NAME_PATTERN)
+        read(dim, "prompt", f"{label}.prompt", REPO_PATH_PATTERN)
+        read(dim, "setup", f"{label}.setup", REPO_PATH_PATTERN)
+        condition = dim.get("condition", _ABSENT)
+        if isinstance(condition, dict):
+            read(
+                condition,
+                "context_exists",
+                f"{label}.condition.context_exists",
+                REPO_PATH_PATTERN,
+            )
+        elif condition is not _ABSENT:
+            problems.append(f"{label}.condition must be a mapping, got {condition!r}")
+    for i, source in enumerate(container("pipeline.context_sources", list) or []):
+        label = f"pipeline.context_sources[{i}]"
+        if not isinstance(source, dict):
+            problems.append(f"{label} must be a mapping, got {source!r}")
+            continue
+        read(source, "bootstrap", f"{label}.bootstrap", REPO_PATH_PATTERN)
+    return values, problems
+
+
 def shape_messages(desc):
     """The shape constraints the structural rules depend on, for a run without the
     JSON-Schema shape check (gate 3 in the pipeline's sandbox): the descriptor's
     ``schema_version`` is the supported one; the identity strings the cross-type rules
     hash are present and non-empty (the local pair always, the Jira pair for a Jira
-    tracker); and each path-bound value in PATH_VALUE_PATTERNS, when present, is a string
-    that full-matches the schema's own regex (a name, prefix or subdir that becomes part of
-    a file name or glob). With the schema present these are its findings instead."""
+    tracker); and every value that becomes a path, a glob or an id, when present, is a
+    string that full-matches the schema's own regex -- the names, prefixes and subdirs in
+    PATH_VALUE_PATTERNS, and the repo paths, artifact dirs and dimension names of
+    _path_bound_values (an explicit null is a finding, an absent key is the schema's call).
+    With the schema present these are its findings instead."""
     messages = []
     version = _opt(desc, "schema_version")
     # A YAML boolean is not the integer 1 (True == 1 in Python, but the schema's const rejects it).
@@ -752,15 +846,17 @@ def shape_messages(desc):
             messages.append(f"{dotted} must be a non-empty string, got {value!r}")
             reported.add(dotted)
     for dotted, pattern in PATH_VALUE_PATTERNS.items():
-        value = _opt(desc, dotted)
+        value = _opt(desc, dotted, _ABSENT)
         # Absent is the schema's call (required or optional); the identity pair is already
-        # reported above when missing, null, empty or not a string.
-        if value is None or dotted in reported:
+        # reported above when missing, null, empty or not a string. An explicit null is not
+        # absent: it is a value that is not a string, so it is a finding.
+        if value is _ABSENT or dotted in reported:
             continue
-        if not isinstance(value, str):
-            messages.append(f"{dotted} must be a string matching {pattern}, got {value!r}")
-        elif not re.fullmatch(pattern, value):
-            messages.append(f"{dotted} must match {pattern}, got {value!r}")
+        _check_grammar(messages, dotted, value, pattern)
+    values, problems = _path_bound_values(desc)
+    messages.extend(problems)
+    for label, value, pattern in values:
+        _check_grammar(messages, label, value, pattern)
     return messages
 
 
