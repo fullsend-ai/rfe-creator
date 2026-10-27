@@ -11,13 +11,13 @@ Reference for the person invoking this skill, not read during a run: docs/workin
 
 ## Review Step 0: Resolve the Type, Parse Arguments and Persist Flags
 
-**Layout check.** The plugin root is the skill directory's third parent. Unless the working directory is that root (a checkout), run once
+**Layout check.** Skip it only when `${CLAUDE_SKILL_DIR}` is under the working directory's `.claude/skills/` and the working directory has `types/_schema/type.schema.json` (a checkout). Otherwise run once
 
 ```bash
 bash "${CLAUDE_SKILL_DIR}/../../../scripts/bootstrap.sh" --layout
 ```
 
-If `${CLAUDE_SKILL_DIR}` reaches you unsubstituted (a host that does not substitute it, or this file reached through a Read), use this skill file's directory instead. The call links the plugin's `scripts/` and `types/` into the working directory; on any nonzero exit stop and show its message (exit 3 means the directory already carries its own). Every command below then runs exactly as written.
+If `${CLAUDE_SKILL_DIR}` reaches you unsubstituted (no substitution, or a Read of this file), use this skill file's directory instead. It links the plugin's `scripts/` and `types/` in; on any nonzero exit stop and show its message (exit 3 means the directory already carries its own). Every command below then runs exactly as written.
 
 Parse `$ARGUMENTS` for flags and IDs:
 - Strip `--type <t>` if present (an explicit type — always wins)
