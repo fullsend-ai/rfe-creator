@@ -2353,6 +2353,23 @@ def _run_next_action():
     return _yaml.safe_load(buf.getvalue())
 
 
+def _finish_wave(state, wave_ids):
+    """Write every output the barrier polls for ``wave_ids`` in the state's phase, so
+    check_review_progress reports the wave completed (a review output carries a score)."""
+    import check_review_progress as crp
+
+    config = ps._get_config(state)[state["phase"]]
+    polls = [config["poll_phase"]] + [
+        p["poll_phase"] for p in config.get("parallel", []) if p.get("poll_phase")
+    ]
+    for rid in wave_ids:
+        for poll in polls:
+            path = crp.PHASE_CHECKS[poll](rid)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w") as f:
+                f.write("---\nscore: 5\n---\nbody\n")
+
+
 class TestNextActionDone:
     def test_done_phase(self, tmp_dir):
         """DONE phase returns action=done."""
@@ -2793,6 +2810,8 @@ class TestLaunchWaveFile:
         assert f"({len(wave_ids)} IDs)" in result["message"]
 
     def test_a_wave_too_big_for_the_listing_is_cut_and_the_rest_follows(self, tmp_dir, monkeypatch):
+        import yaml as _yaml
+
         ids = [f"RHOAIENG-{1000 + i}" for i in range(50)]
         write_ids("tmp/pipeline-active-ids.txt", ids)
         ps._save_state(make_state(phase="REVIEW", type="initiative", batch=1))
@@ -2800,7 +2819,48 @@ class TestLaunchWaveFile:
         first = _run_next_action()
         cut = read_ids(ps.WAVE_IDS_FILE)
         assert 0 < len(cut) < 50 and cut == ids[: len(cut)]
-        assert first["message"] == f"REVIEW: wave 1/{-(-50 // len(cut))} ({len(cut)} IDs)"
+        assert first["message"] == f"REVIEW: wave 1/2 ({len(cut)} IDs)"
+
+        # Complete the first wave: the next dispatch is wave 2 of 2 over the rest, however the
+        # cut shortened the first call (the count is kept, not derived from the fitted size).
+        state = ps._load_state()
+        assert state["wave_ordinal"] == 1 and state["batch_size"] == 50
+        _finish_wave(state, cut)
+        second = _run_next_action()
+        rest = read_ids(ps.WAVE_IDS_FILE)
+        assert rest == ids[len(cut) : len(cut) + len(rest)] and rest
+        assert second["message"] == f"REVIEW: wave 2/2 ({50 - len(cut)} IDs)"
+        with open(ps.LAUNCH_WAVE_FILE) as f:
+            assert _yaml.safe_load(f)["message"] == second["message"]
+
+    def test_waves_are_counted_in_order_without_a_cut(self, tmp_dir, monkeypatch):
+        """6 ids at batch_size 4 in ASSESS (2 per wave): 1/3, 2/3, 3/3, as the divisor gave."""
+        ids = [f"RHAIRFE-{i}" for i in range(1, 7)]
+        write_ids("tmp/pipeline-active-ids.txt", ids)
+        ps._save_state(make_state(phase="ASSESS", batch=1, batch_size=4))
+        monkeypatch.setattr(ps, "_run_script", lambda cmd: "")
+        for n in (1, 2, 3):
+            result = _run_next_action()
+            assert result["message"] == f"ASSESS: wave {n}/3 (2 IDs)"
+            _finish_wave(ps._load_state(), read_ids(ps.WAVE_IDS_FILE))
+
+    def test_wave_count_restarts_in_the_next_agent_phase(self, tmp_dir, monkeypatch):
+        """The ordinal resets on entering a phase: REVIEW's first wave reads wave 1/..., even
+        after ASSESS dispatched two waves."""
+        ids = [f"RHAIRFE-{i}" for i in range(1, 5)]
+        write_ids("tmp/pipeline-active-ids.txt", ids)
+        ps._save_state(make_state(phase="ASSESS", batch=1, batch_size=2))
+        monkeypatch.setattr(ps, "_run_script", lambda cmd: "")
+        assert _run_next_action()["message"] == "ASSESS: wave 1/4 (1 IDs)"
+        _finish_wave(ps._load_state(), read_ids(ps.WAVE_IDS_FILE))
+        assert _run_next_action()["message"] == "ASSESS: wave 2/4 (1 IDs)"
+        for _ in range(4):
+            _finish_wave(ps._load_state(), read_ids(ps.WAVE_IDS_FILE))
+            result = _run_next_action()
+            if result["phase"] != "ASSESS":
+                break
+        assert result["phase"] == "REVIEW"
+        assert result["message"].startswith("REVIEW: wave 1/")
 
     def test_the_file_is_overwritten_per_wave(self, tmp_dir, monkeypatch):
         import yaml as _yaml

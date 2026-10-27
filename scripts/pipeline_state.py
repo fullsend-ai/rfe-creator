@@ -889,8 +889,12 @@ def _read_phase_entry(phase):
 
 
 def _enter_phase(state, next_phase):
-    """Move ``state`` to ``next_phase`` and save; stamp the entry time of an agent phase."""
+    """Move ``state`` to ``next_phase`` and save; stamp the entry time of an agent phase.
+
+    Entering a phase restarts its wave count (``wave_ordinal``, bumped by each launch_wave).
+    """
     state["phase"] = next_phase
+    state["wave_ordinal"] = 0
     _save_state(state)
     if _get_config(state).get(next_phase, {}).get("type") == "agent":
         _write_phase_entry(next_phase)
@@ -1693,10 +1697,16 @@ def cmd_next_action(args):
             wave_ids = remaining[:wave_size]
             fitted_ids = _fit_wave_ids(config, launch_block, wave_ids, phase, state)
             if len(fitted_ids) < len(wave_ids):
-                wave_size = len(fitted_ids)
                 wave_ids = fitted_ids
-            wave_num = 1 + (len(all_ids) - len(remaining)) // wave_size
-            total_waves = max(1, -(-len(all_ids) // wave_size))  # ceil div
+            # Waves are counted as they are dispatched, not derived from a divisor: a wave cut
+            # to fit the listing budget is shorter than the nominal size, so a divisor would
+            # shift or restart the numbering on the next call. The total is this wave plus the
+            # nominal-size waves the remaining ids still need.
+            wave_num = int(state.get("wave_ordinal", 0)) + 1
+            left = len(remaining) - len(wave_ids)
+            total_waves = max(wave_num, wave_num + -(-left // wave_size))  # ceil div
+            state["wave_ordinal"] = wave_num
+            _save_state(state)
 
             # Run pre_script for each ID in the wave
             if config.get("pre_script"):
