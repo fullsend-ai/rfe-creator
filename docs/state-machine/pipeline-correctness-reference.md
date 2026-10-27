@@ -124,7 +124,7 @@ exclusion, and split parent detection. The `rfe_id` pattern constraint causes
 | `AF_SNAPSHOT` | Run `snapshot_fetch.py` (JQL mode only) | Step 0 |
 | `AF_BOOTSTRAP` | Bootstrap assess-rfe (with 1 retry on failure) | Step 1 |
 | `AF_RESUME` | Run `check_resume.py` to filter already-processed IDs (see 1.20) | Step 2 |
-| `AF_BATCH_LOOP` | Per-batch: review -> collect (see 1.16) -> split (if needed) -> summary | Dispatch Loop Step 1-2 (`pipeline_state.py next-action` / `wait-for-wave`) |
+| `AF_BATCH_LOOP` | Per-batch: review -> collect (see 1.16) -> split (if needed) -> summary | Dispatch Loop Step 1-2 (`pipeline_state.py next-action` / `wait-for-wave`; the pending-wave contract is 6.3c) |
 | `AF_RETRY` | Scan for errors, cleanup split failures, clear errors, re-run pipeline | Step 4 |
 | `AF_REPORTS` | Generate run report YAML + HTML report. Not reached by an idle run (zero process ids after `AF_RESUME`): `BATCH_START` with `total_batches` = 0 goes straight to `DONE`, writes no report, and still announces completion (see 2.9) | Step 5 |
 | `AF_SUMMARY` | Final summary + optional announce-complete | Step 6 |
@@ -1321,6 +1321,66 @@ opt-in through `RFE_CREATOR_ENABLE_CONTEXT_HOOK`) closes that path:
 The guard does not replace the job-level check that no submit runs without a `REPORT`
 phase; it makes that situation rare.
 
+### 6.3c Barrier contract (pending wave)
+
+A wave is pending from the moment the orchestrator launches its agents until
+`wait-for-wave` exits 0. The barrier is one bounded poll
+(`check_review_progress.py --wait --max-wait 90`; AISDLC-453 item 2 is to derive the
+length from the Bash budget the job grants instead of the 90 seconds), so a long wave
+hands the model a decision point at least every 90 seconds, and after an auto-compaction the model
+decides from a summary of what it did rather than from the tool results. Production runs
+before 2026-10-27 showed what it decides on its own: a second scorer launched by hand for
+an id the summary called "already completed" (2026-10-02), the review and staging
+directories listed between two barrier calls (2026-10-14), and in every batch of 13 items
+or more a `launch_wave` listing that did not fit one tool result, recovered by grepping the
+orchestrator's own transcript for the launch variables; batches of 9 or fewer never did
+any of this.
+
+Two changes close that path (AISDLC-453 item 1 and AISDLC-454; GitHub #253 and #265):
+
+- **The launch list is a file.** `next-action` writes every agent's launch block (id,
+  prompt file, the rendered launch variables, `subagent_type`) to
+  `tmp/pipeline-launch-wave.yaml` and prints a listing that fits one tool result: the
+  id-free launch variables once (`common_vars`), then only the id-bearing lines per agent.
+  `LAUNCH_LISTING_BUDGET` (28,000 characters) cuts a wave whose listing would not fit to
+  the ids that do; the rest launch in the next wave through the existing multi-wave path,
+  and `wave_ordinal` keeps the progress message and the file in step across cut waves.
+  `python3 scripts/state.py read-launch tmp/pipeline-launch-wave.yaml --agent <N>` reads a
+  block back and is the only recovery path the skill names.
+- **One contract, in the three places the model reads while a wave is pending**, worded
+  identically: the auto-fix skill's wait step, rule 3 of the Pipeline Execution Constraint
+  in `AGENTS.md` (`CLAUDE.md` is its symlink), and the `DISPATCH_LOOP` banner that
+  `post-compact-hook` and the Stop guard (6.3b) re-inject. Its clauses: exit 3 means the
+  wave is still pending, wait by re-running the barrier; the barrier re-dispatches a stuck
+  agent itself after the stall window and escalates when it cannot
+  (`docs/wave-stall-guard.md`); while a wave is pending, launch no agent, read no artifact
+  and run no command other than the barrier; a lost launch list is recovered with
+  `read-launch`, never by searching files. The review skill polls with
+  `check_review_progress.py` instead of the barrier and carries the one-sentence form in
+  its poll steps. `tests/test_barrier_contract.py` keeps the three paragraphs identical,
+  checks each clause, and pins that the skill gained no command (the production command
+  stream stays byte-stable).
+
+The contract is text the model reads, not a mechanism: nothing stops a Bash call between
+two barrier calls. The check is the job log. Between a launch and the next barrier every
+Bash command should be `pipeline_state.py wait-for-wave`, `next-action` or `run-phase`;
+anything else (a transcript grep, an artifact listing, a relaunch by hand) is an
+improvised command and counts against the run.
+
+**Evidence (2026-10-27, two stage dry runs of production shape: 25 RHAIRFE keys each with
+`--reprocess`, one batch, an ASSESS wave of 50 agents).** The first ran the tree before the
+contract text (with the launch-list file), the second the tree that carries it, post-
+compaction banner included. Each compacted exactly once, about ten minutes in, during the
+ASSESS launch (the telemetry shows one `SessionStart:compact` hook per run; in the second
+the orchestrator launched 20 of the 50 agents before the compaction and the remaining 30
+from the listing afterwards). Both runs show zero improvised commands between barrier
+calls, through FETCH, SETUP, ASSESS, REVIEW, REVISE and FIXUP, in the second also through
+the whole split sub-pipeline, then REPORT and DONE. `read-launch` was not needed in either
+(the launch list survived the compaction), and the Stop guard fired once per run, at the
+normal end, with nothing to block. The run ids are recorded on AISDLC-454. Still to show,
+under AISDLC-453: two consecutive scheduled production runs of 13 items or more with the
+same zero count, and the longer block.
+
 ### 6.4 State Persistence File Inventory (Context Compression Resilience)
 
 Each skill uses distinct file prefixes to avoid collisions during nested calls.
@@ -1328,7 +1388,7 @@ Each skill uses distinct file prefixes to avoid collisions during nested calls.
 | Prefix | Skill | Key Files | Purpose |
 |---|---|---|---|
 | `speedrun-` | rfe-speedrun | `tmp/speedrun-config.yaml`, `tmp/speedrun-all-ids.txt` | Mode, created IDs |
-| `pipeline-` | rfe-auto-fix (via `pipeline_state.py`) | `tmp/pipeline-state.yaml`, `tmp/pipeline-all-ids.txt`, `tmp/pipeline-changed-ids.txt`, `tmp/pipeline-process-ids.txt`, `tmp/pipeline-active-ids.txt`, `tmp/pipeline-batch-N-ids.txt`, `tmp/pipeline-retry-ids.txt`, `tmp/pipeline-setup-error.txt` | Dispatch-loop phase, batch and cycle counters, id sets; `tmp/pipeline-setup-error.txt` is the run-level SETUP failure marker, written whole or not at all, removed by init and by a passing SETUP gate |
+| `pipeline-` | rfe-auto-fix (via `pipeline_state.py`) | `tmp/pipeline-state.yaml`, `tmp/pipeline-all-ids.txt`, `tmp/pipeline-changed-ids.txt`, `tmp/pipeline-process-ids.txt`, `tmp/pipeline-active-ids.txt`, `tmp/pipeline-batch-N-ids.txt`, `tmp/pipeline-retry-ids.txt`, `tmp/pipeline-setup-error.txt`, `tmp/pipeline-wave-ids.txt`, `tmp/pipeline-wave-launch.txt`, `tmp/pipeline-launch-wave.yaml`, `tmp/pipeline-wave-progress.yaml`, `tmp/pipeline-stall-retries.yaml`, `tmp/pipeline-stop-guard.txt` | Dispatch-loop phase, batch and cycle counters, id sets; `tmp/pipeline-setup-error.txt` is the run-level SETUP failure marker, written whole or not at all, removed by init and by a passing SETUP gate; the wave files hold the current wave's ids, its launch time (wave freshness, `docs/wave-stall-guard.md`) and every agent's launch block (`tmp/pipeline-launch-wave.yaml`, read back with `state.py read-launch`, see 6.3c); the stall guard keeps its progress tracker and retry counts in the next two, and the Stop guard its block counter in the last (6.3b) |
 | `review-` / `rfe-poll-` | rfe-review | `tmp/review-config.yaml`, `tmp/review-all-ids.txt`, `tmp/review-reassess-ids.txt`, `tmp/rfe-poll-{fetch,assess,feasibility,review,revise,reassess-assess,reassess-review}.txt` | Caller info, ID tracking, poll state |
 | `split-` / `rfe-poll-` | rfe-split | `tmp/split-config.yaml`, `tmp/split-all-ids.txt`, `tmp/rfe-poll-split.txt` | Parent IDs, return path, poll state |
 
