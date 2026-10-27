@@ -102,6 +102,15 @@ REVISION_INTERRUPTED_PREFIX = "revision_interrupted:"
 # was left as it was, with a comment listing the proposal and the needs-attention label. Blocked
 # like a refused split: the parent stays unprocessed for a run without the hold.
 SPLIT_HELD_PREFIX = "split_held:"
+# The pipeline's SETUP fail-fast (AISDLC-194): the verify gate found the type broken, so
+# nothing was assessed, reviewed or submitted. pipeline_state._fail_setup writes this prefix
+# on every active id's review error and the diagnosis to SETUP_ERROR_FILE; the report carries
+# it as failed_reason (an undisposed outcome bootstrap_snapshot never counts as processed).
+SETUP_FAILED_PREFIX = "setup_failed:"
+# Mirror of pipeline_state.SETUP_ERROR_FILE: present while a SETUP failure ended the run.
+SETUP_ERROR_FILE = "tmp/pipeline-setup-error.txt"
+# Mirror of pipeline_state.PROCESS_IDS_FILE: every id the run was to process, all batches.
+PROCESS_IDS_FILE = "tmp/pipeline-process-ids.txt"
 
 
 def split_children_map(artifacts_dir, config, tasks=None):
@@ -390,6 +399,37 @@ def _provenance_header(entry_type, env=None, workspace_root=None):
     }
 
 
+def _process_ids():
+    """The ids the run was to process (PROCESS_IDS_FILE, one per line), or none."""
+    try:
+        with open(PROCESS_IDS_FILE, encoding="utf-8") as f:
+            return [ln.strip() for ln in f if ln.strip()]
+    except OSError:
+        return []
+
+
+def _setup_error():
+    """The SETUP fail-fast diagnosis of the run this report closes, prefixed, or None.
+    Read from SETUP_ERROR_FILE in the working directory (the pipeline's tmp/), which only
+    exists between pipeline_state._fail_setup and the next init. The marker is written whole
+    or not at all (a rename into place), so an existing one that is empty or cannot be read
+    is a failure whose text was lost, never "no failure": submit gates its Jira writes on
+    this answer, and an absent marker is the only thing that means a sound SETUP."""
+    try:
+        with open(SETUP_ERROR_FILE, encoding="utf-8") as f:
+            text = f.read().strip()
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        text = (
+            f"marker {SETUP_ERROR_FILE} unreadable ({type(exc).__name__}); the diagnosis is"
+            " in the pipeline log"
+        )
+    if not text:
+        text = f"marker {SETUP_ERROR_FILE} is empty; the diagnosis is in the pipeline log"
+    return text if text.startswith(SETUP_FAILED_PREFIX) else f"{SETUP_FAILED_PREFIX} {text}"
+
+
 def _parse_run_id(start_time):
     """Derive run_id from a timestamp. Accepts YYYYMMDD-HHMMSS or ISO format."""
     if re.match(r"^\d{8}-\d{6}$", start_time):
@@ -429,6 +469,13 @@ def build_report(
     task_map = _task_map(tasks, config)
     all_children = [c for kids in children_map.values() for c in kids]
     expanded_ids = list(ids) + [c for c in all_children if c not in ids]
+    setup_error = _setup_error()
+    if setup_error:
+        # A SETUP failure ends the run at its first batch: the ids of later batches have no
+        # task or review yet. They failed for the same reason and are reported with it.
+        for pid in _process_ids():
+            if pid not in expanded_ids:
+                expanded_ids.append(pid)
     # ...and every task file the run left behind. The CLI's default population
     # scans the REVIEWS directory, so an item whose review was never written —
     # or was cleared for a reassess cycle that never ran — simply vanished
@@ -465,6 +512,12 @@ def build_report(
         fallback_ref = item_id if _is_tracker_key(item_id, config) else None
 
         if not review_path:
+            if setup_error:
+                per_item.append(
+                    {"id": item_id, "tracker_ref": fallback_ref, "failed_reason": setup_error}
+                )
+                counts["failed"] += 1
+                continue
             per_item.append(
                 {"id": item_id, "tracker_ref": fallback_ref, "error": "review file not found"}
             )
@@ -584,7 +637,19 @@ def build_report(
         review_error = data.get("error") or ""
         blocked_reason = None
         failed_reason = None
-        if review_error.startswith(
+        if review_error.startswith(SETUP_FAILED_PREFIX) or setup_error:
+            # SETUP fail-fast, checked FIRST: the stub (or, for an id whose stub could not
+            # be written, the run-level diagnosis) says the type was broken before any
+            # scoring wave ran. Whatever older marker the review carries -- a restored
+            # split_held: or revision_interrupted: from an earlier run -- says nothing
+            # about this run, so it is neither blocked nor failed for that old reason.
+            # failed_reason, not error: bootstrap_snapshot reads neither as processed,
+            # and the diagnosis stays legible next to whatever review the id carried.
+            failed_reason = (
+                review_error if review_error.startswith(SETUP_FAILED_PREFIX) else setup_error
+            )
+            entry["failed_reason"] = failed_reason
+        elif review_error.startswith(
             (SPLIT_REFUSED_PREFIX, REVISION_INTERRUPTED_PREFIX, SPLIT_HELD_PREFIX)
         ):
             blocked_reason = data.get("needs_attention_reason") or review_error
@@ -653,6 +718,9 @@ def build_report(
     }
     if entry_type == "rfe":
         report["batch_size"] = batch_size
+    if setup_error:
+        # Additive, last: the run-level reason every entry above failed.
+        report["setup_error"] = setup_error
     return report
 
 
@@ -695,15 +763,20 @@ def main():
     ids = resolve_ids(args.ids, args.ids_file)
     if not ids:
         # A run that reviewed nothing still gets a zero-count report. Only a
-        # missing reviews directory is an error.
+        # missing reviews directory is an error — unless the SETUP marker explains it: a run
+        # whose every stub write failed has no reviews directory, and build_report then lists
+        # every id of the run's process-ids file with the setup_failed diagnosis.
         reviews_dir = os.path.join(artifacts_dir, config["reviews_dir"])
-        if not os.path.isdir(reviews_dir):
+        if os.path.isdir(reviews_dir):
+            ids = [
+                f.replace("-review.md", "")
+                for f in sorted(os.listdir(reviews_dir))
+                if f.endswith("-review.md")
+            ]
+        elif _setup_error() is not None:
+            ids = []
+        else:
             parser.error(f"no IDs provided and no reviews directory at {reviews_dir}")
-        ids = [
-            f.replace("-review.md", "")
-            for f in sorted(os.listdir(reviews_dir))
-            if f.endswith("-review.md")
-        ]
 
     retried = [x for x in args.retried.split(",") if x]
     retry_ok = [x for x in args.retry_successes.split(",") if x]

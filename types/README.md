@@ -578,8 +578,16 @@ the `extra_rules` consistency check, the `annotations_extra` lines, the run-repo
 2. **Gate 2 — `--with-deps`** (after bootstrap): `rubric.path` exists under `--assess-dir` (under
    the repo root when `rubric.repo` is `self`) and the agent file `agents/<scorer_agent>.md` is
    present in the assess checkout.
-3. **Gate 3 — `--verify --type <t>`**: gate 1 for one type with a one-line diagnosis; a pipeline
-   SETUP fail-fast that no pipeline phase calls yet.
+3. **Gate 3 — `--verify --type <t>`**: gate 1 for one type with a one-line diagnosis. The
+   pipeline's SETUP phase runs it before its bootstrap (AISDLC-194): a finding stops the batch
+   before its first scoring wave, every id of the run, later batches included, gets a
+   `setup_failed: <diagnosis>` error stub (so a stale passing review from an earlier run cannot
+   make the next run's resume check skip the id),
+   the run goes straight to its report, and submit leaves every id of the run unprocessed for
+   the next one; a gate that cannot run (exit 2, `jsonschema` not installed) is a warning and
+   the run continues, unless an earlier failure of the same run stands; any other exit code is a
+   failure. The skill's pre-loop bootstrap and the FETCH wave precede SETUP: a pin the
+   bootstrap cannot read stops the run there, with the bootstrap's message and no report.
 
 Alongside: `python3 scripts/lint_prefix_predicates.py` rejects new literal key/snapshot prefixes
 (`RHAIRFE-`, `RHOAIENG-`, `RFE-`, `INIT-`, `RHAISTRAT-`, `issue-snapshot-`, `initiative-snapshot-`,

@@ -48,6 +48,11 @@ STATE_FILE = "tmp/pipeline-state.yaml"
 WAVE_IDS_FILE = "tmp/pipeline-wave-ids.txt"
 # The resume check's output (skill step 4): the ids this run still has to process.
 PROCESS_IDS_FILE = "tmp/pipeline-process-ids.txt"
+# The SETUP fail-fast (AISDLC-194): the error prefix of its stubs and the run-level marker that
+# outlives them. generate_run_report mirrors both (test-pinned equal) rather than import this
+# module.
+SETUP_FAILED_PREFIX = "setup_failed:"
+SETUP_ERROR_FILE = "tmp/pipeline-setup-error.txt"
 # Epoch of the current wave's launch (AISDLC-33): the barrier hands it to check_review_progress
 # as --since so a review or assess result written before the launch — a previous reassess
 # cycle's late agent — cannot release the wave.
@@ -436,10 +441,18 @@ def _build_phase_config(pipeline_type, reassess_cycle=0):
         },
         "SETUP": {
             "type": "script",
-            # Run concurrently. Exit codes are logged but do not fail the phase:
+            # Fail-fast first (AISDLC-194): the registry's gate 3 runs at the top of SETUP,
+            # before this phase's own bootstrap and before the batch's first scoring wave.
+            # Not before everything: the skill's pre-loop bootstrap (step 3) and the FETCH
+            # wave precede SETUP, and a pin the bootstrap itself cannot read stops the run
+            # there, with the bootstrap's own message and no report. Findings (exit 1) stop
+            # the run with the gate's one-line diagnosis -- see _fail_setup; a gate that
+            # cannot run (exit 2: its jsonschema dependency is not installed, a usage error)
+            # is a warning, not a verdict, and the run goes on as before.
+            "verify": f"python3 scripts/validate_types.py --verify --type {pipeline_type}",
+            # Then run concurrently. Exit codes are logged but do not fail the phase:
             # the previous `a & b & wait` form returned wait's status, which is
-            # always 0, so this preserves behaviour. Fail-fast SETUP belongs to
-            # the registry's validate_types.py --verify gate.
+            # always 0, so this preserves behaviour.
             "commands": [
                 f"bash scripts/bootstrap.sh --type {pipeline_type}",
                 "bash scripts/fetch-architecture-context.sh",
@@ -1193,6 +1206,12 @@ def advance(state, dry_run=False):
             _write_revise_baseline(revise_ids, pipeline_type)
         return "SPLIT_REVISE", "SPLIT_REVIEW → SPLIT_REVISE"
 
+    # --- SETUP fail-fast (AISDLC-194): the verify gate found the type broken. Every active
+    # id carries a setup_failed: stub; go straight to the report so the run says so and
+    # nothing is launched, re-scored or submitted on a type that cannot be trusted.
+    if phase == "SETUP" and state.get("setup_error"):
+        return "REPORT", f"SETUP → REPORT: setup failed ({state['setup_error']})"
+
     # --- Linear sequences ---
     for seq in [MAIN_SEQUENCE, REASSESS_SEQUENCE, SPLIT_SEQUENCE]:
         if phase in seq[:-1]:
@@ -1424,7 +1443,7 @@ def cmd_init(args):
     # run's ids in it (interactive use shares tmp/) would misname that run's ids as pending.
     for f in glob.glob("tmp/pipeline-batch-*-ids.txt"):
         os.remove(f)
-    for f in (DISPATCH_MARKER, PROCESS_IDS_FILE):
+    for f in (DISPATCH_MARKER, PROCESS_IDS_FILE, SETUP_ERROR_FILE):
         if os.path.exists(f):
             os.remove(f)
     state = {
@@ -1470,11 +1489,116 @@ def cmd_get_phase_config(args):
     config.pop("command", None)
     config.pop("pre_script", None)
     config.pop("post_verify", None)
+    config.pop("verify", None)
     if config.get("type") == "script":
         config.pop("ids_file", None)
     if config.get("type") == "agent":
         config["wave_size"] = _wave_size(state, config)
     print(yaml.dump(config, default_flow_style=False, sort_keys=False), end="")
+
+
+def _run_setup_verify(cmd):
+    """Run SETUP's ``verify`` gate. Returns ``(verdict, diagnosis)``: ``("ok", None)``,
+    ``("finding", <one line>)`` or ``("unavailable", None)``.
+
+    ``validate_types.py --verify`` exits 0 (one ``OK:`` line), 1 (one ``ERROR <type>:
+    <message>`` line per finding) or 2 (usage error, or its jsonschema dependency is not
+    installed -- a dev dependency, see requirements-dev.txt). 1 is a verdict on the type.
+    2, like a gate that cannot be started at all, is reported on stderr and the phase
+    continues as it did before the gate was wired (AISDLC-194) -- unless an earlier
+    failure of the same run stands, which nothing has disproved (cmd_run_phase keeps it).
+    Any other exit (a signal, an interpreter that started and died) is outside the gate's
+    contract and is a failure too: no verdict was given, so the type is not known sound.
+    """
+    try:
+        result = subprocess.run(_argv(cmd), capture_output=True, text=True)
+    except OSError as exc:
+        print(f"[run-phase] SETUP: verify could not run ({exc}); continuing", file=sys.stderr)
+        return "unavailable", None
+    out = (getattr(result, "stdout", "") or "") + (getattr(result, "stderr", "") or "")
+    lines = [ln.strip() for ln in out.splitlines() if ln.strip()]
+    if result.returncode == 0:
+        print(f"[run-phase] SETUP: verify {lines[0] if lines else 'OK'}")
+        return "ok", None
+    if result.returncode == 1:
+        findings = [ln for ln in lines if ln.startswith("ERROR")] or lines
+        return "finding", (findings[0] if findings else f"exit {result.returncode} from: {cmd}")
+    if result.returncode == 2:
+        print(
+            f"[run-phase] SETUP: verify unavailable (exit 2"
+            f"{': ' + lines[0] if lines else ''}); continuing",
+            file=sys.stderr,
+        )
+        return "unavailable", None
+    return "finding", (
+        f"the verify gate did not complete (exit {result.returncode}"
+        f"{': ' + lines[0] if lines else ''})"
+    )
+
+
+def _fail_setup(state, diagnosis):
+    """Stop the batch before any scoring wave is launched and paid for (FETCH already ran).
+
+    Three records, so no reader depends on another: the finding in the state (advance
+    routes SETUP to REPORT on it); the diagnosis in SETUP_ERROR_FILE (the run report reads
+    it and marks every id ``failed_reason: setup_failed: ...`` whatever review the id
+    carries -- a restored one from an earlier run included -- and names it in
+    ``setup_error``); and the registry error stub with that error on the review of every id
+    of the run -- the active ids first, then PROCESS_IDS_FILE's later batches, each once, so
+    a stale passing review from an earlier run cannot make the next run's resume check skip
+    an id -- which is what submit reads (it skips a ``setup_failed:`` review without a Jira
+    write) and what keeps a stale review from being published. An id whose stub could not
+    be written is named on stderr and in the state; the report still covers it through the
+    file. bootstrap_snapshot never counts a failed_reason entry as processed, so the next
+    run selects them all again.
+    """
+    print(f"[run-phase] SETUP: FAILED -- {diagnosis}", file=sys.stderr)
+    state["setup_error"] = diagnosis
+    # Whole or absent, never truncated: the report and submit read an existing but empty or
+    # unreadable marker as a failure whose text was lost, so a half-written one must not exist.
+    tmp_marker = f"{SETUP_ERROR_FILE}.tmp"
+    with open(tmp_marker, "w") as f:
+        f.write(f"{SETUP_FAILED_PREFIX} {diagnosis}\n")
+    os.replace(tmp_marker, SETUP_ERROR_FILE)
+    # The failure aborts every remaining batch, so the stub covers every id of the run: the
+    # active ids first, then the later batches' (each once, in that order).
+    ids = list(
+        dict.fromkeys(_read_ids("tmp/pipeline-active-ids.txt") + _read_ids(PROCESS_IDS_FILE))
+    )
+    unwritten = []
+    if ids:
+        import verify_phase
+
+        unwritten = verify_phase.write_error_stubs(
+            "setup",
+            ids,
+            state.get("type", "rfe"),
+            outcome="failed",
+            error=f"{SETUP_FAILED_PREFIX} {diagnosis}",
+        )
+    if unwritten:
+        state["setup_unwritten"] = list(unwritten)
+        print(
+            f"[run-phase] SETUP: no setup_failed stub written for {', '.join(unwritten)};"
+            " the run report still carries the diagnosis for them",
+            file=sys.stderr,
+        )
+    _save_state(state)
+
+
+def _clear_setup_failure(state):
+    """A SETUP that passes its gate after an earlier failure in the same run -- an operator
+    fixed the descriptor and retried -- must not keep routing to REPORT on the stale
+    diagnosis (Qodo on #257). Only a pass clears it: a gate that cannot run disproves
+    nothing, so the failure stands (fullsend on #257)."""
+    stale = state.pop("setup_error", None) is not None
+    stale |= state.pop("setup_unwritten", None) is not None
+    if stale:
+        _save_state(state)
+    try:
+        os.remove(SETUP_ERROR_FILE)
+    except FileNotFoundError:
+        pass
 
 
 def cmd_run_phase(args):
@@ -1491,6 +1615,26 @@ def cmd_run_phase(args):
     if phase_type != "script":
         print(f"run-phase: phase {phase} is type '{phase_type}', not 'script'", file=sys.stderr)
         sys.exit(1)
+    if config.get("verify"):
+        verdict, diagnosis = _run_setup_verify(config["verify"].format_map(state))
+        if verdict == "finding":
+            _fail_setup(state, diagnosis)
+            with open(DISPATCH_MARKER, "w") as f:
+                f.write(phase)
+            return
+        if verdict == "ok":
+            _clear_setup_failure(state)
+        elif state.get("setup_error"):
+            # The gate could not run and an earlier failure of this run stands: nothing has
+            # shown the type sound since, so the batch still stops here (fail closed).
+            print(
+                f"[run-phase] {phase}: verify unavailable and the earlier failure stands --"
+                f" {state['setup_error']}",
+                file=sys.stderr,
+            )
+            with open(DISPATCH_MARKER, "w") as f:
+                f.write(phase)
+            return
     if config.get("commands"):
         # Concurrent commands (SETUP). See the phase config for why exit codes
         # are logged rather than fatal.

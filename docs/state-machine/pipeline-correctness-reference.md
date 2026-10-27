@@ -93,6 +93,7 @@ exclusion, and split parent detection. The `rfe_id` pattern constraint causes
 | `"<phase base>_stalled"` (`fetch_stalled`, `assess_stalled`, `feasibility_stalled`, `alignment_stalled`, `review_stalled`: the stuck poll phase with the type's `pipeline.poll_prefix` stripped, so `assess_stalled` for `assess` and `initiative-assess` alike) | Wave stall guard escalation of a fetch / assess / review-class wave (`docs/wave-stall-guard.md`), on the registry error stub | `pipeline_state.py` `_escalate_stuck` via `verify_phase.write_error_stubs(outcome="stalled")` |
 | `"revise_stalled"` | Wave stall guard escalation of a REVISE-class wave: set on the real review (score, recommendation and `auto_revised` kept), or on the registry stub when that review cannot be updated | `pipeline_state.py` `_mark_revise_stalled` via `_mark_review_or_stub` (`artifact_utils.update_frontmatter`, falling back to `verify_phase.write_error_stubs(error="revise_stalled")`) |
 | `"split_not_attempted: wave stalled ..."` | Wave stall guard escalation of a SPLIT wave (non-retryable, like the submit.py form below) | `pipeline_state.py` `_mark_split_not_attempted` via `_mark_review_or_stub` |
+| `"setup_failed: {diagnosis}"` | The SETUP fail-fast (AISDLC-194): the registry gate's one-line finding, on every id of the run, later batches included — submit skips the id without any Jira write, and the run report lists it as `failed_reason` | `pipeline_state.py` `_fail_setup` via `verify_phase.write_error_stubs(outcome="failed", error=...)` |
 | `"reconcile_failed"` | COLLECT reconcile (`scripts/reconcile_reviews.py` reported `RECONCILE_ERRORS=` for the id: restore or frontmatter update raised) — set through `_mark_review_or_stub`, retryable, `needs_attention=true` | `pipeline_state.py` COLLECT decision |
 | `"split_refused: too many leaf children"` | Submit Phase 1 | `submit.py:199` |
 | `"split_refused: jira conflict"` | Submit Phase 1 | `submit.py:233` |
@@ -299,6 +300,7 @@ The `parent_key` exclusion ensures split children are only processed by
 | **SKIP (rejected)** | `rec` in `(reject, autorevise_reject)` AND no label to remove | None | Marked processed |
 | **Remove labels** | `rec` in `(reject, autorevise_reject)` AND any of (`rubric-pass`, `feasibility-pass`, `feasibility-fail`, `feasibility-unknown`) in `original_labels` | `remove_labels()` only; does NOT set `status=Submitted` | Marked processed |
 | **SKIP (conflict)** | `rfe-originals/{ID}.md` exists AND differs from live Jira | None | NOT marked processed (enables retry) |
+| **SKIP (setup failed)** | Run-level marker `tmp/pipeline-setup-error.txt` present (this also covers an id with an absent review), or the review's `error` starts with `setup_failed:` | None | NOT marked processed; entry reset to `processed: false`, also for the setup-skipped split parents and the later-batch ids |
 | **SKIP (no changes)** | Content unchanged, no new labels needed | None | Marked processed |
 | **Label only** | Content unchanged but labels needed (existing label triggers OR new feasibility label needed OR stale feasibility label present in `original_labels`) | `remove_labels()` (if any) then `add_labels()` (if any) | Marked processed, but NO content hash recorded |
 | **Create** | `rfe_id` starts with `RFE-` | `create_issue()` + `rename_to_jira_key()` | Content hash recorded |
@@ -444,6 +446,7 @@ if no review file existed yet (e.g., assess_failed before any review agent ran).
 | E10 | revision_interrupted | null | Submit without either hold switch publishes the held rewrite (§5.12) | Review error starts with `revision_interrupted:`; after update_issue() succeeded | update_frontmatter() clears error, needs_attention and needs_attention_reason (the hold's own flag only) | submit.py plan `lift_hold` + update path |
 | E11 | null or split_refused | split_held | `--hold-splits` on a Phase 1 split parent (§5.12) | Review neither `split_held:` nor `split_submit_failed:` (a quarantined partial split is skipped); at least one child not yet `Submitted` | update_frontmatter() (error set, `needs_attention_reason` cleared; score, recommendation and needs_attention kept), then the needs-attention label and one comment in Jira unless the label was on the parent at fetch | submit.py `_hold_split` |
 | E12 | split_held | null | split_submit.py exit 0 in a run without `--hold-splits` | Review error starts with `split_held:` | update_frontmatter(); a failure is a submit error (run ends red naming the parent) | submit.py `_lift_split_hold` |
+| E13 | null or any older error | setup_failed: {diagnosis} | SETUP verify gate finding, or an exit outside its 0/1/2 contract | Every id of the run: those in `tmp/pipeline-process-ids.txt` | `verify_phase.write_error_stubs(outcome=failed, error=setup_failed: ...)` through `pipeline_state._fail_setup`; the marker `tmp/pipeline-setup-error.txt` is written whole or not at all | pipeline_state.py `_fail_setup` |
 
 ### 2.6 Label Transitions
 
@@ -469,6 +472,7 @@ if no review file existed yet (e.g., assess_failed before any review agent ran).
 | S3 | UNPROCESSED | PROCESSED | Pipeline submit completes | update_snapshot_hashes() called | Update hash, set processed=true | snapshot_fetch.py:268-276 |
 | S4 | UNPROCESSED | PROCESSED | Pipeline marks as processed (no content change) | mark_processed parameter | Set processed=true | submit.py:611-614 |
 | S5 | ABSENT | PROCESSED | Split child or new RFE submitted | `update_snapshot_hashes()` adds entry that was never in a fetch snapshot | Write {hash, processed: true} | submit.py:264-293, 558-559 |
+| S6 | PROCESSED | UNPROCESSED | submit.py `reset_processed`: a held item (§5.12) or a SETUP-failed run | The write must land in the newest snapshot; one that lands in an older file ends the run red | Set `processed=false`, hash unchanged | submit.py `_reset_unprocessed` and the final snapshot update |
 
 Note: Snapshots **never shrink**. The cumulative merge at `snapshot_fetch.py:347`
 (`merged_issues = dict(prev_issues)`) preserves all previous entries. Issues that
@@ -1324,7 +1328,7 @@ Each skill uses distinct file prefixes to avoid collisions during nested calls.
 | Prefix | Skill | Key Files | Purpose |
 |---|---|---|---|
 | `speedrun-` | rfe-speedrun | `tmp/speedrun-config.yaml`, `tmp/speedrun-all-ids.txt` | Mode, created IDs |
-| `pipeline-` | rfe-auto-fix (via `pipeline_state.py`) | `tmp/pipeline-state.yaml`, `tmp/pipeline-all-ids.txt`, `tmp/pipeline-changed-ids.txt`, `tmp/pipeline-process-ids.txt`, `tmp/pipeline-active-ids.txt`, `tmp/pipeline-batch-N-ids.txt`, `tmp/pipeline-retry-ids.txt` | Dispatch-loop phase, batch and cycle counters, id sets |
+| `pipeline-` | rfe-auto-fix (via `pipeline_state.py`) | `tmp/pipeline-state.yaml`, `tmp/pipeline-all-ids.txt`, `tmp/pipeline-changed-ids.txt`, `tmp/pipeline-process-ids.txt`, `tmp/pipeline-active-ids.txt`, `tmp/pipeline-batch-N-ids.txt`, `tmp/pipeline-retry-ids.txt`, `tmp/pipeline-setup-error.txt` | Dispatch-loop phase, batch and cycle counters, id sets; `tmp/pipeline-setup-error.txt` is the run-level SETUP failure marker, written whole or not at all, removed by init and by a passing SETUP gate |
 | `review-` / `rfe-poll-` | rfe-review | `tmp/review-config.yaml`, `tmp/review-all-ids.txt`, `tmp/review-reassess-ids.txt`, `tmp/rfe-poll-{fetch,assess,feasibility,review,revise,reassess-assess,reassess-review}.txt` | Caller info, ID tracking, poll state |
 | `split-` / `rfe-poll-` | rfe-split | `tmp/split-config.yaml`, `tmp/split-all-ids.txt`, `tmp/rfe-poll-split.txt` | Parent IDs, return path, poll state |
 

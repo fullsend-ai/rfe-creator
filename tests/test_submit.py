@@ -8,6 +8,7 @@ import sys
 from types import SimpleNamespace
 
 import pytest
+import yaml
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 import type_registry  # noqa: E402
@@ -896,6 +897,32 @@ class TestFeasibilityLabelOnSubmit:
         assert "Would create" not in stdout
         assert "rfe-creator-feasibility" not in stdout
 
+    def test_setup_failed_review_is_skipped_without_any_write(self, art_dir):
+        """AISDLC-194: the SETUP fail-fast stub means the type was broken before any wave
+        ran. No Jira write at all -- not even the needs-attention label the stub shape
+        carries -- and left unprocessed, like an absent review."""
+        _write(f"{art_dir}/rfe-tasks/RFE-001.md", self._task("RFE-001"))
+        _write(
+            f"{art_dir}/rfe-reviews/RFE-001-review.md",
+            "---\nrfe_id: RFE-001\n"
+            "error: 'setup_failed: ERROR rfe: pipeline.rubric.ref: missing'\n"
+            "score: 0\npass: false\nrecommendation: revise\nfeasibility: feasible\n"
+            "auto_revised: false\nneeds_attention: true\n"
+            "needs_attention_reason: 'Agent failed: setup_failed: ERROR rfe: "
+            "pipeline.rubric.ref: missing'\n"
+            "scores:\n  what: 0\n  why: 0\n  open_to_how: 0\n  not_a_task: 0\n"
+            "  right_sized: 0\ntype: rfe\n---\nStub.",
+        )
+        stdout, _, rc = _run_submit(art_dir)
+        assert rc == 0
+        assert "SKIP" in stdout
+        assert "setup_failed: ERROR rfe: pipeline.rubric.ref: missing" in stdout
+        assert "left unprocessed" in stdout
+        assert "snapshot entry reset" not in stdout  # a local draft has no snapshot entry
+        assert "Would create" not in stdout
+        assert "needs-attention" not in stdout
+        assert "rfe-creator-feasibility" not in stdout
+
     @pytest.mark.parametrize("error", ["assess_stalled", "review_failed", "revise_stalled"])
     def test_error_bearing_review_has_no_feasibility_verdict(self, art_dir, error):
         """A review carrying an ``error`` is an error stub (or a real review a stall marker
@@ -1572,6 +1599,89 @@ class TestStallEscalatedSplitParentIsSkipped:
                 rows.append(ln.split()[0])
         return rows
 
+    SETUP_FAILED = "setup_failed: ERROR rfe: pipeline.rubric.ref: missing"
+
+    def test_setup_failed_parent_is_not_split(self, art_dir, tmp_path):
+        """AISDLC-194: a SETUP fail-fast stub on an Archived parent with local children --
+        nothing was reviewed this run, so Phase 1 must not mint its children."""
+        self._batch(art_dir, self._parent_review(self.SETUP_FAILED))
+        stdout, stderr, rc, calls = self._run(art_dir, tmp_path)
+        assert rc == 0, stderr
+        assert calls == []
+        assert (
+            f"  RHAIRFE-1000: SKIP split-submit - {self.SETUP_FAILED}; nothing was assessed"
+            in stdout
+        )
+        assert "Phase 1: Submitting" not in stdout
+        assert "RHAIRFE-1000: Skipping" not in stdout
+        assert "RFE-001" not in stdout  # the unreviewed child is in no plan either
+
+    def test_the_run_level_marker_skips_every_split_and_item(self, art_dir, tmp_path):
+        """A stub that could not be written leaves a parent with its old, clean split review:
+        the marker the pipeline wrote for the run still keeps it out of Phase 1, and every
+        regular item out of Phase 2."""
+        self._batch(art_dir, self._parent_review(None))
+        os.makedirs(tmp_path / "tmp", exist_ok=True)
+        (tmp_path / "tmp" / "pipeline-setup-error.txt").write_text(f"{self.SETUP_FAILED}\n")
+        log = tmp_path / "split-stub.log"
+        stub = tmp_path / "split_submit_stub.py"
+        stub.write_text("import sys\nsys.exit(0)\n")
+        env = _clean_env(**FAKE_CREDS, RFE_SPLIT_SUBMIT_SCRIPT=str(stub), SPLIT_STUB_LOG=str(log))
+        cmd = ["python3", os.path.abspath(SCRIPT), "--dry-run", "--artifacts-dir", art_dir]
+        result = subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert not log.exists()
+        assert f"RHAIRFE-1000: SKIP split-submit - {self.SETUP_FAILED}" in result.stdout
+        assert "Phase 1: Submitting" not in result.stdout
+        assert f"RFE-099: Skipping — {self.SETUP_FAILED} — left unprocessed" in result.stdout
+        assert "Would create" not in result.stdout
+        assert "Would update" not in result.stdout
+
+    def test_a_split_only_batch_under_a_setup_failure_still_finishes(self, art_dir, tmp_path):
+        """With no regular item the setup-skipped parent IS the batch: it must end through
+        _finish (exit 0, the report regenerated), not through the no-submittable error exit,
+        which left the final run report unwritten (fullsend review on #257)."""
+        self._batch(art_dir, self._parent_review(self.SETUP_FAILED), with_regular=False)
+        stdout, stderr, rc, calls = self._run(art_dir, tmp_path)
+        assert rc == 0, stderr
+        assert calls == []
+        assert f"RHAIRFE-1000: SKIP split-submit - {self.SETUP_FAILED}" in stdout
+        assert "No submittable" not in stderr
+        assert "Done." in stdout
+
+    def test_a_setup_failure_resets_every_affected_snapshot_entry(self, art_dir, tmp_path):
+        """Under the run-level marker the reset reaches every id the run touched, whatever
+        the plan holds: the skipped split parent, an existing item whose stub could not be
+        written and that has no review at all, and a later-batch id with no task yet. A
+        --reprocess fetch wrote all three as processed; the next fetch must select them
+        again (fullsend review on #257)."""
+        self._batch(art_dir, self._parent_review(None), with_regular=False)
+        _write(f"{art_dir}/rfe-tasks/RHAIRFE-2000.md", TASK_FM.format(rfe_id="RHAIRFE-2000"))
+        keys = ("RHAIRFE-1000", "RHAIRFE-2000", "RHAIRFE-3000")
+        snap_dir = f"{art_dir}/auto-fix-runs"
+        os.makedirs(snap_dir, exist_ok=True)
+        snap = f"{snap_dir}/issue-snapshot-20260101-000000.yaml"
+        with open(snap, "w") as f:
+            yaml.safe_dump({"issues": {k: {"hash": "h", "processed": True} for k in keys}}, f)
+        os.makedirs(tmp_path / "tmp", exist_ok=True)
+        (tmp_path / "tmp" / "pipeline-setup-error.txt").write_text(f"{self.SETUP_FAILED}\n")
+        (tmp_path / "tmp" / "pipeline-process-ids.txt").write_text("\n".join(keys) + "\n")
+        # Not a dry run: the snapshot is only written live. No Jira call happens -- the split
+        # parent is in no plan and every regular entry is a setup-failed SKIP.
+        env = _clean_env(**FAKE_CREDS)
+        cmd = ["python3", os.path.abspath(SCRIPT), "--artifacts-dir", art_dir]
+        result = subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert (
+            f"RHAIRFE-2000: Skipping — {self.SETUP_FAILED} — left unprocessed for the next run"
+            " (snapshot entry reset)"
+        ) in result.stdout
+        assert "no readable review" not in result.stdout  # the marker outranks the absent review
+        assert "Reset 3 setup-failed id(s) to unprocessed in the snapshot" in result.stdout
+        with open(snap) as f:
+            issues = yaml.safe_load(f)["issues"]
+        assert [issues[k]["processed"] for k in keys] == [False, False, False]
+
     def test_split_not_attempted_parent_is_skipped(self, art_dir, tmp_path):
         self._batch(art_dir, self._parent_review(self.STALLED))
         stdout, stderr, rc, calls = self._run(art_dir, tmp_path)
@@ -1658,6 +1768,81 @@ class TestStallEscalatedSplitParentIsSkipped:
         assert "SKIP split-submit" in stdout
         assert "No submittable" not in stderr
         assert os.path.exists(f"{art_dir}/auto-fix-runs/20260818-120000.yaml")
+
+
+class TestSetupFailedSubmitHandling:
+    """A SETUP-failed run with no task file at all (AISDLC-194): the run-level marker, the
+    process ids and a snapshot that holds every id as processed."""
+
+    SETUP_FAILED = "setup_failed: ERROR rfe: pipeline.rubric.ref: missing"
+
+    KEYS = ("RHAIRFE-1000", "RHAIRFE-2000", "RHAIRFE-3000")
+
+    def _no_task_setup_failure(self, art_dir, tmp_path):
+        """A SETUP-failed run with no task file at all: the marker, the process ids, and a
+        snapshot that holds every id as processed. Returns the snapshot path."""
+        snap_dir = f"{art_dir}/auto-fix-runs"
+        os.makedirs(snap_dir, exist_ok=True)
+        snap = f"{snap_dir}/issue-snapshot-20260101-000000.yaml"
+        with open(snap, "w") as f:
+            yaml.safe_dump({"issues": {k: {"hash": "h", "processed": True} for k in self.KEYS}}, f)
+        os.makedirs(tmp_path / "tmp", exist_ok=True)
+        (tmp_path / "tmp" / "pipeline-setup-error.txt").write_text(f"{self.SETUP_FAILED}\n")
+        (tmp_path / "tmp" / "pipeline-process-ids.txt").write_text("\n".join(self.KEYS) + "\n")
+        return snap
+
+    def _live_submit(self, art_dir, tmp_path, *flags):
+        env = _clean_env(**FAKE_CREDS)
+        cmd = ["python3", os.path.abspath(SCRIPT), "--artifacts-dir", art_dir, *flags]
+        return subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=tmp_path)
+
+    def test_a_setup_failure_with_no_task_files_resets_and_finishes(self, art_dir, tmp_path):
+        """Under the run-level marker an empty workspace is the expected outcome: the live
+        submit exits 0, says why, resets every process id in the snapshot and regenerates the
+        run report instead of dying with the no-tasks exit 1."""
+        snap = self._no_task_setup_failure(art_dir, tmp_path)
+        result = self._live_submit(
+            art_dir, tmp_path, "--generate-report", "--report-timestamp", "2026-01-01T00:00:00Z"
+        )
+        assert result.returncode == 0, result.stderr
+        assert self.SETUP_FAILED in result.stdout
+        assert "Reset 3 setup-failed id(s) to unprocessed in the snapshot" in result.stdout
+        assert "Generating reports..." in result.stdout
+        with open(snap) as f:
+            issues = yaml.safe_load(f)["issues"]
+        assert [issues[k]["processed"] for k in self.KEYS] == [False, False, False]
+        reports = [n for n in os.listdir(f"{art_dir}/auto-fix-runs") if n.endswith(".yaml")]
+        assert len(reports) == 2  # the snapshot and the regenerated run report
+
+    def test_no_task_files_without_the_marker_still_exit_1(self, art_dir, tmp_path):
+        result = self._live_submit(art_dir, tmp_path)
+        assert result.returncode == 1
+        assert "No RFE task files found" in result.stderr
+
+    def test_no_task_setup_failure_writes_no_snapshot_under_dry_run(self, art_dir, tmp_path):
+        snap = self._no_task_setup_failure(art_dir, tmp_path)
+        result = self._live_submit(art_dir, tmp_path, "--dry-run")
+        assert result.returncode == 0, result.stderr
+        with open(snap) as f:
+            issues = yaml.safe_load(f)["issues"]
+        assert [issues[k]["processed"] for k in self.KEYS] == [True, True, True]
+
+    def test_a_reset_that_lands_in_an_older_snapshot_ends_red(self, art_dir, tmp_path):
+        """The newest snapshot cannot be written (a directory carries its name, so the glob
+        matches and open() rejects it): the writer falls back to the older file, which the
+        next fetch does not read. That is not a successful reset."""
+        older = self._no_task_setup_failure(art_dir, tmp_path)
+        newest = f"{art_dir}/auto-fix-runs/issue-snapshot-20260102-000000.yaml"
+        os.makedirs(newest)
+        result = self._live_submit(art_dir, tmp_path)
+        assert result.returncode == 1
+        assert "the snapshot reset of RHAIRFE-1000, RHAIRFE-2000, RHAIRFE-3000 landed in" in (
+            result.stderr
+        )
+        assert older in result.stderr
+        assert newest in result.stderr
+        assert "RHAIRFE-2000: left unprocessed, but the snapshot reset landed in" in result.stderr
+        assert "Reset 3 setup-failed id(s)" not in result.stdout
 
 
 class TestRecordSplitFailureResilience:

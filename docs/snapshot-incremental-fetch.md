@@ -240,7 +240,8 @@ skipping them.
 | `processed: false` | `submit.py` completes | set to `true` |
 
 Key rule: `processed: true` resets to `false` when the content hash
-changes, or when `submit.py` holds the item (invariant 7). Only
+changes, when `submit.py` holds the item, or after a SETUP failure, for
+every id the aborted run touched (invariant 7). Only
 `submit.py` (via `update_snapshot_hashes`) sets `processed: true`.
 
 ### What Counts as "Processed"
@@ -270,6 +271,11 @@ Issues remain `processed: false` (and re-surface as NEW) when:
   or a split parent under `--hold-splits` (pipeline correctness
   reference §5.12): reset to `false` even when a `--reprocess` fetch had
   recorded the item `true`, so the next run selects it again
+- Under a SETUP failure (AISDLC-194) every id of the run — the batch's
+  items, the setup-skipped split parents and the later-batch ids of
+  `tmp/pipeline-process-ids.txt` — is reset to `false` even when a
+  `--reprocess` fetch had recorded it `true`, and its `setup_failed:`
+  stub keeps the next run's resume check from skipping it
 
 ### Selection and Limit
 
@@ -396,7 +402,9 @@ The bootstrap snapshot accounts for:
   report's `per_rfe` list are included in the snapshot — excluding
   the entries that record that the run could NOT dispose of the item:
   `error` entries, `failed_reason` entries (a split that crashed or was
-  never attempted: `split_submit_failed:`, `split_not_attempted:`) and
+  never attempted: `split_submit_failed:`, `split_not_attempted:`;
+  `setup_failed:`, a SETUP fail-fast that stopped the run before any
+  scoring wave) and
   `blocked_reason` entries (a refused split, `split_refused:`; a revision
   held under `--auto-approve`, `revision_interrupted:`; a split withheld
   under `--hold-splits`, `split_held:`). A `--hold-splits` run that ended
@@ -532,8 +540,8 @@ These invariants must hold and should guide future refactors:
    and `reset_processed` to set `processed: false` on existing entries
    without changing their hash (the one write that lowers the flag,
    see 7). It never adds an entry through `reset_processed`.
-7. **`processed: true` resets to `false` on hash change, or when
-   submit held the item.** `cmd_fetch` resets `processed` to `false`
+7. **`processed: true` resets to `false` on hash change, when
+   submit held the item, or after a SETUP failure.** `cmd_fetch` resets `processed` to `false`
    when the content hash differs from the snapshot. If the hash matches
    and `processed` is already `true`, it stays `true`, including for an
    unchanged item a `--reprocess` run selects. This ensures that
@@ -543,6 +551,12 @@ These invariants must hold and should guide future refactors:
    parent under `--hold-splits` (pipeline correctness reference §5.12):
    the item was selected but not disposed of, so submit resets it
    through `reset_processed` and the next fetch selects it again.
+   Under a SETUP failure (AISDLC-194) submit resets, through the same
+   `reset_processed`, every id the aborted run touched — the current
+   batch's items, the setup-skipped split parents and the later-batch
+   ids of `tmp/pipeline-process-ids.txt` — because the type was broken
+   before any scoring wave ran and a `--reprocess` fetch may have
+   recorded them as processed.
 8. **Only `submit.py` sets `processed: true`.** `cmd_fetch` never
    sets `processed: true` — it only preserves or resets it.
    `update_snapshot_hashes` (called by `submit.py`) is the sole path

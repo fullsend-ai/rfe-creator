@@ -1362,6 +1362,163 @@ class TestKeyPrefixUnionFallback:
         assert by_id["RHAIOLD-9"]["error"] == "review file not found"
 
 
+class TestSetupFailedOutcome:
+    """AISDLC-194: a SETUP fail-fast leaves every active id undisposed. The report says so
+    as ``failed_reason`` (never ``error``), which bootstrap_snapshot does not count as
+    processed, and names the run-level diagnosis in ``setup_error``."""
+
+    STUB = (
+        "---\nrfe_id: {rfe_id}\nerror: 'setup_failed: ERROR rfe: pipeline.rubric.ref: missing'\n"
+        "score: 0\npass: false\nrecommendation: revise\nfeasibility: feasible\n"
+        "auto_revised: false\nneeds_attention: true\n"
+        "needs_attention_reason: 'Agent failed: setup_failed: ERROR rfe: "
+        "pipeline.rubric.ref: missing'\n"
+        "scores:\n  what: 0\n  why: 0\n  open_to_how: 0\n  not_a_task: 0\n  right_sized: 0\n"
+        "type: rfe\n---\nStub.\n"
+    )
+
+    @pytest.fixture(autouse=True)
+    def _no_marker(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(generate_run_report, "SETUP_ERROR_FILE", str(tmp_path / "no-marker"))
+
+    def _task(self, art_dir, rfe_id):
+        _write(f"{art_dir}/rfe-tasks/{rfe_id}.md", TASK_TEMPLATE.format(rfe_id=rfe_id, extra=""))
+
+    def test_a_setup_failed_stub_is_a_failed_reason_not_an_error(self, art_dir):
+        self._task(art_dir, "RHAIRFE-1")
+        _write(f"{art_dir}/rfe-reviews/RHAIRFE-1-review.md", self.STUB.format(rfe_id="RHAIRFE-1"))
+        report = build_report(["RHAIRFE-1"], "2026-08-18T09:00:00Z")
+        [entry] = report["per_rfe"]
+        assert entry["failed_reason"] == "setup_failed: ERROR rfe: pipeline.rubric.ref: missing"
+        assert "error" not in entry
+        assert report["errors"] == []
+        assert report["results"]["failed"] == 1
+        assert report["results"]["passed"] == 0
+        assert "setup_error" not in report
+
+    def test_the_marker_file_overrides_whatever_review_an_id_carries(
+        self, art_dir, tmp_path, monkeypatch
+    ):
+        """An id whose stub could not be written may still carry a review from an earlier
+        run (restored for the resume check); the run-level diagnosis wins in the report."""
+        marker = tmp_path / "setup-error.txt"
+        marker.write_text("ERROR rfe: pipeline.rubric.ref: missing\n")
+        monkeypatch.setattr(generate_run_report, "SETUP_ERROR_FILE", str(marker))
+        self._task(art_dir, "RHAIRFE-1")
+        _write(
+            f"{art_dir}/rfe-reviews/RHAIRFE-1-review.md",
+            REVIEW_TEMPLATE.format(
+                rfe_id="RHAIRFE-1", score=9, pass_val="true", recommendation="submit", right_sized=2
+            ),
+        )
+        self._task(art_dir, "RHAIRFE-2")  # no review at all
+        report = build_report(["RHAIRFE-1", "RHAIRFE-2"], "2026-08-18T09:00:00Z")
+        by_id = {e["id"]: e for e in report["per_rfe"]}
+        reason = "setup_failed: ERROR rfe: pipeline.rubric.ref: missing"
+        assert by_id["RHAIRFE-1"]["failed_reason"] == reason
+        assert by_id["RHAIRFE-1"]["after_score"] == 9  # the stale review stays legible
+        assert by_id["RHAIRFE-2"] == {
+            "id": "RHAIRFE-2",
+            "tracker_ref": "RHAIRFE-2",
+            "failed_reason": reason,
+        }
+        assert report["errors"] == []
+        assert report["results"]["failed"] == 2 and report["results"]["errors"] == 0
+        assert report["setup_error"] == reason
+        assert list(report)[-1] == "setup_error"  # additive, after the body
+
+    def test_later_batch_ids_are_reported_under_the_marker(self, art_dir, tmp_path, monkeypatch):
+        """SETUP fails in batch 1: the ids of later batches have no task or review yet, but
+        they failed for the same reason and must not vanish from the report."""
+        marker = tmp_path / "setup-error.txt"
+        marker.write_text("ERROR rfe: broken\n")
+        process_ids = tmp_path / "process-ids.txt"
+        process_ids.write_text("RHAIRFE-1\nRHAIRFE-7\n\nRHAIRFE-8\n")
+        monkeypatch.setattr(generate_run_report, "SETUP_ERROR_FILE", str(marker))
+        monkeypatch.setattr(generate_run_report, "PROCESS_IDS_FILE", str(process_ids))
+        self._task(art_dir, "RHAIRFE-1")
+        _write(f"{art_dir}/rfe-reviews/RHAIRFE-1-review.md", self.STUB.format(rfe_id="RHAIRFE-1"))
+        report = build_report(["RHAIRFE-1"], "2026-08-18T09:00:00Z")
+        assert [e["id"] for e in report["per_rfe"]] == ["RHAIRFE-1", "RHAIRFE-7", "RHAIRFE-8"]
+        assert all(e["failed_reason"].startswith("setup_failed:") for e in report["per_rfe"])
+        assert report["input_count"] == 1  # the run's own count is unchanged
+        assert report["results"]["failed"] == 3
+
+    def test_later_batch_ids_with_their_own_setup_stubs_are_still_listed_once(
+        self, art_dir, tmp_path, monkeypatch
+    ):
+        """_fail_setup now stubs the later batches' ids too: each is still reported once."""
+        marker = tmp_path / "setup-error.txt"
+        marker.write_text("ERROR rfe: broken\n")
+        process_ids = tmp_path / "process-ids.txt"
+        process_ids.write_text("RHAIRFE-1\nRHAIRFE-7\n\nRHAIRFE-8\n")
+        monkeypatch.setattr(generate_run_report, "SETUP_ERROR_FILE", str(marker))
+        monkeypatch.setattr(generate_run_report, "PROCESS_IDS_FILE", str(process_ids))
+        self._task(art_dir, "RHAIRFE-1")
+        for rid in ("RHAIRFE-1", "RHAIRFE-7", "RHAIRFE-8"):
+            _write(f"{art_dir}/rfe-reviews/{rid}-review.md", self.STUB.format(rfe_id=rid))
+        report = build_report(["RHAIRFE-1"], "2026-08-18T09:00:00Z")
+        assert [e["id"] for e in report["per_rfe"]] == ["RHAIRFE-1", "RHAIRFE-7", "RHAIRFE-8"]
+        assert all(e["failed_reason"].startswith("setup_failed:") for e in report["per_rfe"])
+        assert report["results"]["failed"] == 3
+
+    def test_an_empty_marker_is_still_a_failure(self, art_dir, tmp_path, monkeypatch):
+        """The marker is written whole or not at all; an empty one is a truncated write or a
+        crash, and reading it as "no failure" would let submit publish (fullsend on #257)."""
+        marker = tmp_path / "setup-error.txt"
+        marker.write_text("\n")
+        monkeypatch.setattr(generate_run_report, "SETUP_ERROR_FILE", str(marker))
+        self._task(art_dir, "RHAIRFE-1")
+        report = build_report(["RHAIRFE-1"], "2026-08-18T09:00:00Z")
+        assert report["per_rfe"][0]["failed_reason"].startswith("setup_failed: marker ")
+        assert "is empty" in report["setup_error"]
+
+    def test_an_unreadable_marker_is_still_a_failure(self, art_dir, tmp_path, monkeypatch):
+        marker = tmp_path / "setup-error.txt"
+        marker.mkdir()  # exists, cannot be read as a file
+        monkeypatch.setattr(generate_run_report, "SETUP_ERROR_FILE", str(marker))
+        self._task(art_dir, "RHAIRFE-1")
+        report = build_report(["RHAIRFE-1"], "2026-08-18T09:00:00Z")
+        assert report["per_rfe"][0]["failed_reason"].startswith("setup_failed: marker ")
+        assert "unreadable" in report["setup_error"]
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            f"{generate_run_report.SPLIT_REFUSED_PREFIX} too many leaf children",
+            f"{generate_run_report.REVISION_INTERRUPTED_PREFIX} second pass",
+            f"{generate_run_report.SPLIT_HELD_PREFIX} 3 children proposed, submission withheld",
+            f"{generate_run_report.SPLIT_FAILED_PREFIX} exit 4",
+            f"{generate_run_report.SPLIT_NOT_ATTEMPTED_PREFIX} wave stalled in SPLIT",
+        ],
+    )
+    def test_the_marker_outranks_an_older_error_the_review_carries(
+        self, art_dir, tmp_path, monkeypatch, error
+    ):
+        """A restored review from an earlier run may carry that run's split or hold marker;
+        under this run's SETUP failure the id is setup-failed, neither blocked nor failed for
+        the old reason (fullsend on #257). Its scores stay legible."""
+        marker = tmp_path / "setup-error.txt"
+        marker.write_text("ERROR rfe: pipeline.rubric.ref: missing\n")
+        monkeypatch.setattr(generate_run_report, "SETUP_ERROR_FILE", str(marker))
+        self._task(art_dir, "RHAIRFE-1")
+        _write(
+            f"{art_dir}/rfe-reviews/RHAIRFE-1-review.md",
+            "---\nrfe_id: RHAIRFE-1\nscore: 6\npass: false\nrecommendation: split\n"
+            "feasibility: feasible\nauto_revised: false\nneeds_attention: true\n"
+            f'needs_attention_reason: "Agent failed: {error}"\nerror: "{error}"\n'
+            "scores:\n  what: 2\n  why: 2\n  open_to_how: 1\n  not_a_task: 1\n  right_sized: 0\n"
+            "type: rfe\n---\n\nToo big.\n",
+        )
+        report = build_report(["RHAIRFE-1"], "2026-08-18T09:00:00Z")
+        [entry] = report["per_rfe"]
+        assert entry["failed_reason"] == "setup_failed: ERROR rfe: pipeline.rubric.ref: missing"
+        assert "blocked_reason" not in entry
+        assert entry["after_score"] == 6
+        results = report["results"]
+        assert (results["failed"], results["blocked"], results["split"]) == (1, 0, 0)
+
+
 class TestBindingHeader:
     """PR-3c (design §3.2.1 rule e, D11): the report carries the resolved type's EFFECTIVE
     tracker binding — ``{tracker, project, issue_type, source}`` — as an additive ``binding``
@@ -1532,6 +1689,46 @@ class TestBindingHeader:
             "issue_type": "Feature Request",
             "source": "env",
         }
+
+    def test_cli_without_ids_or_reviews_dir_reports_the_setup_failure(self, tmp_path):
+        """A run whose every stub write failed has no reviews (nor tasks) directory: under the
+        SETUP marker the CLI still writes the report, listing every id of the run; without the
+        marker the missing reviews directory stays an error."""
+        work = tmp_path / "work"
+        art = work / "artifacts"
+        os.makedirs(art)
+        os.makedirs(work / "tmp")
+        process_ids = work / "tmp" / "pipeline-process-ids.txt"
+        process_ids.write_text("RHAIRFE-7\nRHAIRFE-8\n")
+        env = {k: v for k, v in os.environ.items() if not k.startswith("RFE_CREATOR_BINDING_")}
+        env.pop("JIRA_PROJECT", None)
+        env.pop("JIRA_ISSUE_TYPE", None)
+        script = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "scripts", "generate_run_report.py")
+        )
+        cmd = [
+            sys.executable,
+            script,
+            "--start-time",
+            "20260818-090000",
+            "--artifacts-dir",
+            str(art),
+        ]
+
+        result = subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=work)
+        assert result.returncode == 2
+        assert "no reviews directory" in result.stderr
+        assert not os.path.exists(art / "auto-fix-runs")
+
+        (work / "tmp" / "pipeline-setup-error.txt").write_text("ERROR rfe: broken\n")
+        result = subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=work)
+        assert result.returncode == 0, result.stderr
+        with open(work / result.stdout.strip()) as f:
+            written = yaml.safe_load(f)
+        assert [e["id"] for e in written["per_rfe"]] == ["RHAIRFE-7", "RHAIRFE-8"]
+        assert all(e["failed_reason"].startswith("setup_failed:") for e in written["per_rfe"])
+        assert written["results"]["failed"] == 2
+        assert written["setup_error"].startswith("setup_failed:")
 
     def test_a_malformed_override_fails_the_report_loudly(
         self, no_override, monkeypatch, art_dir, capsys
