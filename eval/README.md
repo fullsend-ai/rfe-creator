@@ -246,6 +246,61 @@ that promotes it to the default.
 - **`cost_usd: null`** — no truth source succeeded; `cost_usd_estimate` keeps the estimate
   and `cost_warnings` says why.
 
+## Running the eval through fullsend
+
+`eval-profiles/fullsend.yaml` runs the same eval on the production execution path: the
+harness's `fullsend` runner hands each invocation to `fullsend run rfe-creator-eval` (the
+eval child agent, see [.fullsend/rfe-creator/README.md](../.fullsend/rfe-creator/README.md#eval-variant)),
+so the skill runs in an OpenShell sandbox with the production prompt, image, policy,
+pre-script and post-script instead of a local `claude -p`. The dataset, judges, thresholds
+and models are the base's, and the judges still run on the host.
+
+### Prerequisites
+
+- agent-eval-harness ≥ 1.59.0 (the `fullsend` runner and `execution.symlinks`).
+- fullsend ≥ 0.48 on `PATH`, and a running OpenShell gateway with podman (see the
+  [fullsend docs](https://fullsend.sh/docs/guides/user/running-agents-locally)).
+- The Vertex variables on the host: `ANTHROPIC_VERTEX_PROJECT_ID`, `GOOGLE_CLOUD_PROJECT`,
+  `CLOUD_ML_REGION` and `GOOGLE_APPLICATION_CREDENTIALS` (the path of the service-account
+  key file). No `JIRA_*` variables: the eval child carries literals and has no Jira egress.
+- `jsonschema` and `pyyaml` in the host Python that runs fullsend (its output-schema check
+  and the agent's pre-script).
+- `FULLSEND_SANDBOX_IMAGE` and `FULLSEND_SANDBOX_ARCH` **unset**: either one in the host
+  environment silently replaces the image the fullsend harness pins, so the run would not
+  measure the production sandbox.
+
+### Run
+
+```bash
+unset FULLSEND_SANDBOX_IMAGE FULLSEND_SANDBOX_ARCH
+/eval-run --config eval-profiles/fullsend.yaml
+/eval-run --config eval-profiles/fullsend.yaml \
+    --cases case-001-model-signature-verification-at-serving --no-llm-judges   # smoke test
+```
+
+`/eval-run` drives the harness's `execute.py`; calling that script directly takes the same
+`--config eval-profiles/fullsend.yaml`. fullsend writes its run directory (metrics,
+per-iteration transcripts, the agent's own output) under `<workspace>/.fullsend-runs/`; the
+harness maps it back onto the usual `stdout.log`, events and subagent transcripts, and the
+post-script copies the artifacts into the workspace where the outputs are collected.
+
+What the profile changes against `eval.yaml` (the file header has the reasons): the runner,
+`execution.symlinks: [types]` (the runner copies `scripts/` into the workspace, so
+`scripts/type_registry.py` needs `types/` beside it), no tool interceptors (the runner
+rejects `inputs.tools`; production answers no questions either) and the Jira blanks every
+profile carries. It does not set `RFE_SKIP_BOOTSTRAP`: the fullsend pre- and post-scripts
+inherit the environment, and the pre-script would skip the host-side bootstrap.
+
+### Differences from the claude-code runner
+
+- **`permissions.allow` is not enforced in the sandbox.** fullsend runs Claude Code with
+  permissions bypassed; the OpenShell policy and the Tirith/SSRF hooks are the boundary, as
+  in production. The eval's allow list only applies to the claude-code runner.
+- **One sandbox per invocation.** The eval runs in batch mode, so the whole batch is one
+  sandbox: about one minute of overhead once the images are cached.
+
+The initiative eval (`eval-initiative.yaml`) has no fullsend profile yet.
+
 ---
 
 # Evaluation — rfe-speedrun --type initiative

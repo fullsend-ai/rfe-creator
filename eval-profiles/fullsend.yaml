@@ -1,0 +1,30 @@
+# The production execution path: the skill runs through `fullsend run rfe-creator-eval`
+# (.fullsend/rfe-creator/rfe-creator-eval.yaml) in an OpenShell sandbox instead of a local
+# `claude -p`. Needs agent-eval-harness >= 1.59.0 (the fullsend runner and execution.symlinks).
+#
+#   /eval-run --config eval-profiles/fullsend.yaml
+#
+# What it changes against eval.yaml (eval/README.md "Running the eval through fullsend"):
+# - runner: fullsend with the eval child agent. fullsend_dir is left at its default
+#   (.fullsend), which the harness resolves against the project root (the working
+#   directory), not against this file.
+# - execution.symlinks: types. The batch workspace does not link types/ by default and the
+#   fullsend runner copies scripts/ for real, so scripts/type_registry.py would find no
+#   types/ and the pre-script would vendor nothing.
+# - inputs.tools: dropped. The fullsend runner rejects tool interceptors at config load;
+#   production answers no questions and synthesises no Jira content either.
+# - execution.env: only the Jira blanks every profile carries. No RFE_SKIP_BOOTSTRAP: the
+#   fullsend pre- and post-scripts inherit this environment, and the pre-script would then
+#   skip the host-side bootstrap and architecture-context fetch.
+# The models stay the base's (Anthropic): not a MODEL_PROFILES entry.
+extends: ../eval.yaml
+runner:
+  type: fullsend
+  agent: rfe-creator-eval
+execution:
+  symlinks: [types]
+  env:
+    JIRA_USER: ""
+    JIRA_TOKEN: ""
+inputs:
+  tools: !replace []

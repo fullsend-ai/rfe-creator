@@ -212,3 +212,5 @@ that runs the same skills inside an OpenShell sandbox, with Jira reachable read-
 through a provider and bootstrap done on the host. See
 [.fullsend/rfe-creator/README.md](.fullsend/rfe-creator/README.md) for prerequisites,
 environment variables and the `fullsend run` invocation.
+
+To run the eval on that path, use `eval-profiles/fullsend.yaml`; see [Running the eval through fullsend](eval/README.md#running-the-eval-through-fullsend).

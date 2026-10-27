@@ -222,6 +222,39 @@ def test_sandboxed_layer_locks_bash_egress_and_hides_the_key():
     assert cfg["runner"]["type"] == shared["runner"]["type"]
 
 
+def test_fullsend_profile_selects_the_eval_child_agent_and_stages_types():
+    profile = PROFILES_DIR / "fullsend.yaml"
+    cfg, chain = merged(profile)
+    base = _load(REPO / "eval.yaml")
+    assert [p.name for p in chain] == ["eval.yaml", "fullsend.yaml"]
+    runner = cfg["runner"]
+    assert runner["type"] == "fullsend" and runner["agent"] == "rfe-creator-eval"
+    # The harness resolves a relative fullsend_dir against the project root (the working
+    # directory), not the profile file: the default must land on this repo's .fullsend/.
+    fullsend_dir = REPO / runner.get("fullsend_dir", ".fullsend")
+    assert fullsend_dir.resolve() == (REPO / ".fullsend").resolve(), runner.get("fullsend_dir")
+    agents = _load(fullsend_dir / "config.yaml")["agents"]
+    sources = [a["source"] for a in agents if "source" in a]
+    assert "rfe-creator/rfe-creator-eval.yaml" in sources, sources
+    child = _load(fullsend_dir / "rfe-creator" / "rfe-creator-eval.yaml")
+    # fullsend must finish (every iteration, then the post-script's copy) inside the eval's
+    # timeout, or the harness kills it before the artifacts reach the workspace.
+    budget = child["validation_loop"]["max_iterations"] * child["timeout_minutes"] * 60
+    assert cfg["execution"]["timeout"] > budget, (cfg["execution"]["timeout"], budget)
+    # The fullsend runner copies scripts/ for real, so type_registry.py needs types/ beside it.
+    assert "types" in cfg["execution"]["symlinks"] and (REPO / "types").is_dir()
+    # The runner rejects tool interceptors at config load; the base declares two.
+    assert base["inputs"]["tools"], "the base's interceptors"
+    assert cfg["inputs"]["tools"] == []
+    # The production pre-script inherits execution.env: a bootstrap skip would make it skip
+    # the host-side bootstrap and architecture-context fetch.
+    assert "RFE_SKIP_BOOTSTRAP" not in cfg["execution"]["env"]
+    # The skill model stays Anthropic, and the baseline's measuring stick is untouched.
+    for key in ("models", "dataset", "outputs", "judges", "thresholds"):
+        assert cfg[key] == base[key], key
+    assert profile not in MODEL_PROFILES
+
+
 @pytest.mark.parametrize("profile", MODEL_PROFILES, ids=lambda p: p.name)
 def test_profile_flips_only_the_open_model_glue(profile):
     cfg, _ = merged(profile)
