@@ -3297,6 +3297,79 @@ class TestNoShell:
         assert nxt == "REPORT"
         assert "setup failed (ERROR rfe: pipeline.rubric.ref" in summary
 
+    def test_a_finding_stubs_every_id_of_the_run_later_batches_included(self, tmp_dir, monkeypatch):
+        """The failure aborts every remaining batch: the active ids are stubbed first, then
+        each later-batch id of PROCESS_IDS_FILE not already among them, each once, through the
+        same writer call with the same error."""
+        import verify_phase
+
+        ps._save_state(make_state(phase="SETUP", type="rfe"))
+        write_ids("tmp/pipeline-active-ids.txt", ["RHAIRFE-1", "RHAIRFE-2"])
+        write_ids(
+            ps.PROCESS_IDS_FILE,
+            ["RHAIRFE-1", "RHAIRFE-2", "RHAIRFE-7", "RHAIRFE-8", "RHAIRFE-7"],
+        )
+        monkeypatch.setattr(subprocess, "run", lambda argv, **kw: _verify_result(1, "ERROR rfe: x"))
+        monkeypatch.setattr(subprocess, "Popen", lambda argv, **kw: pytest.fail("launched"))
+        stubs = []
+
+        def fake_stubs(
+            phase, ids, pipeline_type="rfe", outcome="failed", error=None, failures=None
+        ):
+            stubs.append((phase, list(ids), pipeline_type, outcome, error))
+            return []
+
+        monkeypatch.setattr(verify_phase, "write_error_stubs", fake_stubs)
+        ps.cmd_run_phase([])
+        assert stubs == [
+            (
+                "setup",
+                ["RHAIRFE-1", "RHAIRFE-2", "RHAIRFE-7", "RHAIRFE-8"],
+                "rfe",
+                "failed",
+                "setup_failed: ERROR rfe: x",
+            )
+        ]
+
+    def test_a_stale_passing_review_of_a_later_batch_id_is_not_resume_skipped(
+        self, stall_dir, monkeypatch
+    ):
+        """Through the real writer: a later-batch id that carries an older passing review
+        gets the setup_failed error stub (pass false), so the next run's resume check
+        processes it instead of trusting the stale review."""
+        import check_resume
+        from artifact_utils import read_frontmatter
+
+        ps._save_state(make_state(phase="SETUP", type="rfe"))
+        write_ids("tmp/pipeline-active-ids.txt", ["RHAIRFE-1"])
+        write_ids(ps.PROCESS_IDS_FILE, ["RHAIRFE-1", "RHAIRFE-7"])
+        _write_review("RHAIRFE-7", score=9, **{"pass": True, "recommendation": "submit"})
+        path = "artifacts/rfe-reviews/RHAIRFE-7-review.md"
+        data, _ = read_frontmatter(path)
+        assert data["pass"] is True and data.get("error") is None
+        assert check_resume.check_resume(["RHAIRFE-7"], [], "artifacts") == (
+            [],
+            ["RHAIRFE-7"],
+        )  # the gap: before the failure the stale review would be trusted
+        real_run = subprocess.run
+
+        def gate_fails_writer_is_real(argv, **kw):
+            # Only the verify gate is faked; the stub writer's frontmatter.py call runs for real.
+            if "validate_types.py" in " ".join(argv):
+                return _verify_result(1, "ERROR rfe: broken")
+            return real_run(argv, **kw)
+
+        monkeypatch.setattr(subprocess, "run", gate_fails_writer_is_real)
+        ps.cmd_run_phase([])
+        data, _ = read_frontmatter(path)
+        assert data["error"].startswith("setup_failed:")
+        assert data["pass"] is False
+        assert check_resume.check_resume(["RHAIRFE-7"], [], "artifacts") == (
+            ["RHAIRFE-7"],
+            [],
+        )
+        assert "setup_unwritten" not in ps._load_state()
+
     def test_the_report_reads_the_same_prefix_and_marker_the_pipeline_writes(self):
         import generate_run_report
 

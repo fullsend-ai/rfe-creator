@@ -1444,6 +1444,24 @@ class TestSetupFailedOutcome:
         assert report["input_count"] == 1  # the run's own count is unchanged
         assert report["results"]["failed"] == 3
 
+    def test_later_batch_ids_with_their_own_setup_stubs_are_still_listed_once(
+        self, art_dir, tmp_path, monkeypatch
+    ):
+        """_fail_setup now stubs the later batches' ids too: each is still reported once."""
+        marker = tmp_path / "setup-error.txt"
+        marker.write_text("ERROR rfe: broken\n")
+        process_ids = tmp_path / "process-ids.txt"
+        process_ids.write_text("RHAIRFE-1\nRHAIRFE-7\n\nRHAIRFE-8\n")
+        monkeypatch.setattr(generate_run_report, "SETUP_ERROR_FILE", str(marker))
+        monkeypatch.setattr(generate_run_report, "PROCESS_IDS_FILE", str(process_ids))
+        self._task(art_dir, "RHAIRFE-1")
+        for rid in ("RHAIRFE-1", "RHAIRFE-7", "RHAIRFE-8"):
+            _write(f"{art_dir}/rfe-reviews/{rid}-review.md", self.STUB.format(rfe_id=rid))
+        report = build_report(["RHAIRFE-1"], "2026-08-18T09:00:00Z")
+        assert [e["id"] for e in report["per_rfe"]] == ["RHAIRFE-1", "RHAIRFE-7", "RHAIRFE-8"]
+        assert all(e["failed_reason"].startswith("setup_failed:") for e in report["per_rfe"])
+        assert report["results"]["failed"] == 3
+
     def test_an_empty_marker_is_still_a_failure(self, art_dir, tmp_path, monkeypatch):
         """The marker is written whole or not at all; an empty one is a truncated write or a
         crash, and reading it as "no failure" would let submit publish (fullsend on #257)."""

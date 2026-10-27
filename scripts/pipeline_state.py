@@ -1542,8 +1542,10 @@ def _fail_setup(state, diagnosis):
     routes SETUP to REPORT on it); the diagnosis in SETUP_ERROR_FILE (the run report reads
     it and marks every id ``failed_reason: setup_failed: ...`` whatever review the id
     carries -- a restored one from an earlier run included -- and names it in
-    ``setup_error``); and the registry error stub with that error on every active id's
-    review, which is what submit reads (it skips a ``setup_failed:`` review without a Jira
+    ``setup_error``); and the registry error stub with that error on the review of every id
+    of the run -- the active ids first, then PROCESS_IDS_FILE's later batches, each once, so
+    a stale passing review from an earlier run cannot make the next run's resume check skip
+    an id -- which is what submit reads (it skips a ``setup_failed:`` review without a Jira
     write) and what keeps a stale review from being published. An id whose stub could not
     be written is named on stderr and in the state; the report still covers it through the
     file. bootstrap_snapshot never counts a failed_reason entry as processed, so the next
@@ -1557,7 +1559,11 @@ def _fail_setup(state, diagnosis):
     with open(tmp_marker, "w") as f:
         f.write(f"{SETUP_FAILED_PREFIX} {diagnosis}\n")
     os.replace(tmp_marker, SETUP_ERROR_FILE)
-    ids = _read_ids("tmp/pipeline-active-ids.txt")
+    # The failure aborts every remaining batch, so the stub covers every id of the run: the
+    # active ids first, then the later batches' (each once, in that order).
+    ids = list(
+        dict.fromkeys(_read_ids("tmp/pipeline-active-ids.txt") + _read_ids(PROCESS_IDS_FILE))
+    )
     unwritten = []
     if ids:
         import verify_phase

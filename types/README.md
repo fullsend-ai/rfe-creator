@@ -580,7 +580,9 @@ the `extra_rules` consistency check, the `annotations_extra` lines, the run-repo
    present in the assess checkout.
 3. **Gate 3 — `--verify --type <t>`**: gate 1 for one type with a one-line diagnosis. The
    pipeline's SETUP phase runs it before its bootstrap (AISDLC-194): a finding stops the batch
-   before its first scoring wave, every active id gets a `setup_failed: <diagnosis>` error stub,
+   before its first scoring wave, every id of the run, later batches included, gets a
+   `setup_failed: <diagnosis>` error stub (so a stale passing review from an earlier run cannot
+   make the next run's resume check skip the id),
    the run goes straight to its report, and submit leaves every id of the run unprocessed for
    the next one; a gate that cannot run (exit 2, `jsonschema` not installed) is a warning and
    the run continues, unless an earlier failure of the same run stands; any other exit code is a
