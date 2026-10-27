@@ -306,6 +306,57 @@ def _split_vars(launch_block, phase_vars, rfe_id):
     return common, own
 
 
+# The printed launch_wave listing must fit one tool result (issue #247: well under 30,000
+# characters); a wave whose listing would not is cut to the ids that do fit, and the rest
+# launch in the next wave.
+LAUNCH_LISTING_BUDGET = 28_000
+
+
+def _fit_wave_ids(config, launch_block, wave_ids, phase, state):
+    """The leading part of ``wave_ids`` whose printed listing stays within
+    ``LAUNCH_LISTING_BUDGET`` characters (at least one id). A parallel companion whose
+    condition does not hold for an id is not launched, so it is not counted. The agent listing
+    entries hold only the id-bearing launch lines and the phase's own values, so the cost is
+    per id; the shared ``common_vars`` block is paid once."""
+    agent_configs = [config, *config.get("parallel", [])]
+    common = _split_vars(launch_block, config.get("vars", {}), wave_ids[0])[0]
+    used = len(
+        yaml.dump(
+            {
+                "action": "launch_wave",
+                "phase": phase,
+                "message": f"{phase}: wave 999/999 ({len(wave_ids)} IDs)",
+                "agents_file": LAUNCH_WAVE_FILE,
+                "agent_count": 9999,
+                "common_vars": "".join(f"{ln}\n" for ln in common),
+                "agents": [],
+            },
+            Dumper=_BlockDumper,
+            default_flow_style=False,
+            sort_keys=False,
+        )
+    )
+    for fitted, rfe_id in enumerate(wave_ids):
+        entries = []
+        for agent_config in agent_configs:
+            cond = agent_config.get("condition")
+            if cond and not _check_condition(cond, rfe_id, state):
+                continue
+            entry = {"id": rfe_id}
+            if agent_config.get("subagent_type"):
+                entry["subagent_type"] = agent_config["subagent_type"]
+            entry["prompt_file"] = agent_config["prompt"]
+            own = _split_vars(launch_block, agent_config.get("vars", {}), rfe_id)[1]
+            entry["vars"] = "".join(f"{ln}\n" for ln in own)
+            entries.append(entry)
+        used += len(
+            yaml.dump(entries, Dumper=_BlockDumper, default_flow_style=False, sort_keys=False)
+        )
+        if used > LAUNCH_LISTING_BUDGET:
+            return wave_ids[: max(1, fitted)]
+    return wave_ids
+
+
 def _render_vars(launch_block, phase_vars, rfe_id):
     """``KEY=value`` lines: the launch block, then the phase's values; ``{ID}`` substituted
     (the agent's full vars, as written to the launch-wave file — see ``_collect_vars``)."""
@@ -1638,7 +1689,12 @@ def cmd_next_action(args):
 
             wave_size = _wave_size(state, config)
 
+            launch_block = _launch_block(state)
             wave_ids = remaining[:wave_size]
+            fitted_ids = _fit_wave_ids(config, launch_block, wave_ids, phase, state)
+            if len(fitted_ids) < len(wave_ids):
+                wave_size = len(fitted_ids)
+                wave_ids = fitted_ids
             wave_num = 1 + (len(all_ids) - len(remaining)) // wave_size
             total_waves = max(1, -(-len(all_ids) // wave_size))  # ceil div
 
@@ -1665,7 +1721,6 @@ def cmd_next_action(args):
             # depend on the id once (common_vars, no placeholder) and each agent's own lines
             # (the id-bearing launch lines, rendered, then the phase's), so a 50-agent wave
             # fits in one tool result (AISDLC-453) and the orchestrator substitutes nothing.
-            launch_block = _launch_block(state)
             agents, listing, common = [], [], []
 
             def add_agent(agent_config, rfe_id):
