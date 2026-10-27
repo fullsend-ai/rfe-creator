@@ -5,7 +5,7 @@ user-invocable: true
 allowed-tools: Bash, Agent, AskUserQuestion
 ---
 
-You are a work-item review orchestrator. Your job is to coordinate reviews and revisions by launching agents and reading structured results. **Critical: never read file contents into your context — only read frontmatter via `scripts/frontmatter.py read` and check file existence via `scripts/check_review_progress.py --list-ids` (the dedicated Glob tool does not exist on native Claude Code builds, and shell globs are not on the headless allowlist).** All content-heavy work (reading item bodies, assessment results, writing review files, doing revisions) is delegated to agents.
+You are a work-item review orchestrator: you coordinate reviews and revisions by launching agents and reading structured results. **Critical: never read file contents into your context — read frontmatter via `scripts/frontmatter.py read` and check file existence via `scripts/check_review_progress.py --list-ids` (no Glob tool on native Claude Code builds; shell globs are off the headless allowlist).** Content-heavy work (item bodies, assessment results, writing reviews, revisions) is delegated to agents.
 
 Reference for the person invoking this skill, not read during a run: docs/working-with-work-item-types.md (how the type is chosen and what changes with it).
 
@@ -64,7 +64,7 @@ Substitute: <the step's substitutions>
 Read .claude/skills/rfe-review/prompts/<prompt>.md and follow all instructions exactly.
 ```
 
-**Polling rule.** After every wave: write the poll file once, run the checker, sleep for the `NEXT_POLL` seconds it reports before polling again, output a status line only when the COMPLETED count changes, and wait for all to complete. If any agent runs longer than 5 minutes, check its status.
+**Polling rule.** After every wave: write the poll file once, run the checker, sleep the `NEXT_POLL` seconds it reports before polling again, print a status line only when the COMPLETED count changes, and wait for all to complete; check the status of any agent running longer than 5 minutes.
 
 ## Review Step 1: Fetch Missing Items
 
@@ -115,7 +115,7 @@ python3 scripts/prep_assess.py <ID>
 Read the file at <DIMENSION_<NAME>_PROMPT> and follow all instructions in it. The {ENTITY} ID to review is: <ID>
 ```
 
-`DIMENSION_<NAME>_CONDITION` says when to launch it: `always` — for every ID; `<field> startswith <prefix>` — launch only when that task frontmatter field (`python3 scripts/frontmatter.py read {TASKS_DIR}/<ID>.md`) starts with the prefix; `context_exists <path>` — launch only when that path exists in the working directory. Otherwise skip that dimension for this ID — the review rules say what to record for a dimension that was not assessed.
+`DIMENSION_<NAME>_CONDITION` says when to launch it: `always` — for every ID; `<field> startswith <prefix>` — launch only when that task frontmatter field (`python3 scripts/frontmatter.py read {TASKS_DIR}/<ID>.md`) starts with the prefix; `context_exists <path>` — only when that path exists in the working directory. Otherwise skip the dimension for this ID; the review rules say what to record for one not assessed.
 
 Launch all agents for all IDs in parallel (up to (1 + number of dimensions) × N agents for N IDs). Poll (`NEXT_POLL` rule) the assess phase plus one poll file and one `--phase {POLL_PREFIX}<name>` per blocking dimension (`DIMENSION_<NAME>_BLOCKING=true`):
 
@@ -126,7 +126,7 @@ python3 scripts/check_review_progress.py --phase {POLL_PREFIX}assess --id-file {
 python3 scripts/check_review_progress.py --phase {POLL_PREFIX}<name> --id-file {POLL_FILE_PREFIX}<name>.txt
 ```
 
-A non-blocking dimension (`DIMENSION_<NAME>_BLOCKING=false`) is polled the same way (`--phase {POLL_PREFIX}<name>`) but only for the IDs it was launched for — skip its poll block entirely when it was launched for none, since the checker exits 2 on an empty ID list. It is informational, not blocking: if it is still PENDING after 5 minutes, stop polling and continue; the prerequisite check below records the missing file without failing the ID.
+A non-blocking dimension (`DIMENSION_<NAME>_BLOCKING=false`) is polled the same way (`--phase {POLL_PREFIX}<name>`) but only for the IDs it was launched for — skip its poll block when it was launched for none (the checker exits 2 on an empty ID list); it is informational, not blocking: if still PENDING after 5 minutes, stop polling and continue; the prerequisite check below records the missing file without failing the ID.
 
 After completion, run each of those polls once more with `--list-ids` and read its `PENDING_IDS`:
 - An ID under `PENDING_IDS` for `{POLL_PREFIX}assess` has no assess result (`{ASSESS_STAGING}/<ID>.result.md`) → write error: `assess_failed`
@@ -273,7 +273,7 @@ Re-read flags (in case context was compressed):
 python3 scripts/state.py read tmp/{STATE_PREFIX}review-config.yaml
 ```
 
-**If `headless: true`**: Output the text "rfe-review step completed." then read the split caller's config as its own Bash call — never chain commands with `;` (chained commands are denied in headless mode); a "State file not found" error just means that caller's config does not exist:
+**If `headless: true`**: Output the text "rfe-review step completed." then read the split caller's config as its own Bash call — never chain commands with `;` (denied in headless mode); a "State file not found" error means that caller's config does not exist:
 
 ```bash
 python3 scripts/state.py read tmp/{STATE_PREFIX}split-config.yaml
