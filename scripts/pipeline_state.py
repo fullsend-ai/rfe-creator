@@ -357,6 +357,17 @@ def _fit_wave_ids(config, launch_block, wave_ids, phase, state):
     return wave_ids
 
 
+def _count_fitted_waves(config, launch_block, ids, phase, state, nominal):
+    """How many waves ``ids`` take when partitioned the way the dispatcher does: repeatedly
+    the leading ``nominal`` ids, cut by ``_fit_wave_ids``, until none is left."""
+    count, start = 0, 0
+    while start < len(ids):
+        chunk = ids[start : start + nominal]
+        start += len(_fit_wave_ids(config, launch_block, chunk, phase, state))
+        count += 1
+    return count
+
+
 def _render_vars(launch_block, phase_vars, rfe_id):
     """``KEY=value`` lines: the launch block, then the phase's values; ``{ID}`` substituted
     (the agent's full vars, as written to the launch-wave file — see ``_collect_vars``)."""
@@ -1698,15 +1709,17 @@ def cmd_next_action(args):
             fitted_ids = _fit_wave_ids(config, launch_block, wave_ids, phase, state)
             if len(fitted_ids) < len(wave_ids):
                 wave_ids = fitted_ids
-            # Waves are counted as they are dispatched, not derived from a divisor: a wave cut
+            # Waves are counted as they are generated, not derived from a divisor: a wave cut
             # to fit the listing budget is shorter than the nominal size, so a divisor would
-            # shift or restart the numbering on the next call. The total is this wave plus the
-            # nominal-size waves the remaining ids still need.
-            wave_num = int(state.get("wave_ordinal", 0)) + 1
-            left = len(remaining) - len(wave_ids)
-            total_waves = max(wave_num, wave_num + -(-left // wave_size))  # ceil div
-            state["wave_ordinal"] = wave_num
-            _save_state(state)
+            # shift or restart the numbering on the next call. The same pending wave listed
+            # again (after a compaction, say) keeps its number. The total is this wave plus
+            # the waves the remaining ids take under the dispatcher's own partition.
+            ordinal = int(state.get("wave_ordinal", 0))
+            relisted = ordinal > 0 and _read_ids(WAVE_IDS_FILE) == wave_ids
+            wave_num = ordinal if relisted else ordinal + 1
+            total_waves = wave_num + _count_fitted_waves(
+                config, launch_block, remaining[len(wave_ids) :], phase, state, wave_size
+            )
 
             # Run pre_script for each ID in the wave
             if config.get("pre_script"):
@@ -1723,6 +1736,10 @@ def cmd_next_action(args):
             _write_ids(WAVE_IDS_FILE, wave_ids)
             _write_wave_launch()
             _clear_wave_progress()
+            # Saved only now that the wave exists: a pre_script failure above leaves the
+            # ordinal alone, so the retry gets the same number.
+            state["wave_ordinal"] = wave_num
+            _save_state(state)
 
             # Build agent entries. Every agent's vars are the type's launch block (the typed
             # literals the skeletons and typed files read — design §8.3, PR-5b) followed by

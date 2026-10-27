@@ -2844,6 +2844,65 @@ class TestLaunchWaveFile:
             assert result["message"] == f"ASSESS: wave {n}/3 (2 IDs)"
             _finish_wave(ps._load_state(), read_ids(ps.WAVE_IDS_FILE))
 
+    def test_the_same_pending_wave_listed_again_keeps_its_number(self, tmp_dir, monkeypatch):
+        """Two next-action calls over one pending wave (a compaction, say) are one wave: the
+        ordinal in the state and the launch-wave file both stay at 1."""
+        import yaml as _yaml
+
+        ids = [f"RHAIRFE-{i}" for i in range(1, 7)]
+        write_ids("tmp/pipeline-active-ids.txt", ids)
+        ps._save_state(make_state(phase="ASSESS", batch=1, batch_size=4))
+        monkeypatch.setattr(ps, "_run_script", lambda cmd: "")
+        first = _run_next_action()
+        second = _run_next_action()
+        assert first["message"] == second["message"] == "ASSESS: wave 1/3 (2 IDs)"
+        assert ps._load_state()["wave_ordinal"] == 1
+        with open(ps.LAUNCH_WAVE_FILE) as f:
+            assert _yaml.safe_load(f)["message"] == "ASSESS: wave 1/3 (2 IDs)"
+        # a different id list is a new wave
+        _finish_wave(ps._load_state(), read_ids(ps.WAVE_IDS_FILE))
+        assert _run_next_action()["message"] == "ASSESS: wave 2/3 (2 IDs)"
+        assert ps._load_state()["wave_ordinal"] == 2
+
+    def test_a_failed_pre_script_does_not_consume_a_wave_number(self, tmp_dir, monkeypatch):
+        ids = [f"RHAIRFE-{i}" for i in range(1, 7)]
+        write_ids("tmp/pipeline-active-ids.txt", ids)
+        ps._save_state(make_state(phase="ASSESS", batch=1, batch_size=4))
+        config = ps._get_config(ps._load_state())["ASSESS"]
+        monkeypatch.setitem(config, "pre_script", "true {ID}")
+        monkeypatch.setattr(ps, "_get_config", lambda state: {"ASSESS": config})
+        calls = []
+
+        def flaky(cmd):
+            calls.append(cmd)
+            if len(calls) == 1:
+                raise RuntimeError("pre_script failed")
+            return ""
+
+        monkeypatch.setattr(ps, "_run_script", flaky)
+        with pytest.raises(RuntimeError):
+            _run_next_action()
+        assert not os.path.exists(ps.WAVE_IDS_FILE)
+        assert ps._load_state().get("wave_ordinal", 0) == 0
+        assert _run_next_action()["message"] == "ASSESS: wave 1/3 (2 IDs)"
+        assert ps._load_state()["wave_ordinal"] == 1
+
+    def test_the_total_counts_every_cut_wave(self, tmp_dir, monkeypatch):
+        """An initiative REVIEW batch of 100 ids is cut to the listing budget into three waves:
+        the total is exact from the first call, and each wave reads its own number."""
+        ids = [f"RHOAIENG-{1000 + i}" for i in range(100)]
+        write_ids("tmp/pipeline-active-ids.txt", ids)
+        ps._save_state(make_state(phase="REVIEW", type="initiative", batch=1, batch_size=100))
+        monkeypatch.setattr(ps, "_run_script", lambda cmd: "")
+        seen = []
+        for n in (1, 2, 3):
+            result = _run_next_action()
+            wave = read_ids(ps.WAVE_IDS_FILE)
+            assert result["message"] == f"REVIEW: wave {n}/3 ({len(wave)} IDs)"
+            seen.extend(wave)
+            _finish_wave(ps._load_state(), wave)
+        assert seen == ids
+
     def test_wave_count_restarts_in_the_next_agent_phase(self, tmp_dir, monkeypatch):
         """The ordinal resets on entering a phase: REVIEW's first wave reads wave 1/..., even
         after ASSESS dispatched two waves."""
