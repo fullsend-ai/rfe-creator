@@ -1690,6 +1690,46 @@ class TestBindingHeader:
             "source": "env",
         }
 
+    def test_cli_without_ids_or_reviews_dir_reports_the_setup_failure(self, tmp_path):
+        """A run whose every stub write failed has no reviews (nor tasks) directory: under the
+        SETUP marker the CLI still writes the report, listing every id of the run; without the
+        marker the missing reviews directory stays an error."""
+        work = tmp_path / "work"
+        art = work / "artifacts"
+        os.makedirs(art)
+        os.makedirs(work / "tmp")
+        process_ids = work / "tmp" / "pipeline-process-ids.txt"
+        process_ids.write_text("RHAIRFE-7\nRHAIRFE-8\n")
+        env = {k: v for k, v in os.environ.items() if not k.startswith("RFE_CREATOR_BINDING_")}
+        env.pop("JIRA_PROJECT", None)
+        env.pop("JIRA_ISSUE_TYPE", None)
+        script = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "scripts", "generate_run_report.py")
+        )
+        cmd = [
+            sys.executable,
+            script,
+            "--start-time",
+            "20260818-090000",
+            "--artifacts-dir",
+            str(art),
+        ]
+
+        result = subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=work)
+        assert result.returncode == 2
+        assert "no reviews directory" in result.stderr
+        assert not os.path.exists(art / "auto-fix-runs")
+
+        (work / "tmp" / "pipeline-setup-error.txt").write_text("ERROR rfe: broken\n")
+        result = subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=work)
+        assert result.returncode == 0, result.stderr
+        with open(work / result.stdout.strip()) as f:
+            written = yaml.safe_load(f)
+        assert [e["id"] for e in written["per_rfe"]] == ["RHAIRFE-7", "RHAIRFE-8"]
+        assert all(e["failed_reason"].startswith("setup_failed:") for e in written["per_rfe"])
+        assert written["results"]["failed"] == 2
+        assert written["setup_error"].startswith("setup_failed:")
+
     def test_a_malformed_override_fails_the_report_loudly(
         self, no_override, monkeypatch, art_dir, capsys
     ):

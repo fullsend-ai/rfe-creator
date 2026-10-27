@@ -763,15 +763,20 @@ def main():
     ids = resolve_ids(args.ids, args.ids_file)
     if not ids:
         # A run that reviewed nothing still gets a zero-count report. Only a
-        # missing reviews directory is an error.
+        # missing reviews directory is an error — unless the SETUP marker explains it: a run
+        # whose every stub write failed has no reviews directory, and build_report then lists
+        # every id of the run's process-ids file with the setup_failed diagnosis.
         reviews_dir = os.path.join(artifacts_dir, config["reviews_dir"])
-        if not os.path.isdir(reviews_dir):
+        if os.path.isdir(reviews_dir):
+            ids = [
+                f.replace("-review.md", "")
+                for f in sorted(os.listdir(reviews_dir))
+                if f.endswith("-review.md")
+            ]
+        elif _setup_error() is not None:
+            ids = []
+        else:
             parser.error(f"no IDs provided and no reviews directory at {reviews_dir}")
-        ids = [
-            f.replace("-review.md", "")
-            for f in sorted(os.listdir(reviews_dir))
-            if f.endswith("-review.md")
-        ]
 
     retried = [x for x in args.retried.split(",") if x]
     retry_ok = [x for x in args.retry_successes.split(",") if x]
