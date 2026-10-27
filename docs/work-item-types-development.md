@@ -158,8 +158,11 @@ pin.
   takes the prose fallback only when no transcript was captured, and `revision_coverage` treats a
   decorated placeholder ("None (first pass).") as empty history — replayed over six eval runs, the
   first two changed no verdict and the third removed exactly two false positives.
-- **Lint gates.** Gate 3 (`--verify --type <t>`) is not wired into the pipeline SETUP yet: the
-  SETUP wiring (`validate_types.py --verify` before the first wave) is planned, AISDLC-194.
+- **Lint gates.** Gate 3 (`--verify --type <t>`) runs at the top of the pipeline's SETUP phase
+  (`pipeline_state.cmd_run_phase`, AISDLC-194): a finding stops the batch before its first scoring
+  wave, with `setup_failed:` stubs on every id of the run and a run report; exit 2 is a warning
+  unless an earlier failure of the same run stands; any other exit is a failure too. The pipeline's
+  pre-loop bootstrap and the FETCH wave precede SETUP.
 
 ## Where the descriptors deliberately differ from the design text
 
