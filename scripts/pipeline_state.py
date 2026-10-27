@@ -533,7 +533,8 @@ def _build_phase_config(pipeline_type, reassess_cycle=0):
             # wave precede SETUP, and a pin the bootstrap itself cannot read stops the run
             # there, with the bootstrap's own message and no report. Findings (exit 1) stop
             # the run with the gate's one-line diagnosis -- see _fail_setup; a gate that
-            # cannot run (exit 2: its jsonschema dependency is not installed, a usage error)
+            # cannot run (exit 2: a usage error; without jsonschema --verify skips only the
+            # JSON-Schema shape check and still decides)
             # is a warning, not a verdict, and the run goes on as before.
             "verify": f"python3 scripts/validate_types.py --verify --type {pipeline_type}",
             # Then run concurrently. Exit codes are logged but do not fail the phase:
@@ -1592,8 +1593,9 @@ def _run_setup_verify(cmd):
     ``("finding", <one line>)`` or ``("unavailable", None)``.
 
     ``validate_types.py --verify`` exits 0 (one ``OK:`` line), 1 (one ``ERROR <type>:
-    <message>`` line per finding) or 2 (usage error, or its jsonschema dependency is not
-    installed -- a dev dependency, see requirements-dev.txt). 1 is a verdict on the type.
+    <message>`` line per finding) or 2 (a usage error; a missing jsonschema no longer makes
+    the gate exit 2 -- --verify skips only the JSON-Schema shape check and still decides on
+    the structural rules). 1 is a verdict on the type.
     2, like a gate that cannot be started at all, is reported on stderr and the phase
     continues as it did before the gate was wired (AISDLC-194) -- unless an earlier
     failure of the same run stands, which nothing has disproved (cmd_run_phase keeps it).

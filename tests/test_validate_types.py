@@ -1549,6 +1549,426 @@ class TestMissingJsonschema:
             "initiative",
         ]
 
+    # Gate 3 runs in the pipeline's sandbox, which has PyYAML and no dev dependency: the
+    # 2026-10-27 stage dry run showed the gate exiting 2 there and the run continuing with
+    # no verdict. --verify now skips only the JSON-Schema shape check and decides on the
+    # structural rules; the full lint keeps requiring jsonschema.
+    def test_verify_decides_on_the_structural_rules_without_jsonschema(self, monkeypatch, capsys):
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        assert validate_types.main(["--verify", "--type", "rfe", "--no-eval-sync"]) == 0
+        captured = capsys.readouterr()
+        assert captured.out.startswith(
+            "VERIFY OK: type 'rfe' passes gate 1 (JSON-Schema shape check skipped: jsonschema"
+        )
+        assert captured.err.startswith(
+            "WARN *: JSON-Schema shape check skipped: jsonschema is not installed"
+        )
+
+    def test_verify_without_jsonschema_still_catches_a_bad_rubric_pin(
+        self, monkeypatch, capsys, types_copy
+    ):
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        _mutate(types_copy, "rfe", lambda d: d["pipeline"]["rubric"].__setitem__("ref", "e27d7"))
+        rc = validate_types.main(
+            ["--verify", "--type", "rfe", "--root", str(types_copy), "--no-eval-sync"]
+        )
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert out.startswith("VERIFY FAILED: type 'rfe' — ")
+        assert "pipeline.rubric.ref must be a 7-40 character lowercase hex commit SHA" in out
+        assert out.rstrip().endswith("(JSON-Schema shape check skipped: jsonschema not installed)")
+
+    def test_api_degraded_report_names_the_skipped_check(self, monkeypatch):
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        report = _validate(TYPES_ROOT, allow_missing_jsonschema=True)
+        assert report.ok
+        assert report.warnings == [validate_types.SHAPE_CHECK_SKIPPED]
+        assert report.to_dict()["warnings"] == [validate_types.SHAPE_CHECK_SKIPPED]
+
+    def test_a_rule_that_raises_without_the_shape_check_is_a_finding_not_a_traceback(
+        self, monkeypatch, types_copy
+    ):
+        """Every structural rule reads the descriptor through _opt and tolerates a bad shape
+        on its own; this pins the isolation for a rule that does raise: one finding naming
+        the rule, the others still decide, never a traceback."""
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+
+        def boom(*args, **kwargs):
+            raise TypeError("unhashable type: 'list'")
+
+        monkeypatch.setattr(validate_types, "error_stub_messages", boom)
+        report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
+        assert report.warnings == [validate_types.SHAPE_CHECK_SKIPPED]
+        hits = _assert_finding(
+            report,
+            "review error stub: could not be checked without the JSON-Schema shape check: "
+            "TypeError: unhashable type: 'list'",
+            "rfe",
+        )
+        assert len(hits) == 1 and len(report.findings) == 1  # the other rules passed
+
+    def test_the_full_lint_still_requires_jsonschema(self, monkeypatch):
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        assert validate_types.main(["--no-eval-sync"]) == 2
+
+    @pytest.mark.parametrize(
+        "dotted, value",
+        [
+            ("identity.local_prefix", []),
+            ("identity.jira.project", ["RHAIRFE"]),
+            ("identity.id_field", ""),
+        ],
+    )
+    def test_a_malformed_identity_string_is_a_finding_not_a_traceback(
+        self, monkeypatch, types_copy, dotted, value
+    ):
+        """The cross-type rules hash these; without the shape check a list or an empty
+        string reached _duplicates as a TypeError (fullsend and Qodo on #266)."""
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+
+        def set_dotted(d):
+            node = d
+            parts = dotted.split(".")
+            for part in parts[:-1]:
+                node = node[part]
+            node[parts[-1]] = value
+
+        _mutate(types_copy, "rfe", set_dotted)
+        report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
+        assert not report.ok
+        _assert_finding(report, f"{dotted} must be a non-empty string, got {value!r}", "rfe")
+        assert not _find(report, "could not be checked")  # every rule ran to a verdict
+
+    @pytest.mark.parametrize(
+        "dotted, how",
+        [
+            ("identity.jira.project", "missing"),
+            ("identity.jira.issue_type", "null"),
+            ("identity.local_prefix", "missing"),
+            ("identity.id_field", "null"),
+        ],
+    )
+    def test_a_missing_or_null_identity_string_is_a_finding_without_jsonschema(
+        self, monkeypatch, types_copy, dotted, how
+    ):
+        """The schema requires these; without it a None slipped through the string check
+        (fullsend on #266, round 2)."""
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+
+        def drop(d):
+            node = d
+            parts = dotted.split(".")
+            for part in parts[:-1]:
+                node = node[part]
+            if how == "missing":
+                del node[parts[-1]]
+            else:
+                node[parts[-1]] = None
+
+        _mutate(types_copy, "rfe", drop)
+        report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
+        _assert_finding(report, f"{dotted} is required, got None", "rfe")
+
+    def test_one_failing_rule_does_not_hide_the_rubric_pin_diagnosis(self, monkeypatch, types_copy):
+        """Rules run on their own without the shape check: a rule that raises on a malformed
+        shape is its own finding and the bad pin is still diagnosed (Qodo on #266)."""
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+
+        def boom(*args, **kwargs):
+            raise AttributeError("'list' object has no attribute 'get'")
+
+        monkeypatch.setattr(validate_types, "alignment_labels_messages", boom)
+        _mutate(types_copy, "rfe", lambda d: d["pipeline"]["rubric"].__setitem__("ref", "e27d7"))
+        report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
+        _assert_finding(
+            report, "pipeline.rubric.ref must be a 7-40 character lowercase hex commit SHA", "rfe"
+        )
+        _assert_finding(
+            report,
+            "conventions.labels.alignment: could not be checked without the JSON-Schema shape "
+            "check: AttributeError",
+            "rfe",
+        )
+        assert len(report.findings) == 2
+
+    def test_an_unsupported_schema_version_is_caught_without_jsonschema(
+        self, monkeypatch, types_copy
+    ):
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        _mutate(types_copy, "rfe", lambda d: d.__setitem__("schema_version", 2))
+        report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
+        _assert_finding(report, "schema_version must be 1 (the v1 descriptor shape), got 2", "rfe")
+
+    def test_a_boolean_schema_version_is_caught_without_jsonschema(self, monkeypatch, types_copy):
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        _mutate(types_copy, "rfe", lambda d: d.__setitem__("schema_version", True))
+        report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
+        hits = _assert_finding(report, "schema_version must be 1", "rfe")
+        assert all(h.message.endswith("got True") for h in hits)
+
+    @pytest.mark.parametrize("kind", ["Work-Item", 3])
+    def test_an_unknown_or_non_string_kind_is_caught_without_jsonschema(
+        self, monkeypatch, types_copy, kind
+    ):
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        _mutate(types_copy, "rfe", lambda d: d.__setitem__("kind", kind))
+        report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
+        _assert_finding(
+            report,
+            f"kind must be 'work-item' (the v1 engine's kind), got {kind!r}",
+            "rfe",
+        )
+
+    def test_a_reserved_sibling_kind_is_reported_once_without_jsonschema(
+        self, monkeypatch, types_copy
+    ):
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        _mutate(types_copy, "rfe", lambda d: d.__setitem__("kind", "strategy"))
+        report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
+        _assert_finding(report, "kind 'strategy' cannot be registered", "rfe")
+        assert not _find(report, "kind must be", "rfe")
+        assert len(_find(report, "kind", "rfe")) == 1
+
+    def test_an_absent_kind_keeps_the_default_without_jsonschema(self, monkeypatch, types_copy):
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        _mutate(types_copy, "rfe", lambda d: d.pop("kind", None))
+        report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
+        assert report.ok and report.warnings == [validate_types.SHAPE_CHECK_SKIPPED]
+
+    @pytest.mark.parametrize(
+        "section, key, value",
+        [
+            ("snapshot", "prefix", "*"),
+            ("snapshot", "prefix", "issue-snapshot"),  # no trailing dash
+            ("snapshot", "report_prefix", "Report-"),
+            ("snapshot", "results_subdir", "../escape"),
+            ("pipeline", "poll_prefix", "rfe"),  # no trailing dash
+            ("pipeline", "state_prefix", "Initiative-"),
+            ("pipeline", "scorer_agent", "a/b"),
+            ("pipeline", "scorer_agent", 7),  # not a string
+        ],
+    )
+    def test_a_path_bound_value_outside_the_schema_grammar_is_a_finding_without_jsonschema(
+        self, monkeypatch, types_copy, section, key, value
+    ):
+        """snapshot.prefix '*' reached snapshot_fetch's {prefix}*.yaml glob when --verify ran
+        without the shape check (fullsend on #266, round 3)."""
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        dotted = f"{section}.{key}"
+        _mutate(types_copy, "rfe", lambda d: d.setdefault(section, {}).__setitem__(key, value))
+        report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
+        hits = _assert_finding(report, f"{dotted} must ", "rfe")
+        assert validate_types.PATH_VALUE_PATTERNS[dotted] in hits[0].message
+        assert hits[0].message.endswith(f"got {value!r}")
+
+    @pytest.mark.parametrize("dotted", ["pipeline.poll_prefix", "pipeline.state_prefix"])
+    def test_an_empty_poll_or_state_prefix_passes_without_jsonschema(
+        self, monkeypatch, types_copy, dotted
+    ):
+        """The schema allows '' for both (grandfathered for rfe)."""
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        section, key = dotted.split(".")
+        _mutate(types_copy, "rfe", lambda d: d.setdefault(section, {}).__setitem__(key, ""))
+        report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
+        assert not _find(report, f"{dotted} must", "rfe")
+        assert report.ok
+
+    def test_a_lowercase_local_prefix_is_a_grammar_finding_without_jsonschema(
+        self, monkeypatch, types_copy
+    ):
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        _mutate(types_copy, "rfe", lambda d: d["identity"].__setitem__("local_prefix", "rfe-"))
+        report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
+        _assert_finding(
+            report,
+            "identity.local_prefix must match "
+            + validate_types.PATH_VALUE_PATTERNS["identity.local_prefix"]
+            + ", got 'rfe-'",
+            "rfe",
+        )
+
+    def test_an_empty_local_prefix_is_reported_once_without_jsonschema(
+        self, monkeypatch, types_copy
+    ):
+        """The required check owns the empty case; the grammar check does not repeat it."""
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        _mutate(types_copy, "rfe", lambda d: d["identity"].__setitem__("local_prefix", ""))
+        report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
+        assert len(_find(report, "identity.local_prefix", "rfe")) == 1
+
+    def test_path_value_patterns_equal_the_schemas_own(self):
+        """Drift pin: every PATH_VALUE_PATTERNS regex is the pattern the schema carries for
+        that field, so a schema change cannot silently diverge from the degraded check."""
+        schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+        found = {}  # property/def names from the root (structure keys omitted) -> patterns
+
+        def walk(node, names):
+            if not isinstance(node, dict):
+                return
+            if "pattern" in node and isinstance(node["pattern"], str) and names:
+                found.setdefault(tuple(names), set()).add(node["pattern"])
+            for container in ("properties", "$defs"):
+                children = node.get(container)
+                if isinstance(children, dict):
+                    for name, child in children.items():
+                        walk(child, names + [name])
+            walk(node.get("items"), names)
+            for combinator in ("allOf", "anyOf", "oneOf"):
+                for child in node.get(combinator) or []:
+                    walk(child, names)
+
+        walk(schema, [])
+        for dotted, pattern in validate_types.PATH_VALUE_PATTERNS.items():
+            parts = tuple(dotted.split("."))
+            # A single name is a root property; otherwise the dotted tail ends the path.
+            tails = {
+                names: patterns
+                for names, patterns in found.items()
+                if (names == parts if len(parts) == 1 else names[-len(parts) :] == parts)
+            }
+            assert tails, f"no schema pattern found for {dotted}"
+            for names, patterns in tails.items():
+                assert patterns == {pattern}, f"{dotted} drifted from the schema at {names}"
+
+    @pytest.mark.parametrize("dotted", ["snapshot.prefix", "pipeline.scorer_agent"])
+    def test_an_explicit_null_path_value_is_a_finding_without_jsonschema(
+        self, monkeypatch, types_copy, dotted
+    ):
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        section, key = dotted.split(".")
+        _mutate(types_copy, "rfe", lambda d: d[section].__setitem__(key, None))
+        report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
+        _assert_finding(
+            report,
+            f"{dotted} must be a string matching {validate_types.PATH_VALUE_PATTERNS[dotted]}, "
+            "got None",
+            "rfe",
+        )
+
+    def test_an_absent_path_value_is_still_skipped_without_jsonschema(
+        self, monkeypatch, types_copy
+    ):
+        """Absent is the schema's call (required or optional), not this loop's."""
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        _mutate(types_copy, "rfe", lambda d: d["snapshot"].pop("prefix"))
+        report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
+        assert not _find(report, "snapshot.prefix", "rfe")
+
+    @pytest.mark.parametrize(
+        "path, value",
+        [
+            (("dirs", "tasks"), "rfe-tasks"),  # no artifacts/ prefix
+            (("dirs", "reviews"), "artifacts/a/b"),
+            (("pipeline", "prompts", "template"), "/etc/passwd"),
+            (("pipeline", "prompts", "review_rules"), "../outside.md"),
+            (("pipeline", "dimensions", 0, "prompt"), "typed prompt.md"),  # whitespace
+            (("pipeline", "dimensions", 0, "name"), "Feasibility"),
+            (("pipeline", "dimensions", 0, "setup"), "/abs/setup.sh"),
+            (("pipeline", "context_sources", 0, "bootstrap"), "a/../../b.sh"),
+            (("pipeline", "rubric", "path"), "../etc/rubric.md"),
+            (("pipeline", "rubric", "export"), "rubric.md"),
+            (("eval", "config"), "/tmp/eval.yaml"),
+            (("eval", "dataset"), "eval/dataset/../.."),
+            (("dirs", "tasks"), None),  # explicit null
+            (("pipeline", "dimensions", 0, "prompt"), 7),  # not a string
+        ],
+    )
+    def test_a_path_bound_value_outside_the_containment_grammar_is_a_finding(
+        self, monkeypatch, types_copy, path, value
+    ):
+        """Every value the schema binds to repo_path / artifact_dir / the dimension name
+        grammar is checked without jsonschema, so none can be absolute or escape the root."""
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+
+        def mutate(d):
+            node = d
+            for part in path[:-1]:
+                node = node[part]
+            node[path[-1]] = value
+
+        _mutate(types_copy, "rfe", mutate)
+        label = "".join(f"[{p}]" if isinstance(p, int) else f".{p}" for p in path).lstrip(".")
+        report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
+        hits = _assert_finding(report, f"{label} must ", "rfe")
+        assert hits[0].message.endswith(f"got {value!r}")
+
+    def test_a_condition_context_exists_outside_the_grammar_is_a_finding(
+        self, monkeypatch, types_copy
+    ):
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        _mutate(
+            types_copy,
+            "rfe",
+            lambda d: d["pipeline"]["dimensions"][0].__setitem__(
+                "condition", {"context_exists": "/abs/context"}
+            ),
+        )
+        report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
+        _assert_finding(
+            report,
+            "pipeline.dimensions[0].condition.context_exists must match "
+            + validate_types.REPO_PATH_PATTERN
+            + ", got '/abs/context'",
+            "rfe",
+        )
+
+    def test_a_null_rubric_export_is_valid_without_jsonschema(self, monkeypatch, types_copy):
+        """pipeline.rubric.export may be null (nothing exports the rubric)."""
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        _mutate(types_copy, "rfe", lambda d: d["pipeline"]["rubric"].__setitem__("export", None))
+        report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
+        assert not _find(report, "pipeline.rubric.export", "rfe")
+
+    @pytest.mark.parametrize(
+        "dotted, value",
+        [
+            ("dirs", ["artifacts/x"]),
+            ("pipeline.prompts", "types/rfe/template.md"),
+            ("pipeline.dimensions", {"name": "feasibility"}),
+            ("pipeline.context_sources", "scripts/bootstrap.sh"),
+            ("pipeline.dimensions.0", "feasibility"),
+        ],
+    )
+    def test_a_malformed_container_is_one_finding_naming_the_field(
+        self, monkeypatch, types_copy, dotted, value
+    ):
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+
+        def mutate(d):
+            parts = dotted.split(".")
+            node = d
+            for part in parts[:-1]:
+                node = node[int(part)] if isinstance(node, list) else node[part]
+            last = parts[-1]
+            if isinstance(node, list):
+                node[int(last)] = value
+            else:
+                node[last] = value
+
+        _mutate(types_copy, "rfe", mutate)
+        report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
+        label = dotted.replace(".0", "[0]")
+        hits = _find(report, f"{label} must be a ", "rfe")
+        assert len(hits) == 1
+
+    def test_containment_patterns_equal_the_schemas_own(self):
+        """Drift pin: the containment grammars are the schema's $defs patterns."""
+        defs = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))["$defs"]
+        assert validate_types.REPO_PATH_PATTERN == defs["repo_path"]["pattern"]
+        assert validate_types.ARTIFACT_DIR_PATTERN == defs["artifact_dir"]["pattern"]
+        assert (
+            validate_types.DIMENSION_NAME_PATTERN
+            == defs["dimension"]["properties"]["name"]["pattern"]
+        )
+
+    def test_what_degraded_mode_does_not_catch_is_documented(self, monkeypatch, types_copy):
+        """An unknown top-level key is a schema finding only: without jsonschema it passes.
+        Pinned so the limit stays deliberate (and the full lint still catches it)."""
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        _mutate(types_copy, "rfe", lambda d: d.__setitem__("bogus_key", 1))
+        report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
+        assert report.ok and report.warnings == [validate_types.SHAPE_CHECK_SKIPPED]
+
     def test_jsonschema_is_listed_in_requirements_dev(self):
         text = (REPO_ROOT / "requirements-dev.txt").read_text(encoding="utf-8")
         assert re.search(r"^jsonschema\b", text, re.MULTILINE)

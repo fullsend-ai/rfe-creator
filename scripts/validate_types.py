@@ -68,6 +68,23 @@ design-proposals/work-item-types-unified.md §3.3:
       Wired into the pipeline's SETUP phase (pipeline_state.cmd_run_phase runs it
       before SETUP's bootstrap, after the FETCH wave; exit 1 stops the batch, exit 2 is
       a warning) -- AISDLC-194.
+    * decides without jsonschema: the sandbox the pipeline runs in has PyYAML but not
+      the dev dependency, so --verify skips only the JSON-Schema shape check (one
+      WARN line, named in the verdict) and still applies every structural rule above
+      -- the rubric pin, the file references, the prefixes are what the gate exists
+      for -- plus three shape rules the structural rules rely on (schema_version is 1,
+      the identity strings are present and non-empty, and every value that ends up in a
+      path, a glob or an id matches the schema's regex: PATH_VALUE_PATTERNS -- type, the
+      identity prefix and id field, the pipeline and snapshot prefixes, scorer_agent,
+      results_subdir -- so snapshot.prefix '*' cannot reach a glob; and the containment
+      grammars of _path_bound_values -- the dirs, the prompt, rubric, eval, dimension and
+      context-source paths, the dimension names -- so a path cannot be absolute or escape
+      the repo root). Each rule runs on its own there, so one that trips over a malformed
+      shape is one finding and the rest still decide.
+      Not covered without jsonschema: unknown keys, enum values other than kind's, required
+      keys other than the identity strings, other values than the ones above (the label and
+      template grammars among them), nested shapes no structural rule reads. The full lint
+      (no --verify) keeps requiring it.
 
 Usage:
     python3 scripts/validate_types.py [--root DIR] [--extra-roots A:B]
@@ -78,7 +95,8 @@ Exit codes:
     0  every descriptor passed — prints "OK: <n> type(s) valid: rfe, initiative"
     1  findings — one "ERROR <type-or-*>: <message>" line per finding
        ("*" marks a cross-type or registry-level finding)
-    2  usage error, or jsonschema not installed
+    2  usage error, or jsonschema not installed (full lint only: --verify decides
+       without it and says so, see gate 3)
 
 --json emits {"ok": bool, "types": [...], "errors": [{"type": ..., "message": ...}]}.
 
@@ -198,6 +216,48 @@ class MissingDependencyError(RuntimeError):
     """jsonschema is not importable (dev dependency, see requirements-dev.txt)."""
 
 
+# What --verify says when it decides without jsonschema (gate 3; the pipeline's sandbox has no
+# dev dependencies): the WARN line on stderr, and the short form inside the verdict line.
+SHAPE_CHECK_SKIPPED = (
+    "JSON-Schema shape check skipped: jsonschema is not installed; the verdict rests on the "
+    "structural rules (pip install -r requirements-dev.txt restores the shape check)"
+)
+SHAPE_CHECK_SKIPPED_SHORT = "JSON-Schema shape check skipped: jsonschema not installed"
+# The descriptor shape the schema pins as a const; checked structurally when the shape check
+# cannot run (types/_schema/type.schema.json "schema_version").
+SUPPORTED_SCHEMA_VERSION = 1
+# The identity strings the cross-type rules hash; checked structurally without the shape
+# check so a malformed or missing one is a diagnosis, not a TypeError in _duplicates or a
+# silent pass. The first two are required of every type, the Jira pair when the tracker is
+# jira (the schema requires both for a Jira binding).
+IDENTITY_STRING_FIELDS = ("identity.local_prefix", "identity.id_field")
+JIRA_IDENTITY_STRING_FIELDS = ("identity.jira.project", "identity.jira.issue_type")
+# The descriptor values that end up in file names and globs (the snapshot glob
+# ``{prefix}*.yaml``, tmp/ state files, report names, results subtrees), each with the
+# schema's own regex, copied verbatim from types/_schema/type.schema.json. Checked without
+# the shape check so a value such as snapshot.prefix '*' cannot reach a glob; a test pins
+# every entry to the schema so the two cannot drift.
+PATH_VALUE_PATTERNS = {
+    "type": r"^[a-z][a-z0-9-]*$",
+    "identity.local_prefix": r"^[A-Z][A-Z0-9]*-$",
+    "identity.id_field": r"^[a-z][a-z0-9_]*$",
+    "pipeline.poll_prefix": r"^([a-z][a-z0-9]*-)?$",
+    "pipeline.state_prefix": r"^([a-z][a-z0-9]*-)?$",
+    "pipeline.scorer_agent": r"^[a-z][a-z0-9-]*$",
+    "snapshot.prefix": r"^[a-z][a-z0-9-]*-$",
+    "snapshot.report_prefix": r"^([a-z][a-z0-9-]*-)?$",
+    "snapshot.results_subdir": r"^([a-z][a-z0-9-]*)?$",
+}
+# The schema's containment grammars (``$defs.repo_path``, ``$defs.artifact_dir``,
+# ``$defs.dimension.properties.name``), copied verbatim like PATH_VALUE_PATTERNS and pinned to
+# the schema by the same kind of test. They bind the values that become a path, a glob or an id
+# (a file read from the repo root, an artifacts/ subdirectory, a dimension's poll phase and
+# output file name); _path_bound_values lists every descriptor value each one binds.
+REPO_PATH_PATTERN = r"^(?!/)(?!\.\.(/|$))(?!.*/\.\.(/|$))\S+$"
+ARTIFACT_DIR_PATTERN = r"^artifacts/[A-Za-z0-9_.-]+$"
+DIMENSION_NAME_PATTERN = r"^[a-z][a-z0-9_-]*$"
+
+
 @dataclass
 class Finding:
     """One validation failure.
@@ -218,6 +278,7 @@ class Finding:
 class Report:
     types: list
     findings: list
+    warnings: list = field(default_factory=list)  # checks skipped, never findings
 
     @property
     def ok(self):
@@ -227,11 +288,14 @@ class Report:
         return [f"ERROR {f.type}: {f.message}" for f in self.findings]
 
     def to_dict(self):
-        return {
+        data = {
             "ok": self.ok,
             "types": list(self.types),
             "errors": [{"type": f.type, "message": f.message} for f in self.findings],
         }
+        if self.warnings:  # additive: the pinned shape is unchanged when nothing was skipped
+            data["warnings"] = list(self.warnings)
+        return data
 
 
 # ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -243,6 +307,9 @@ def _opt(desc, dotted, default=None):
         return desc.get(dotted, default)
     except (KeyError, TypeError, AttributeError):
         return default
+
+
+_ABSENT = object()  # sentinel: a key that is not in the descriptor at all
 
 
 def _fmt_types(names):
@@ -663,6 +730,136 @@ def error_stub_messages(desc, artifact_utils):
     ]
 
 
+def _check_grammar(messages, label, value, pattern):
+    """Append one finding when ``value`` is not a string that full-matches ``pattern``."""
+    if not isinstance(value, str):
+        messages.append(f"{label} must be a string matching {pattern}, got {value!r}")
+    elif not re.fullmatch(pattern, value):
+        messages.append(f"{label} must match {pattern}, got {value!r}")
+
+
+def _path_bound_values(desc):
+    """Every descriptor value the schema binds to a containment grammar, as
+    ``(label, value, pattern)`` triples, plus one message per mapping or list that is not
+    the mapping or list the schema declares there. Absent keys are skipped (the schema
+    decides whether they are required); an explicit null is yielded, and the caller reports
+    it as a non-string -- except ``pipeline.rubric.export``, where null is a valid value.
+
+    * repo paths (REPO_PATH_PATTERN): pipeline.prompts.<key>, pipeline.rubric.path,
+      eval.config, eval.dataset, pipeline.dimensions[i].prompt / .setup /
+      .condition.context_exists, pipeline.context_sources[i].bootstrap
+    * artifact dirs (ARTIFACT_DIR_PATTERN): dirs.<key>, pipeline.rubric.export
+    * dimension names (DIMENSION_NAME_PATTERN): pipeline.dimensions[i].name"""
+    values = []
+    problems = []
+
+    def read(node, key, label, pattern, null_ok=False):
+        value = node.get(key, _ABSENT)
+        if value is _ABSENT or (value is None and null_ok):
+            return
+        values.append((label, value, pattern))
+
+    def container(dotted, kind):
+        node = _opt(desc, dotted, _ABSENT)
+        if node is _ABSENT:
+            return None
+        if not isinstance(node, kind):
+            problems.append(
+                f"{dotted} must be a {'mapping' if kind is dict else 'list'}, got {node!r}"
+            )
+            return None
+        return node
+
+    dirs = container("dirs", dict)
+    for key in dirs or {}:
+        read(dirs, key, f"dirs.{key}", ARTIFACT_DIR_PATTERN)
+    prompts = container("pipeline.prompts", dict)
+    for key in prompts or {}:
+        read(prompts, key, f"pipeline.prompts.{key}", REPO_PATH_PATTERN)
+    rubric = container("pipeline.rubric", dict)
+    if rubric is not None:
+        read(rubric, "path", "pipeline.rubric.path", REPO_PATH_PATTERN)
+        read(rubric, "export", "pipeline.rubric.export", ARTIFACT_DIR_PATTERN, null_ok=True)
+    evaluation = container("eval", dict)
+    if evaluation is not None:
+        read(evaluation, "config", "eval.config", REPO_PATH_PATTERN)
+        read(evaluation, "dataset", "eval.dataset", REPO_PATH_PATTERN)
+    for i, dim in enumerate(container("pipeline.dimensions", list) or []):
+        label = f"pipeline.dimensions[{i}]"
+        if not isinstance(dim, dict):
+            problems.append(f"{label} must be a mapping, got {dim!r}")
+            continue
+        read(dim, "name", f"{label}.name", DIMENSION_NAME_PATTERN)
+        read(dim, "prompt", f"{label}.prompt", REPO_PATH_PATTERN)
+        read(dim, "setup", f"{label}.setup", REPO_PATH_PATTERN)
+        condition = dim.get("condition", _ABSENT)
+        if isinstance(condition, dict):
+            read(
+                condition,
+                "context_exists",
+                f"{label}.condition.context_exists",
+                REPO_PATH_PATTERN,
+            )
+        elif condition is not _ABSENT:
+            problems.append(f"{label}.condition must be a mapping, got {condition!r}")
+    for i, source in enumerate(container("pipeline.context_sources", list) or []):
+        label = f"pipeline.context_sources[{i}]"
+        if not isinstance(source, dict):
+            problems.append(f"{label} must be a mapping, got {source!r}")
+            continue
+        read(source, "bootstrap", f"{label}.bootstrap", REPO_PATH_PATTERN)
+    return values, problems
+
+
+def shape_messages(desc):
+    """The shape constraints the structural rules depend on, for a run without the
+    JSON-Schema shape check (gate 3 in the pipeline's sandbox): the descriptor's
+    ``schema_version`` is the supported one; the identity strings the cross-type rules
+    hash are present and non-empty (the local pair always, the Jira pair for a Jira
+    tracker); and every value that becomes a path, a glob or an id, when present, is a
+    string that full-matches the schema's own regex -- the names, prefixes and subdirs in
+    PATH_VALUE_PATTERNS, and the repo paths, artifact dirs and dimension names of
+    _path_bound_values (an explicit null is a finding, an absent key is the schema's call).
+    With the schema present these are its findings instead."""
+    messages = []
+    version = _opt(desc, "schema_version")
+    # A YAML boolean is not the integer 1 (True == 1 in Python, but the schema's const rejects it).
+    if isinstance(version, bool) or version != SUPPORTED_SCHEMA_VERSION:
+        messages.append(
+            f"schema_version must be {SUPPORTED_SCHEMA_VERSION} (the v1 descriptor shape), "
+            f"got {version!r}"
+        )
+    # An absent kind keeps the default; the reserved sibling kinds are kind_messages' finding.
+    kind = _opt(desc, "kind", _ABSENT)
+    if kind is not _ABSENT and kind != V1_ENGINE_KIND and kind not in RESERVED_SIBLING_KINDS:
+        messages.append(f"kind must be {V1_ENGINE_KIND!r} (the v1 engine's kind), got {kind!r}")
+    required = list(IDENTITY_STRING_FIELDS)
+    if _opt(desc, "identity.tracker") == "jira" or _opt(desc, "identity.jira") is not None:
+        required += list(JIRA_IDENTITY_STRING_FIELDS)
+    reported = set()
+    for dotted in required:
+        value = _opt(desc, dotted)
+        if value is None:
+            messages.append(f"{dotted} is required, got None")
+            reported.add(dotted)
+        elif not isinstance(value, str) or not value.strip():
+            messages.append(f"{dotted} must be a non-empty string, got {value!r}")
+            reported.add(dotted)
+    for dotted, pattern in PATH_VALUE_PATTERNS.items():
+        value = _opt(desc, dotted, _ABSENT)
+        # Absent is the schema's call (required or optional); the identity pair is already
+        # reported above when missing, null, empty or not a string. An explicit null is not
+        # absent: it is a value that is not a string, so it is a finding.
+        if value is _ABSENT or dotted in reported:
+            continue
+        _check_grammar(messages, dotted, value, pattern)
+    values, problems = _path_bound_values(desc)
+    messages.extend(problems)
+    for label, value, pattern in values:
+        _check_grammar(messages, label, value, pattern)
+    return messages
+
+
 def per_type_findings(
     desc,
     schema,
@@ -671,25 +868,48 @@ def per_type_findings(
     fragment_schema=None,
     skeleton_text=None,
     eval_sync=False,
+    isolate=False,
 ):
+    """Gate 1 for one descriptor. ``isolate`` (a run without the JSON-Schema shape check)
+    runs every rule on its own: a rule that trips over a shape the schema would have
+    rejected becomes one message naming the rule, and the remaining rules still run, so a
+    malformed dimension cannot hide a bad rubric pin."""
     messages = []
     declared = desc.data.get("type") if isinstance(desc.data, dict) else None
     if declared != desc.name:
         messages.append(f"type field {declared!r} does not match the directory name {desc.name!r}")
+    rules = [
+        ("kind", lambda: kind_messages(desc)),
+        ("file references", lambda: path_messages(desc, repo_root)),
+        ("stage skills", lambda: stage_skill_messages(desc, repo_root)),
+        ("typed prompts", lambda: typed_prompt_messages(desc, repo_root)),
+        ("schema.review.score_fields", lambda: score_fields_messages(desc)),
+        ("identity.local_id_pattern", lambda: local_id_pattern_messages(desc)),
+        ("conventions.labels.alignment", lambda: alignment_labels_messages(desc)),
+        ("pipeline.rubric", lambda: rubric_ref_messages(desc)),
+        ("review error stub", lambda: error_stub_messages(desc, artifact_utils)),
+        (
+            "eval fragment",
+            lambda: eval_fragment_messages(
+                desc, fragment_schema, skeleton_text, repo_root, eval_sync
+            ),
+        ),
+    ]
     if schema is not None:
-        messages.extend(schema_messages(desc, schema))
-    messages.extend(kind_messages(desc))
-    messages.extend(path_messages(desc, repo_root))
-    messages.extend(stage_skill_messages(desc, repo_root))
-    messages.extend(typed_prompt_messages(desc, repo_root))
-    messages.extend(score_fields_messages(desc))
-    messages.extend(local_id_pattern_messages(desc))
-    messages.extend(alignment_labels_messages(desc))
-    messages.extend(rubric_ref_messages(desc))
-    messages.extend(error_stub_messages(desc, artifact_utils))
-    messages.extend(
-        eval_fragment_messages(desc, fragment_schema, skeleton_text, repo_root, eval_sync)
-    )
+        rules.insert(0, ("schema", lambda: schema_messages(desc, schema)))
+    else:
+        rules.insert(0, ("shape", lambda: shape_messages(desc)))
+    for label, rule in rules:
+        if not isolate:
+            messages.extend(rule())
+            continue
+        try:
+            messages.extend(rule())
+        except Exception as exc:
+            messages.append(
+                f"{label}: could not be checked without the JSON-Schema shape check: "
+                f"{type(exc).__name__}: {exc}"
+            )
     return [Finding(desc.name, m, 1, frozenset({desc.name})) for m in messages]
 
 
@@ -767,11 +987,21 @@ def _identity_key(binding):
     return (tracker, binding.get("repo", binding.get("project")), str(binding.get("kind")))
 
 
+def _hashable(key):
+    try:
+        hash(key)
+    except TypeError:
+        return False
+    return True
+
+
 def _duplicates(pairs):
-    """[(key, name)] -> {key: [names]} for keys owned by more than one type."""
+    """[(key, name)] -> {key: [names]} for keys owned by more than one type. An unhashable
+    key (a list-valued identity field in a descriptor the shape check did not see) is
+    compared by its repr rather than raising: the shape finding is reported elsewhere."""
     owners = {}
     for key, name in pairs:
-        owners.setdefault(key, []).append(name)
+        owners.setdefault(key if _hashable(key) else repr(key), []).append(name)
     return {k: v for k, v in owners.items() if len(v) > 1}
 
 
@@ -1031,6 +1261,7 @@ def validate_all(
     only=None,
     repo_root=None,
     eval_sync=False,
+    allow_missing_jsonschema=False,
 ):
     """Run the gates and return a Report.
 
@@ -1041,7 +1272,9 @@ def validate_all(
     additionally requires each committed eval.config to equal a fresh render
     (the CLI default; off here so fixture roots need no committed configs).
 
-    Raises MissingDependencyError when jsonschema is not installed.
+    Raises MissingDependencyError when jsonschema is not installed -- unless
+    ``allow_missing_jsonschema`` (gate 3, --verify): the JSON-Schema shape checks are then
+    skipped, ``Report.warnings`` says so, and the structural rules decide.
     """
     env = os.environ if env is None else env
     repo_root = REPO_ROOT if repo_root is None else Path(repo_root)
@@ -1071,6 +1304,15 @@ def validate_all(
         )
 
     findings = []
+    warnings = []
+    try:
+        _load_jsonschema()
+        have_jsonschema = True
+    except MissingDependencyError:
+        if not allow_missing_jsonschema:
+            raise
+        have_jsonschema = False
+        warnings.append(SHAPE_CHECK_SKIPPED)
     schema, schema_path = load_schema(root)
     if schema is None:
         looked = [str(p) for p in ([Path(root) / SCHEMA_RELPATH] if root else [])]
@@ -1079,7 +1321,7 @@ def validate_all(
             Finding("*", "JSON Schema not found (looked at: " + ", ".join(looked) + ")")
         )
 
-    if schema is not None:
+    if schema is not None and have_jsonschema:
         jsonschema = _load_jsonschema()
         try:
             jsonschema.Draft202012Validator.check_schema(schema)
@@ -1094,7 +1336,7 @@ def validate_all(
         findings.append(
             Finding("*", f"eval fragment JSON Schema not found ({FRAGMENT_SCHEMA_RELPATH})")
         )
-    else:
+    elif have_jsonschema:
         jsonschema = _load_jsonschema()
         try:
             jsonschema.Draft202012Validator.check_schema(fragment_schema)
@@ -1107,6 +1349,31 @@ def validate_all(
         skeleton_text = generate_eval_config.load_skeleton(repo_root)
     except generate_eval_config.GenerateError:
         skeleton_text = None
+
+    if not have_jsonschema:
+        # The shape checks need jsonschema (schema_messages, the fragment's schema); every
+        # other rule reads the descriptor through the registry and runs as usual.
+        schema = fragment_schema = None
+
+    def guarded(label, run):
+        """A later pass, run as is with the shape check in place. Without it a malformed
+        descriptor can reach code that assumes the shape (an unhashable identity value in
+        the cross-type rules): that is one finding naming the pass, never a traceback that
+        would exit 1 with no diagnosis. The finding concerns every type, so --verify keeps it."""
+        if have_jsonschema:
+            return run()
+        try:
+            return run()
+        except Exception as exc:
+            return [
+                Finding(
+                    "*",
+                    f"{label} could not be checked without the JSON-Schema shape check: "
+                    f"{type(exc).__name__}: {exc}",
+                    1,
+                    frozenset(names),
+                )
+            ]
 
     artifact_utils = _load_artifact_utils()
     for desc in registry:
@@ -1121,24 +1388,27 @@ def validate_all(
                 fragment_schema=fragment_schema,
                 skeleton_text=skeleton_text,
                 eval_sync=eval_sync,
+                isolate=not have_jsonschema,
             )
         )
 
-    for finding in data_only_findings(registry):
+    for finding in guarded("data-only roots", lambda: data_only_findings(registry)):
         if only is None or only in finding.types:
             findings.append(finding)
 
-    for finding in cross_type_findings(registry, env):
+    for finding in guarded("cross-type rules", lambda: cross_type_findings(registry, env)):
         if only is None or only in finding.types:
             findings.append(finding)
 
     if with_deps:
         assess_dir = DEFAULT_ASSESS_DIR if assess_dir is None else assess_dir
-        for finding in with_deps_findings(registry, assess_dir, repo_root):
+        for finding in guarded(
+            "gate 2", lambda: with_deps_findings(registry, assess_dir, repo_root)
+        ):
             if only is None or not finding.types or only in finding.types:
                 findings.append(finding)
 
-    return Report([only] if only is not None else names, findings)
+    return Report([only] if only is not None else names, findings, warnings)
 
 
 def build_parser():
@@ -1200,19 +1470,25 @@ def main(argv=None):
             assess_dir=args.assess_dir,
             only=args.type if args.verify else None,
             eval_sync=not args.no_eval_sync,
+            # Gate 3 runs where the pipeline runs, without the dev dependencies: it decides
+            # on what it can check and says what it skipped. The full lint stays strict.
+            allow_missing_jsonschema=args.verify,
         )
     except MissingDependencyError as exc:
         print(f"ERROR *: {exc}", file=sys.stderr)
         return 2
 
+    for warning in report.warnings:
+        print(f"WARN *: {warning}", file=sys.stderr)
     if args.json:
         print(json.dumps(report.to_dict(), indent=2))
     elif args.verify:
+        note = f" ({SHAPE_CHECK_SKIPPED_SHORT})" if report.warnings else ""
         if report.ok:
-            print(f"VERIFY OK: type {args.type!r} passes gate 1")
+            print(f"VERIFY OK: type {args.type!r} passes gate 1{note}")
         else:
             diagnosis = " | ".join(f.message for f in report.findings)
-            print(f"VERIFY FAILED: type {args.type!r} — {diagnosis}")
+            print(f"VERIFY FAILED: type {args.type!r} — {diagnosis}{note}")
     elif report.ok:
         print(f"OK: {len(report.types)} type(s) valid: {', '.join(report.types)}")
     else:

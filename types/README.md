@@ -584,7 +584,9 @@ the `extra_rules` consistency check, the `annotations_extra` lines, the run-repo
    `setup_failed: <diagnosis>` error stub (so a stale passing review from an earlier run cannot
    make the next run's resume check skip the id),
    the run goes straight to its report, and submit leaves every id of the run unprocessed for
-   the next one; a gate that cannot run (exit 2, `jsonschema` not installed) is a warning and
+   the next one; a gate that cannot run (exit 2, a usage error; without `jsonschema`, which the
+   pipeline's sandbox lacks, `--verify` skips only the JSON-Schema shape check, says so, and still
+   decides on the structural rules) is a warning and
    the run continues, unless an earlier failure of the same run stands; any other exit code is a
    failure. The skill's pre-loop bootstrap and the FETCH wave precede SETUP: a pin the
    bootstrap cannot read stops the run there, with the bootstrap's message and no report.
