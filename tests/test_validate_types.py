@@ -1549,6 +1549,62 @@ class TestMissingJsonschema:
             "initiative",
         ]
 
+    # Gate 3 runs in the pipeline's sandbox, which has PyYAML and no dev dependency: the
+    # 2026-10-27 stage dry run showed the gate exiting 2 there and the run continuing with
+    # no verdict. --verify now skips only the JSON-Schema shape check and decides on the
+    # structural rules; the full lint keeps requiring jsonschema.
+    def test_verify_decides_on_the_structural_rules_without_jsonschema(self, monkeypatch, capsys):
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        assert validate_types.main(["--verify", "--type", "rfe", "--no-eval-sync"]) == 0
+        captured = capsys.readouterr()
+        assert captured.out.startswith(
+            "VERIFY OK: type 'rfe' passes gate 1 (JSON-Schema shape check skipped: jsonschema"
+        )
+        assert captured.err.startswith(
+            "WARN *: JSON-Schema shape check skipped: jsonschema is not installed"
+        )
+
+    def test_verify_without_jsonschema_still_catches_a_bad_rubric_pin(
+        self, monkeypatch, capsys, types_copy
+    ):
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        _mutate(types_copy, "rfe", lambda d: d["pipeline"]["rubric"].__setitem__("ref", "e27d7"))
+        rc = validate_types.main(
+            ["--verify", "--type", "rfe", "--root", str(types_copy), "--no-eval-sync"]
+        )
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert out.startswith("VERIFY FAILED: type 'rfe' — ")
+        assert "pipeline.rubric.ref must be a 7-40 character lowercase hex commit SHA" in out
+        assert out.rstrip().endswith("(JSON-Schema shape check skipped: jsonschema not installed)")
+
+    def test_api_degraded_report_names_the_skipped_check(self, monkeypatch):
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        report = _validate(TYPES_ROOT, allow_missing_jsonschema=True)
+        assert report.ok
+        assert report.warnings == [validate_types.SHAPE_CHECK_SKIPPED]
+        assert report.to_dict()["warnings"] == [validate_types.SHAPE_CHECK_SKIPPED]
+
+    def test_a_shape_fault_without_the_shape_check_is_a_finding_not_a_traceback(
+        self, monkeypatch, types_copy
+    ):
+        """A descriptor the schema would have rejected can reach a rule that assumes the
+        shape: the rule's exception becomes a finding against the type."""
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        _mutate(types_copy, "rfe", lambda d: d.__setitem__("pipeline", "not-a-mapping"))
+        report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
+        assert not report.ok
+        assert report.warnings == [validate_types.SHAPE_CHECK_SKIPPED]
+        assert any(
+            "could not be checked without the JSON-Schema shape check" in f.message
+            or "pipeline" in f.message
+            for f in report.findings
+        )
+
+    def test_the_full_lint_still_requires_jsonschema(self, monkeypatch):
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        assert validate_types.main(["--no-eval-sync"]) == 2
+
     def test_jsonschema_is_listed_in_requirements_dev(self):
         text = (REPO_ROOT / "requirements-dev.txt").read_text(encoding="utf-8")
         assert re.search(r"^jsonschema\b", text, re.MULTILINE)

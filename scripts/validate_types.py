@@ -68,6 +68,11 @@ design-proposals/work-item-types-unified.md §3.3:
       Wired into the pipeline's SETUP phase (pipeline_state.cmd_run_phase runs it
       before SETUP's bootstrap, after the FETCH wave; exit 1 stops the batch, exit 2 is
       a warning) -- AISDLC-194.
+    * decides without jsonschema: the sandbox the pipeline runs in has PyYAML but not
+      the dev dependency, so --verify skips only the JSON-Schema shape check (one
+      WARN line, named in the verdict) and still applies every structural rule above
+      -- the rubric pin, the file references, the prefixes are what the gate exists
+      for. The full lint (no --verify) keeps requiring jsonschema.
 
 Usage:
     python3 scripts/validate_types.py [--root DIR] [--extra-roots A:B]
@@ -78,7 +83,8 @@ Exit codes:
     0  every descriptor passed — prints "OK: <n> type(s) valid: rfe, initiative"
     1  findings — one "ERROR <type-or-*>: <message>" line per finding
        ("*" marks a cross-type or registry-level finding)
-    2  usage error, or jsonschema not installed
+    2  usage error, or jsonschema not installed (full lint only: --verify decides
+       without it and says so, see gate 3)
 
 --json emits {"ok": bool, "types": [...], "errors": [{"type": ..., "message": ...}]}.
 
@@ -198,6 +204,15 @@ class MissingDependencyError(RuntimeError):
     """jsonschema is not importable (dev dependency, see requirements-dev.txt)."""
 
 
+# What --verify says when it decides without jsonschema (gate 3; the pipeline's sandbox has no
+# dev dependencies): the WARN line on stderr, and the short form inside the verdict line.
+SHAPE_CHECK_SKIPPED = (
+    "JSON-Schema shape check skipped: jsonschema is not installed; the verdict rests on the "
+    "structural rules (pip install -r requirements-dev.txt restores the shape check)"
+)
+SHAPE_CHECK_SKIPPED_SHORT = "JSON-Schema shape check skipped: jsonschema not installed"
+
+
 @dataclass
 class Finding:
     """One validation failure.
@@ -218,6 +233,7 @@ class Finding:
 class Report:
     types: list
     findings: list
+    warnings: list = field(default_factory=list)  # checks skipped, never findings
 
     @property
     def ok(self):
@@ -227,11 +243,14 @@ class Report:
         return [f"ERROR {f.type}: {f.message}" for f in self.findings]
 
     def to_dict(self):
-        return {
+        data = {
             "ok": self.ok,
             "types": list(self.types),
             "errors": [{"type": f.type, "message": f.message} for f in self.findings],
         }
+        if self.warnings:  # additive: the pinned shape is unchanged when nothing was skipped
+            data["warnings"] = list(self.warnings)
+        return data
 
 
 # ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -1031,6 +1050,7 @@ def validate_all(
     only=None,
     repo_root=None,
     eval_sync=False,
+    allow_missing_jsonschema=False,
 ):
     """Run the gates and return a Report.
 
@@ -1041,7 +1061,9 @@ def validate_all(
     additionally requires each committed eval.config to equal a fresh render
     (the CLI default; off here so fixture roots need no committed configs).
 
-    Raises MissingDependencyError when jsonschema is not installed.
+    Raises MissingDependencyError when jsonschema is not installed -- unless
+    ``allow_missing_jsonschema`` (gate 3, --verify): the JSON-Schema shape checks are then
+    skipped, ``Report.warnings`` says so, and the structural rules decide.
     """
     env = os.environ if env is None else env
     repo_root = REPO_ROOT if repo_root is None else Path(repo_root)
@@ -1071,6 +1093,15 @@ def validate_all(
         )
 
     findings = []
+    warnings = []
+    try:
+        _load_jsonschema()
+        have_jsonschema = True
+    except MissingDependencyError:
+        if not allow_missing_jsonschema:
+            raise
+        have_jsonschema = False
+        warnings.append(SHAPE_CHECK_SKIPPED)
     schema, schema_path = load_schema(root)
     if schema is None:
         looked = [str(p) for p in ([Path(root) / SCHEMA_RELPATH] if root else [])]
@@ -1079,7 +1110,7 @@ def validate_all(
             Finding("*", "JSON Schema not found (looked at: " + ", ".join(looked) + ")")
         )
 
-    if schema is not None:
+    if schema is not None and have_jsonschema:
         jsonschema = _load_jsonschema()
         try:
             jsonschema.Draft202012Validator.check_schema(schema)
@@ -1094,7 +1125,7 @@ def validate_all(
         findings.append(
             Finding("*", f"eval fragment JSON Schema not found ({FRAGMENT_SCHEMA_RELPATH})")
         )
-    else:
+    elif have_jsonschema:
         jsonschema = _load_jsonschema()
         try:
             jsonschema.Draft202012Validator.check_schema(fragment_schema)
@@ -1108,21 +1139,42 @@ def validate_all(
     except generate_eval_config.GenerateError:
         skeleton_text = None
 
+    if not have_jsonschema:
+        # The shape checks need jsonschema (schema_messages, the fragment's schema); every
+        # other rule reads the descriptor through the registry and runs as usual.
+        schema = fragment_schema = None
+
     artifact_utils = _load_artifact_utils()
     for desc in registry:
         if only is not None and desc.name != only:
             continue
-        findings.extend(
-            per_type_findings(
-                desc,
-                schema,
-                repo_root,
-                artifact_utils,
-                fragment_schema=fragment_schema,
-                skeleton_text=skeleton_text,
-                eval_sync=eval_sync,
+        try:
+            findings.extend(
+                per_type_findings(
+                    desc,
+                    schema,
+                    repo_root,
+                    artifact_utils,
+                    fragment_schema=fragment_schema,
+                    skeleton_text=skeleton_text,
+                    eval_sync=eval_sync,
+                )
             )
-        )
+        except Exception as exc:
+            if have_jsonschema:
+                raise
+            # Without the shape check a malformed descriptor can reach a rule that assumes
+            # the shape: that is a finding against the type, never a traceback that would
+            # exit 1 with no diagnosis.
+            findings.append(
+                Finding(
+                    desc.name,
+                    "could not be checked without the JSON-Schema shape check: "
+                    f"{type(exc).__name__}: {exc}",
+                    1,
+                    frozenset({desc.name}),
+                )
+            )
 
     for finding in data_only_findings(registry):
         if only is None or only in finding.types:
@@ -1138,7 +1190,7 @@ def validate_all(
             if only is None or not finding.types or only in finding.types:
                 findings.append(finding)
 
-    return Report([only] if only is not None else names, findings)
+    return Report([only] if only is not None else names, findings, warnings)
 
 
 def build_parser():
@@ -1200,19 +1252,25 @@ def main(argv=None):
             assess_dir=args.assess_dir,
             only=args.type if args.verify else None,
             eval_sync=not args.no_eval_sync,
+            # Gate 3 runs where the pipeline runs, without the dev dependencies: it decides
+            # on what it can check and says what it skipped. The full lint stays strict.
+            allow_missing_jsonschema=args.verify,
         )
     except MissingDependencyError as exc:
         print(f"ERROR *: {exc}", file=sys.stderr)
         return 2
 
+    for warning in report.warnings:
+        print(f"WARN *: {warning}", file=sys.stderr)
     if args.json:
         print(json.dumps(report.to_dict(), indent=2))
     elif args.verify:
+        note = f" ({SHAPE_CHECK_SKIPPED_SHORT})" if report.warnings else ""
         if report.ok:
-            print(f"VERIFY OK: type {args.type!r} passes gate 1")
+            print(f"VERIFY OK: type {args.type!r} passes gate 1{note}")
         else:
             diagnosis = " | ".join(f.message for f in report.findings)
-            print(f"VERIFY FAILED: type {args.type!r} — {diagnosis}")
+            print(f"VERIFY FAILED: type {args.type!r} — {diagnosis}{note}")
     elif report.ok:
         print(f"OK: {len(report.types)} type(s) valid: {', '.join(report.types)}")
     else:
