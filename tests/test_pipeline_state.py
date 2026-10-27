@@ -2940,6 +2940,21 @@ class TestGetPhaseConfigHygiene:
         output = buf.getvalue()
         assert "post_verify" not in output
 
+    def test_strips_verify_but_keeps_commands(self, tmp_dir):
+        """get-phase-config strips SETUP's verify gate from output; its commands stay."""
+        import io
+        from contextlib import redirect_stdout
+
+        import yaml
+
+        ps._save_state(make_state(phase="SETUP", type="rfe"))
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            ps.cmd_get_phase_config([])
+        config = yaml.safe_load(buf.getvalue())
+        assert "verify" not in config
+        assert config["commands"]
+
 
 # ---------- ID validation ----------
 
@@ -3375,6 +3390,7 @@ class TestNoShell:
 
         assert ps.SETUP_FAILED_PREFIX == generate_run_report.SETUP_FAILED_PREFIX
         assert ps.SETUP_ERROR_FILE == generate_run_report.SETUP_ERROR_FILE
+        assert ps.PROCESS_IDS_FILE == generate_run_report.PROCESS_IDS_FILE
 
     def test_ids_whose_stub_could_not_be_written_are_named(self, tmp_dir, monkeypatch, capsys):
         import verify_phase

@@ -1489,6 +1489,7 @@ def cmd_get_phase_config(args):
     config.pop("command", None)
     config.pop("pre_script", None)
     config.pop("post_verify", None)
+    config.pop("verify", None)
     if config.get("type") == "script":
         config.pop("ids_file", None)
     if config.get("type") == "agent":

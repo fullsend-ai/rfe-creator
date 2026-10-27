@@ -1682,6 +1682,74 @@ class TestStallEscalatedSplitParentIsSkipped:
             issues = yaml.safe_load(f)["issues"]
         assert [issues[k]["processed"] for k in keys] == [False, False, False]
 
+    KEYS = ("RHAIRFE-1000", "RHAIRFE-2000", "RHAIRFE-3000")
+
+    def _no_task_setup_failure(self, art_dir, tmp_path):
+        """A SETUP-failed run with no task file at all: the marker, the process ids, and a
+        snapshot that holds every id as processed. Returns the snapshot path."""
+        snap_dir = f"{art_dir}/auto-fix-runs"
+        os.makedirs(snap_dir, exist_ok=True)
+        snap = f"{snap_dir}/issue-snapshot-20260101-000000.yaml"
+        with open(snap, "w") as f:
+            yaml.safe_dump({"issues": {k: {"hash": "h", "processed": True} for k in self.KEYS}}, f)
+        os.makedirs(tmp_path / "tmp", exist_ok=True)
+        (tmp_path / "tmp" / "pipeline-setup-error.txt").write_text(f"{self.SETUP_FAILED}\n")
+        (tmp_path / "tmp" / "pipeline-process-ids.txt").write_text("\n".join(self.KEYS) + "\n")
+        return snap
+
+    def _live_submit(self, art_dir, tmp_path, *flags):
+        env = _clean_env(**FAKE_CREDS)
+        cmd = ["python3", os.path.abspath(SCRIPT), "--artifacts-dir", art_dir, *flags]
+        return subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=tmp_path)
+
+    def test_a_setup_failure_with_no_task_files_resets_and_finishes(self, art_dir, tmp_path):
+        """Under the run-level marker an empty workspace is the expected outcome: the live
+        submit exits 0, says why, resets every process id in the snapshot and regenerates the
+        run report instead of dying with the no-tasks exit 1."""
+        snap = self._no_task_setup_failure(art_dir, tmp_path)
+        result = self._live_submit(
+            art_dir, tmp_path, "--generate-report", "--report-timestamp", "2026-01-01T00:00:00Z"
+        )
+        assert result.returncode == 0, result.stderr
+        assert self.SETUP_FAILED in result.stdout
+        assert "Reset 3 setup-failed id(s) to unprocessed in the snapshot" in result.stdout
+        assert "Generating reports..." in result.stdout
+        with open(snap) as f:
+            issues = yaml.safe_load(f)["issues"]
+        assert [issues[k]["processed"] for k in self.KEYS] == [False, False, False]
+        reports = [n for n in os.listdir(f"{art_dir}/auto-fix-runs") if n.endswith(".yaml")]
+        assert len(reports) == 2  # the snapshot and the regenerated run report
+
+    def test_no_task_files_without_the_marker_still_exit_1(self, art_dir, tmp_path):
+        result = self._live_submit(art_dir, tmp_path)
+        assert result.returncode == 1
+        assert "No RFE task files found" in result.stderr
+
+    def test_no_task_setup_failure_writes_no_snapshot_under_dry_run(self, art_dir, tmp_path):
+        snap = self._no_task_setup_failure(art_dir, tmp_path)
+        result = self._live_submit(art_dir, tmp_path, "--dry-run")
+        assert result.returncode == 0, result.stderr
+        with open(snap) as f:
+            issues = yaml.safe_load(f)["issues"]
+        assert [issues[k]["processed"] for k in self.KEYS] == [True, True, True]
+
+    def test_a_reset_that_lands_in_an_older_snapshot_ends_red(self, art_dir, tmp_path):
+        """The newest snapshot cannot be written (a directory carries its name, so the glob
+        matches and open() rejects it): the writer falls back to the older file, which the
+        next fetch does not read. That is not a successful reset."""
+        older = self._no_task_setup_failure(art_dir, tmp_path)
+        newest = f"{art_dir}/auto-fix-runs/issue-snapshot-20260102-000000.yaml"
+        os.makedirs(newest)
+        result = self._live_submit(art_dir, tmp_path)
+        assert result.returncode == 1
+        assert "the snapshot reset of RHAIRFE-1000, RHAIRFE-2000, RHAIRFE-3000 landed in" in (
+            result.stderr
+        )
+        assert older in result.stderr
+        assert newest in result.stderr
+        assert "RHAIRFE-2000: left unprocessed, but the snapshot reset landed in" in result.stderr
+        assert "Reset 3 setup-failed id(s)" not in result.stdout
+
     def test_split_not_attempted_parent_is_skipped(self, art_dir, tmp_path):
         self._batch(art_dir, self._parent_review(self.STALLED))
         stdout, stderr, rc, calls = self._run(art_dir, tmp_path)

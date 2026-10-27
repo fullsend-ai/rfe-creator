@@ -894,6 +894,83 @@ def _finish(args, type_name, type_label, submit_errors):
     sys.exit(1 if submit_errors else 0)
 
 
+def _report_misplaced_reset(reset_ids, written, newest, submit_errors):
+    """Record a snapshot reset that landed on a file other than the newest one.
+
+    update_snapshot_hashes writes the first snapshot it can read and write, newest first, so
+    when the newest is unwritable the reset lands on an older file and is reported as success,
+    while the next fetch reads the newest. Same outcome as a reset that did not land: an Error
+    line and one submit_errors entry per id, so the run ends red through _finish.
+    """
+    print(
+        f"Error: the snapshot reset of {', '.join(reset_ids)} landed in {written}, not in the "
+        f"newest snapshot {newest}; the next fetch reads {newest}, where such an item may stay "
+        "processed and not be selected. Reset its snapshot entry by hand.",
+        file=sys.stderr,
+    )
+    for reset_id in reset_ids:
+        submit_errors.append(
+            (
+                reset_id,
+                f"left unprocessed, but the snapshot reset landed in {written}, not in the "
+                f"newest snapshot {newest}: fix the entry by hand",
+            )
+        )
+
+
+def _reset_unprocessed(args, cfg, held, setup_reset, submit_errors):
+    """Reset the snapshot entries of held split parents and setup-failed ids to unprocessed.
+
+    ``held`` and ``setup_reset`` are the ids to reset (sorted lists or sets); both groups are
+    reset in one write. Prints what was reset, or an Error (and one submit_errors entry per id)
+    when the reset did not land in the newest snapshot. Writes nothing under --dry-run.
+    """
+    if not (held or setup_reset) or args.dry_run:
+        return
+    held = sorted(held)
+    reset_ids = sorted(set(held) | set(setup_reset))
+    snap_dir = os.path.join(args.artifacts_dir, "auto-fix-runs")
+    snap_kwargs = {"reset_processed": reset_ids}
+    if cfg["snapshot_prefix"]:
+        snap_kwargs["prefix"] = cfg["snapshot_prefix"]
+    prefix_kwargs = {"prefix": snap_kwargs["prefix"]} if "prefix" in snap_kwargs else {}
+    existing = snapshot_files(snap_dir, **prefix_kwargs)
+    newest = existing[0] if existing else None
+    updated = update_snapshot_hashes({}, snap_dir, **snap_kwargs)
+    if updated and updated != newest:
+        _report_misplaced_reset(reset_ids, updated, newest, submit_errors)
+    elif updated:
+        if held:
+            print(
+                f"  Reset {len(held)} held split parent(s) to unprocessed in the snapshot:"
+                f" {updated}"
+            )
+        if setup_reset:
+            print(
+                f"  Reset {len(setup_reset)} setup-failed id(s) to unprocessed in the"
+                f" snapshot: {updated}"
+            )
+    elif newest:
+        # A snapshot exists and the reset did not land: a held parent (or a setup-failed
+        # id) that entered processed: true stays so and no later fetch would select it.
+        # The hold itself (label, comment, review) stands; the run ends red through _finish.
+        print(
+            "Error: the snapshot could not be updated after leaving "
+            f"{', '.join(reset_ids)} unprocessed; such an item may stay processed and the "
+            "next fetch would not select it. Reset its snapshot entry by hand.",
+            file=sys.stderr,
+        )
+        for held_id in reset_ids:
+            submit_errors.append(
+                (
+                    held_id,
+                    "left unprocessed, but the snapshot reset did not land: fix the entry by hand",
+                )
+            )
+    else:
+        print("  Warning: no snapshot found to update", file=sys.stderr)
+
+
 def report_companion_path(artifacts_dir, run_id, work_type, suffix):
     """Path for a run report companion file, beside the YAML it belongs to.
 
@@ -1085,7 +1162,17 @@ def main():
     tasks = scan_tasks(args.artifacts_dir, desc)
     if not tasks:
         print(f"Error: No {type_label} task files found.", file=sys.stderr)
-        sys.exit(1)
+        # Under the run-level SETUP marker (AISDLC-194) no task file is the expected outcome,
+        # not a fault: nothing was fetched or assessed. Reset the run's snapshot entries so the
+        # next run selects them again and end through _finish, whose regenerated report records
+        # every process id as setup_failed. Without the marker this stays a hard error.
+        no_tasks_setup_error = _setup_error()
+        if no_tasks_setup_error is None:
+            sys.exit(1)
+        print(f"  {no_tasks_setup_error}; nothing was assessed this run")
+        no_tasks_errors = []
+        _reset_unprocessed(args, cfg, [], set(_process_ids()), no_tasks_errors)
+        _finish(args, type_name, type_label, no_tasks_errors)
 
     # is_existing (design §5), one rule for every site below: the task's frontmatter
     # tracker_ref when present, else key-prefix-union membership on the effective binding.
@@ -1463,47 +1550,7 @@ def main():
     setup_reset = set(setup_skipped_parents)
     if setup_error:
         setup_reset |= set(_process_ids())
-    if (held_parents or setup_reset) and not args.dry_run:
-        held = sorted(held_parents)
-        reset_ids = sorted(set(held) | setup_reset)
-        snap_dir = os.path.join(args.artifacts_dir, "auto-fix-runs")
-        snap_kwargs = {"reset_processed": reset_ids}
-        if cfg["snapshot_prefix"]:
-            snap_kwargs["prefix"] = cfg["snapshot_prefix"]
-        updated = update_snapshot_hashes({}, snap_dir, **snap_kwargs)
-        if updated:
-            if held:
-                print(
-                    f"  Reset {len(held)} held split parent(s) to unprocessed in the snapshot:"
-                    f" {updated}"
-                )
-            if setup_reset:
-                print(
-                    f"  Reset {len(setup_reset)} setup-failed id(s) to unprocessed in the"
-                    f" snapshot: {updated}"
-                )
-        elif snapshot_files(
-            snap_dir, **({"prefix": snap_kwargs["prefix"]} if "prefix" in snap_kwargs else {})
-        ):
-            # A snapshot exists and the reset did not land: a held parent (or a setup-failed
-            # id) that entered processed: true stays so and no later fetch would select it.
-            # The hold itself (label, comment, review) stands; the run ends red through _finish.
-            print(
-                "Error: the snapshot could not be updated after leaving "
-                f"{', '.join(reset_ids)} unprocessed; such an item may stay processed and the "
-                "next fetch would not select it. Reset its snapshot entry by hand.",
-                file=sys.stderr,
-            )
-            for held_id in reset_ids:
-                submit_errors.append(
-                    (
-                        held_id,
-                        "left unprocessed, but the snapshot reset did not land: fix the entry"
-                        " by hand",
-                    )
-                )
-        else:
-            print("  Warning: no snapshot found to update", file=sys.stderr)
+    _reset_unprocessed(args, cfg, sorted(held_parents), setup_reset, submit_errors)
 
     # Record split-child hashes in the snapshot (none under the hold: no child was created)
     if split_parents and not args.dry_run and not args.hold_splits:
@@ -2368,6 +2415,10 @@ def main():
         snap_kwargs = {"mark_processed": mark_processed_ids, "reset_processed": reset_processed_ids}
         if cfg["snapshot_prefix"]:
             snap_kwargs["prefix"] = cfg["snapshot_prefix"]
+        existing_snaps = snapshot_files(
+            snap_dir, **({"prefix": snap_kwargs["prefix"]} if "prefix" in snap_kwargs else {})
+        )
+        newest_snap = existing_snaps[0] if existing_snaps else None
         updated = update_snapshot_hashes(submitted_hashes, snap_dir, **snap_kwargs)
         if updated:
             held = f", {len(reset_processed_ids)} held" if reset_processed_ids else ""
@@ -2376,6 +2427,10 @@ def main():
                 f"post-submit hashes, {len(mark_processed_ids)} "
                 f"mark-processed{held}: {updated}"
             )
+            if reset_processed_ids and updated != newest_snap:
+                _report_misplaced_reset(
+                    sorted(reset_processed_ids), updated, newest_snap, submit_errors
+                )
         elif reset_processed_ids and snapshot_files(
             snap_dir, **({"prefix": snap_kwargs["prefix"]} if "prefix" in snap_kwargs else {})
         ):
