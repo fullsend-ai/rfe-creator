@@ -73,10 +73,11 @@ design-proposals/work-item-types-unified.md §3.3:
       WARN line, named in the verdict) and still applies every structural rule above
       -- the rubric pin, the file references, the prefixes are what the gate exists
       for -- plus two shape rules the structural rules rely on (schema_version is 1,
-      the identity strings are non-empty strings). Each rule runs on its own there, so
-      one that trips over a malformed shape is one finding and the rest still decide.
-      Not covered without jsonschema: unknown keys, enum values beyond kind, nested
-      shapes no structural rule reads. The full lint (no --verify) keeps requiring it.
+      the identity strings are present and non-empty). Each rule runs on its own there,
+      so one that trips over a malformed shape is one finding and the rest still decide.
+      Not covered without jsonschema: unknown keys, enum values beyond kind, required
+      keys other than the identity strings, nested shapes no structural rule reads. The
+      full lint (no --verify) keeps requiring it.
 
 Usage:
     python3 scripts/validate_types.py [--root DIR] [--extra-roots A:B]
@@ -219,13 +220,11 @@ SHAPE_CHECK_SKIPPED_SHORT = "JSON-Schema shape check skipped: jsonschema not ins
 # cannot run (types/_schema/type.schema.json "schema_version").
 SUPPORTED_SCHEMA_VERSION = 1
 # The identity strings the cross-type rules hash; checked structurally without the shape
-# check so a malformed one is a diagnosis, not a TypeError in _duplicates.
-IDENTITY_STRING_FIELDS = (
-    "identity.local_prefix",
-    "identity.id_field",
-    "identity.jira.project",
-    "identity.jira.issue_type",
-)
+# check so a malformed or missing one is a diagnosis, not a TypeError in _duplicates or a
+# silent pass. The first two are required of every type, the Jira pair when the tracker is
+# jira (the schema requires both for a Jira binding).
+IDENTITY_STRING_FIELDS = ("identity.local_prefix", "identity.id_field")
+JIRA_IDENTITY_STRING_FIELDS = ("identity.jira.project", "identity.jira.issue_type")
 
 
 @dataclass
@@ -701,7 +700,8 @@ def shape_messages(desc):
     """The two shape constraints the structural rules depend on, for a run without the
     JSON-Schema shape check (gate 3 in the pipeline's sandbox): the descriptor's
     ``schema_version`` is the supported one, and the identity strings the cross-type rules
-    hash are non-empty strings. With the schema present these are its findings instead."""
+    hash are present and non-empty (the local pair always, the Jira pair for a Jira
+    tracker). With the schema present these are its findings instead."""
     messages = []
     version = _opt(desc, "schema_version")
     if version != SUPPORTED_SCHEMA_VERSION:
@@ -709,9 +709,14 @@ def shape_messages(desc):
             f"schema_version must be {SUPPORTED_SCHEMA_VERSION} (the v1 descriptor shape), "
             f"got {version!r}"
         )
-    for dotted in IDENTITY_STRING_FIELDS:
+    required = list(IDENTITY_STRING_FIELDS)
+    if _opt(desc, "identity.tracker") == "jira" or _opt(desc, "identity.jira") is not None:
+        required += list(JIRA_IDENTITY_STRING_FIELDS)
+    for dotted in required:
         value = _opt(desc, dotted)
-        if value is not None and (not isinstance(value, str) or not value.strip()):
+        if value is None:
+            messages.append(f"{dotted} is required, got None")
+        elif not isinstance(value, str) or not value.strip():
             messages.append(f"{dotted} must be a non-empty string, got {value!r}")
     return messages
 
