@@ -2689,9 +2689,7 @@ class TestLaunchWaveFile:
         assert id_lines  # the launch block does carry id-bearing lines
         # the shared block has no placeholder: the id-bearing lines moved to each agent
         assert "{ID}" not in result["common_vars"]
-        assert result["common_vars"].splitlines() == [
-            ln for ln in block_lines if "{ID}" not in ln
-        ]
+        assert result["common_vars"].splitlines() == [ln for ln in block_lines if "{ID}" not in ln]
         assert raw.count("STAGE=auto-fix") == 1  # the launch block is printed once
 
         with open(ps.LAUNCH_WAVE_FILE) as f:
