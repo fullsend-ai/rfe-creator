@@ -1639,6 +1639,36 @@ class TestMissingJsonschema:
         _assert_finding(report, f"{dotted} must be a non-empty string, got {value!r}", "rfe")
         assert not _find(report, "could not be checked")  # every rule ran to a verdict
 
+    @pytest.mark.parametrize(
+        "dotted, how",
+        [
+            ("identity.jira.project", "missing"),
+            ("identity.jira.issue_type", "null"),
+            ("identity.local_prefix", "missing"),
+            ("identity.id_field", "null"),
+        ],
+    )
+    def test_a_missing_or_null_identity_string_is_a_finding_without_jsonschema(
+        self, monkeypatch, types_copy, dotted, how
+    ):
+        """The schema requires these; without it a None slipped through the string check
+        (fullsend on #266, round 2)."""
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+
+        def drop(d):
+            node = d
+            parts = dotted.split(".")
+            for part in parts[:-1]:
+                node = node[part]
+            if how == "missing":
+                del node[parts[-1]]
+            else:
+                node[parts[-1]] = None
+
+        _mutate(types_copy, "rfe", drop)
+        report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
+        _assert_finding(report, f"{dotted} is required, got None", "rfe")
+
     def test_one_failing_rule_does_not_hide_the_rubric_pin_diagnosis(self, monkeypatch, types_copy):
         """Rules run on their own without the shape check: a rule that raises on a malformed
         shape is its own finding and the bad pin is still diagnosed (Qodo on #266)."""
