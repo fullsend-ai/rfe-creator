@@ -75,7 +75,7 @@ design-proposals/work-item-types-unified.md §3.3:
       for -- plus two shape rules the structural rules rely on (schema_version is 1,
       the identity strings are present and non-empty). Each rule runs on its own there,
       so one that trips over a malformed shape is one finding and the rest still decide.
-      Not covered without jsonschema: unknown keys, enum values beyond kind, required
+      Not covered without jsonschema: unknown keys, enum values other than kind's, required
       keys other than the identity strings, nested shapes no structural rule reads. The
       full lint (no --verify) keeps requiring it.
 
@@ -276,6 +276,9 @@ def _opt(desc, dotted, default=None):
         return desc.get(dotted, default)
     except (KeyError, TypeError, AttributeError):
         return default
+
+
+_ABSENT = object()  # sentinel: a key that is not in the descriptor at all
 
 
 def _fmt_types(names):
@@ -704,11 +707,16 @@ def shape_messages(desc):
     tracker). With the schema present these are its findings instead."""
     messages = []
     version = _opt(desc, "schema_version")
-    if version != SUPPORTED_SCHEMA_VERSION:
+    # A YAML boolean is not the integer 1 (True == 1 in Python, but the schema's const rejects it).
+    if isinstance(version, bool) or version != SUPPORTED_SCHEMA_VERSION:
         messages.append(
             f"schema_version must be {SUPPORTED_SCHEMA_VERSION} (the v1 descriptor shape), "
             f"got {version!r}"
         )
+    # An absent kind keeps the default; the reserved sibling kinds are kind_messages' finding.
+    kind = _opt(desc, "kind", _ABSENT)
+    if kind is not _ABSENT and kind != V1_ENGINE_KIND and kind not in RESERVED_SIBLING_KINDS:
+        messages.append(f"kind must be {V1_ENGINE_KIND!r} (the v1 engine's kind), got {kind!r}")
     required = list(IDENTITY_STRING_FIELDS)
     if _opt(desc, "identity.tracker") == "jira" or _opt(desc, "identity.jira") is not None:
         required += list(JIRA_IDENTITY_STRING_FIELDS)

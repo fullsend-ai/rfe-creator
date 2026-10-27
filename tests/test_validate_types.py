@@ -1699,6 +1699,42 @@ class TestMissingJsonschema:
         report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
         _assert_finding(report, "schema_version must be 1 (the v1 descriptor shape), got 2", "rfe")
 
+    def test_a_boolean_schema_version_is_caught_without_jsonschema(self, monkeypatch, types_copy):
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        _mutate(types_copy, "rfe", lambda d: d.__setitem__("schema_version", True))
+        report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
+        hits = _assert_finding(report, "schema_version must be 1", "rfe")
+        assert all(h.message.endswith("got True") for h in hits)
+
+    @pytest.mark.parametrize("kind", ["Work-Item", 3])
+    def test_an_unknown_or_non_string_kind_is_caught_without_jsonschema(
+        self, monkeypatch, types_copy, kind
+    ):
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        _mutate(types_copy, "rfe", lambda d: d.__setitem__("kind", kind))
+        report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
+        _assert_finding(
+            report,
+            f"kind must be 'work-item' (the v1 engine's kind), got {kind!r}",
+            "rfe",
+        )
+
+    def test_a_reserved_sibling_kind_is_reported_once_without_jsonschema(
+        self, monkeypatch, types_copy
+    ):
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        _mutate(types_copy, "rfe", lambda d: d.__setitem__("kind", "strategy"))
+        report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
+        _assert_finding(report, "kind 'strategy' cannot be registered", "rfe")
+        assert not _find(report, "kind must be", "rfe")
+        assert len(_find(report, "kind", "rfe")) == 1
+
+    def test_an_absent_kind_keeps_the_default_without_jsonschema(self, monkeypatch, types_copy):
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        _mutate(types_copy, "rfe", lambda d: d.pop("kind", None))
+        report = _validate(types_copy, allow_missing_jsonschema=True, only="rfe")
+        assert report.ok and report.warnings == [validate_types.SHAPE_CHECK_SKIPPED]
+
     def test_what_degraded_mode_does_not_catch_is_documented(self, monkeypatch, types_copy):
         """An unknown top-level key is a schema finding only: without jsonschema it passes.
         Pinned so the limit stays deliberate (and the full lint still catches it)."""
