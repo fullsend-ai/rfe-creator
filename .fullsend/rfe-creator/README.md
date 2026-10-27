@@ -63,6 +63,43 @@ sandbox; `/rfe-speedrun` and `/rfe-submit` fail inside it without `--dry-run`.
 The dotted names (`/rfe.review`, ...) are compatibility aliases of the same skills,
 and every skill takes `--type <name>` for any type in `python3 scripts/type_registry.py list`.
 
+## Eval variant
+
+`rfe-creator-eval.yaml` (agent `rfe-creator-eval`) runs the same package for the
+rfe-creator eval: it sets `base: rfe-creator.yaml` (fullsend resolves `base` relative to the
+child file) and inherits the prompt, scripts, image, policy, validation loop (DONE gate),
+pre-script and post-script. It overrides only:
+
+- `env.sandbox`: `JIRA_SERVER`/`JIRA_USER` as literals, and
+  `CLAUDE_CODE_SUBAGENT_MODEL` from `${AGENT_EVAL_SUBAGENT_MODEL}`;
+- `env.runner`: the three `JIRA_*` keys as literals (`JIRA_TOKEN: "eval-no-jira"`), so the
+  host needs no Jira credentials;
+- the `jira` provider (`jira-provider-eval.yaml`, literal placeholder credential) and the
+  `jira` OpenShell profile (`jira-profile-eval.yaml`, no endpoints: no Atlassian egress);
+- `timeout_minutes: 170`, below the eval's 10800 s `execution.timeout`;
+- `validation_loop.max_iterations: 1` (the rest of the loop is inherited, as fullsend merges
+  `validation_loop` field by field). `timeout_minutes` is a per-iteration budget, so the
+  inherited `max_iterations: 2` could start a second 170-minute iteration after a late DONE-gate
+  failure, exceed `execution.timeout`, and get fullsend killed before the post-script copies the
+  artifacts back.
+
+The model comes from `fullsend run --model`. `tests/test_fullsend_eval_harness.py` pins the
+child to exactly these overrides. Run it locally, with no `JIRA_*` variables on the host, from
+a copy of the checkout holding a `batch.yaml` and the case inputs:
+
+```bash
+fullsend run rfe-creator-eval --fullsend-dir .fullsend --target-repo . --model claude-opus-4-6 --env-file .env
+```
+
+where `.env` holds the four Vertex variables above plus
+`FULLSEND_TASK="/rfe-speedrun --headless --dry-run --input batch.yaml --type rfe"` and
+`AGENT_EVAL_SUBAGENT_MODEL=claude-opus-4-6`.
+
+*Note*: both variants import the same OpenShell profile id `jira` and provider name `jira`
+with different content. A gateway that last ran the other variant can fail at
+"Importing profile: jira" because the persisted provider still references the old profile
+content. Run `openshell provider delete jira` before switching variants.
+
 ## Expected log lines
 
 Two warnings appear at agent start inside the sandbox and are inert:

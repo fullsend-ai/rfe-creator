@@ -1,0 +1,10 @@
+---
+# Eval variant of jira-provider.yaml (rfe-creator-eval.yaml): same name and
+# type, with a literal placeholder credential so the host needs no JIRA_TOKEN.
+# fullsend's compose step only concatenates the provider lists (base first); the
+# production provider is dropped at resolve time (dedupResolvedProviders in
+# internal/cli/run.go keeps the last entry per name), so this one wins.
+name: jira
+type: jira
+credentials:
+  JIRA_TOKEN: "eval-no-jira"

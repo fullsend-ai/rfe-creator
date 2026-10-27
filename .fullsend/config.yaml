@@ -35,6 +35,7 @@ agents:
     - name: triage
       model: sonnet
     - source: rfe-creator/rfe-creator.yaml
+    - source: rfe-creator/rfe-creator-eval.yaml
 create_issues:
     allow_targets:
         orgs:
