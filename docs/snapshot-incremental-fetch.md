@@ -240,7 +240,8 @@ skipping them.
 | `processed: false` | `submit.py` completes | set to `true` |
 
 Key rule: `processed: true` resets to `false` when the content hash
-changes, or when `submit.py` holds the item (invariant 7). Only
+changes, when `submit.py` holds the item, or after a SETUP failure, for
+every id the aborted run touched (invariant 7). Only
 `submit.py` (via `update_snapshot_hashes`) sets `processed: true`.
 
 ### What Counts as "Processed"
@@ -270,6 +271,11 @@ Issues remain `processed: false` (and re-surface as NEW) when:
   or a split parent under `--hold-splits` (pipeline correctness
   reference §5.12): reset to `false` even when a `--reprocess` fetch had
   recorded the item `true`, so the next run selects it again
+- Under a SETUP failure (AISDLC-194) every id of the run — the batch's
+  items, the setup-skipped split parents and the later-batch ids of
+  `tmp/pipeline-process-ids.txt` — is reset to `false` even when a
+  `--reprocess` fetch had recorded it `true`, and its `setup_failed:`
+  stub keeps the next run's resume check from skipping it
 
 ### Selection and Limit
 
