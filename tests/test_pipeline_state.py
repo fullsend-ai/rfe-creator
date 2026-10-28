@@ -6,6 +6,7 @@ revision is followed by a review.
 """
 
 import os
+import re
 import subprocess
 import sys
 import time
@@ -2900,21 +2901,27 @@ class TestLaunchWaveFile:
         assert ps._load_state()["wave_ordinal"] == 1
 
     def test_the_total_counts_every_cut_wave(self, tmp_dir, monkeypatch):
-        """An initiative REVIEW batch of 100 ids is cut to the listing budget into four waves
-        (RHAISTRAT- keys; three with the shorter RHOAIENG- keys before 2026-10-28): the total
-        is exact from the first call, and each wave reads its own number."""
+        """An initiative REVIEW batch of 100 ids is cut to the listing budget into several waves
+        (how many depends on the key length and the rendered paths, so the count is not pinned):
+        the total is exact from the first call, and each wave reads its own number."""
         ids = [f"RHAISTRAT-{1000 + i}" for i in range(100)]
         write_ids("tmp/pipeline-active-ids.txt", ids)
         ps._save_state(make_state(phase="REVIEW", type="initiative", batch=1, batch_size=100))
         monkeypatch.setattr(ps, "_run_script", lambda cmd: "")
-        seen = []
-        for n in (1, 2, 3, 4):
+        seen, total, n = [], None, 0
+        while True:
+            n += 1
             result = _run_next_action()
             wave = read_ids(ps.WAVE_IDS_FILE)
-            assert result["message"] == f"REVIEW: wave {n}/4 ({len(wave)} IDs)"
+            m = re.fullmatch(r"REVIEW: wave (\d+)/(\d+) \((\d+) IDs\)", result["message"])
+            assert m and int(m.group(1)) == n and int(m.group(3)) == len(wave), result["message"]
+            total = total or int(m.group(2))
+            assert int(m.group(2)) == total, result["message"]
             seen.extend(wave)
             _finish_wave(ps._load_state(), wave)
-        assert seen == ids
+            if n == total:
+                break
+        assert total >= 2 and seen == ids
 
     def test_wave_count_restarts_in_the_next_agent_phase(self, tmp_dir, monkeypatch):
         """The ordinal resets on entering a phase: REVIEW's first wave reads wave 1/..., even
