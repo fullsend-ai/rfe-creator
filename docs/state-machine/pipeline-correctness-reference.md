@@ -1362,10 +1362,14 @@ Two changes close that path (AISDLC-453 item 1 and AISDLC-454; GitHub #253 and #
   stream stays byte-stable).
 
 The contract is text the model reads, not a mechanism: nothing stops a Bash call between
-two barrier calls. The check is the job log. Between a launch and the next barrier every
-Bash command should be `pipeline_state.py wait-for-wave`, `next-action` or `run-phase`;
-anything else (a transcript grep, an artifact listing, a relaunch by hand) is an
-improvised command and counts against the run.
+two barrier calls. The check is the job log, and it follows the barrier's exit status. After
+a launch, the next Bash command is `python3 scripts/pipeline_state.py wait-for-wave`; after
+an exit 3, the next command is the barrier again; `next-action` and `run-phase` appear only
+after an exit 0. The one other command admitted is
+`python3 scripts/state.py read-launch tmp/pipeline-launch-wave.yaml --agent <N>` while a
+launch is still in progress, the mid-launch recovery the contract names. Anything else (a
+transcript grep, an artifact listing, a relaunch by hand) is an improvised command and
+counts against the run.
 
 **Evidence (2026-10-27, two stage dry runs of production shape: 25 RHAIRFE keys each with
 `--reprocess`, one batch, an ASSESS wave of 50 agents).** The first ran the tree before the
@@ -1373,8 +1377,8 @@ contract text (with the launch-list file), the second the tree that carries it, 
 compaction banner included. Each compacted exactly once, about ten minutes in, during the
 ASSESS launch (the telemetry shows one `SessionStart:compact` hook per run; in the second
 the orchestrator launched 20 of the 50 agents before the compaction and the remaining 30
-from the listing afterwards). Both runs show zero improvised commands between barrier
-calls, through FETCH, SETUP, ASSESS, REVIEW, REVISE and FIXUP, in the second also through
+from the listing afterwards). Both runs show zero improvised commands (as defined above:
+every Bash command after a launch follows the barrier's exit status), through FETCH, SETUP, ASSESS, REVIEW, REVISE and FIXUP, in the second also through
 the whole split sub-pipeline, then REPORT and DONE. `read-launch` was not needed in either
 (the launch list survived the compaction), and the Stop guard fired once per run, at the
 normal end, with nothing to block. The run ids are recorded on AISDLC-454. Still to show,
