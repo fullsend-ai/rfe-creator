@@ -578,7 +578,11 @@ the `extra_rules` consistency check, the `annotations_extra` lines, the run-repo
 2. **Gate 2 — `--with-deps`** (after bootstrap): `rubric.path` exists under `--assess-dir` (under
    the repo root when `rubric.repo` is `self`) and the agent file `agents/<scorer_agent>.md` is
    present in the assess checkout.
-3. **Gate 3 — `--verify --type <t>`**: gate 1 for one type with a one-line diagnosis. The
+3. **Gate 3 — `--verify --type <t>`**: gate 1 for one type with a one-line diagnosis, without
+   the eval gate (`eval.config` / `eval.dataset` existence, the fragment, the skeleton, the
+   regenerate-and-diff): the pipeline reads none of the eval tree, and the tree is absent where
+   the pipeline runs from a staged eval workspace (scripts/, types/ and the skills, no
+   `eval.yaml`, no `eval/`). The
    pipeline's SETUP phase runs it before its bootstrap (AISDLC-194): a finding stops the batch
    before its first scoring wave, every id of the run, later batches included, gets a
    `setup_failed: <diagnosis>` error stub (so a stale passing review from an earlier run cannot
