@@ -19,6 +19,12 @@
 # fullsend-dir-relative paths below (rfe-creator/rfe-creator.yaml would look for
 # .fullsend/rfe-creator/rfe-creator/rfe-creator.yaml).
 base: rfe-creator.yaml
+# The production prompt under this harness's name. fullsend's Claude runtime
+# refuses a prompt whose frontmatter name is not the harness name (Claude Code
+# resolves --agent by frontmatter name; fullsend-ai/fullsend#6764), and
+# prompt.md declares `rfe-creator`. prompt-eval.md differs from it only in the
+# frontmatter; a test keeps the bodies identical.
+agent: rfe-creator/prompt-eval.md
 
 # Below the eval's execution.timeout (10800 s); the full 26-case batch took
 # 105-110 minutes under claude-code.
