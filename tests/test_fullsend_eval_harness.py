@@ -29,6 +29,7 @@ EVAL_JIRA_TOKEN = "eval-no-jira"
 
 # Every path at which the composed eval harness may differ from the production file.
 EXPECTED_DIFF = {
+    "agent",
     "timeout_minutes",
     "validation_loop.max_iterations",
     "env.sandbox.JIRA_SERVER",
@@ -109,6 +110,7 @@ def test_eval_sets_only_the_listed_keys():
     child = _load(EVAL)
     assert set(child) == {
         "base",
+        "agent",
         "timeout_minutes",
         "validation_loop",
         "env",
@@ -118,6 +120,7 @@ def test_eval_sets_only_the_listed_keys():
         "the eval child inherits everything else from rfe-creator.yaml; `model` comes from "
         "`fullsend run --model`"
     )
+    assert child["agent"] == "rfe-creator/prompt-eval.md"
     assert set(child["env"]) == {"sandbox", "runner"}
     assert set(child["openshell"]) == {"profiles"}
     # The lists replace only the jira entries: nothing else may ride along.
@@ -208,6 +211,29 @@ def test_eval_provider_credentials_declared_by_profile():
             for var in cred.get("env_vars", [])
         }
         assert set(provider.get("credentials", {})) <= declared
+
+
+def _prompt(path):
+    """(frontmatter dict, body) of an agent prompt file."""
+    text = path.read_text()
+    assert text.startswith("---\n"), path
+    frontmatter, body = text[4:].split("\n---\n", 1)
+    return yaml.safe_load(frontmatter), body
+
+
+def test_eval_prompt_is_the_production_prompt_under_the_eval_name():
+    """fullsend's Claude runtime rejects an agent prompt whose frontmatter ``name`` is not the
+    harness name (Claude Code resolves ``--agent`` by frontmatter name, fullsend#6764), so the
+    eval child cannot inherit prompt.md (``name: rfe-creator``). Its own prompt carries the
+    eval harness's name and, byte for byte, the production body."""
+    base = _load(PRODUCTION)
+    child = _load(EVAL)
+    prod_fm, prod_body = _prompt(FULLSEND_DIR / base["agent"])
+    eval_fm, eval_body = _prompt(FULLSEND_DIR / child["agent"])
+    assert prod_fm["name"] == PRODUCTION.stem == "rfe-creator"
+    assert eval_fm["name"] == EVAL.stem == "rfe-creator-eval"
+    assert set(eval_fm) == set(prod_fm) == {"name", "description"}
+    assert eval_body == prod_body, "prompt-eval.md body drifted from prompt.md: copy it over"
 
 
 def test_config_registers_eval_harness():

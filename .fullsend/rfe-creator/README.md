@@ -67,9 +67,15 @@ and every skill takes `--type <name>` for any type in `python3 scripts/type_regi
 
 `rfe-creator-eval.yaml` (agent `rfe-creator-eval`) runs the same package for the
 rfe-creator eval: it sets `base: rfe-creator.yaml` (fullsend resolves `base` relative to the
-child file) and inherits the prompt, scripts, image, policy, validation loop (DONE gate),
+child file) and inherits the scripts, image, policy, validation loop (DONE gate),
 pre-script and post-script. It overrides only:
 
+- `agent`: `prompt-eval.md`, the production prompt under the name `rfe-creator-eval`.
+  fullsend's Claude runtime refuses a prompt whose frontmatter `name` is not the harness
+  name (Claude Code resolves `--agent` by frontmatter name, fullsend#6764), and `prompt.md`
+  declares `rfe-creator`; the two files differ only in the frontmatter, and
+  `tests/test_fullsend_eval_harness.py` fails when the bodies drift (copy `prompt.md`'s body
+  over);
 - `env.sandbox`: `JIRA_SERVER`/`JIRA_USER` as literals, and
   `CLAUDE_CODE_SUBAGENT_MODEL` from `${AGENT_EVAL_SUBAGENT_MODEL}`;
 - `env.runner`: the three `JIRA_*` keys as literals (`JIRA_TOKEN: "eval-no-jira"`), so the
