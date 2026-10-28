@@ -21,6 +21,13 @@ extends: ../eval.yaml
 runner:
   type: fullsend
   agent: rfe-creator-eval
+  # fullsend resolves its forge from --forge, then config.yaml, then the CI
+  # environment (GITHUB_ACTIONS, then GITLAB_CI). The eval never contacts a
+  # forge, but under GitLab CI the auto-detection picks gitlab and fullsend
+  # then fails with "GitLab role is not registered" for this GitHub-hosted
+  # package (rfe-creator-eval smoke run, 2026-10-28). Say github explicitly;
+  # the managed .fullsend/config.yaml cannot carry a forge: key.
+  extra_args: ["--forge", "github"]
 execution:
   symlinks: [types]
   env:

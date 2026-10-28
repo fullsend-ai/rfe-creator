@@ -268,6 +268,10 @@ and models are the base's, and the judges still run on the host.
 - `FULLSEND_SANDBOX_IMAGE` and `FULLSEND_SANDBOX_ARCH` **unset**: either one in the host
   environment silently replaces the image the fullsend harness pins, so the run would not
   measure the production sandbox.
+- The profile passes `--forge github` to fullsend (`runner.extra_args`): fullsend otherwise
+  resolves the forge from the CI environment, and under GitLab CI it would pick GitLab and
+  stop with "GitLab role is not registered" before the sandbox starts. The eval never
+  contacts a forge, so the flag is inert everywhere else.
 
 ### Run
 
