@@ -32,3 +32,12 @@ From a checkout of this repository, run it directly with
 the
 [rfe-creator agent README](./rfe-creator/README.md) lists the prerequisites and
 environment variables.
+
+This repository's own `.fullsend/config.yaml` is not edited here: the fleet sync renders
+it from the `fullsend-ai/rfe-creator` entry of the manifest
+[`fullsend-ai/.fullsend/repos.yaml`](https://github.com/fullsend-ai/.fullsend/blob/main/repos.yaml)
+on every fullsend release, weekly, or by hand, overwriting the file. An agent of this
+package (`rfe-creator`, the eval variant `rfe-creator-eval`) is registered by a pull
+request on that manifest, never by a line added to `config.yaml` (such a line was dropped
+by the sync on 2026-10-28, fullsend-ai/.fullsend#203 restored the eval agent).
+`tests/test_fullsend_eval_harness.py` fails when the rendered file lacks the eval agent.
