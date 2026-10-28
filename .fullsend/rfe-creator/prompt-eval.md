@@ -43,7 +43,8 @@ that relative path exactly. Do not expand it to an absolute path.
      verification (`check_autofix_complete.py`) is still owed, `submit` its
      Phase 3, `summary` its Phase 4: resume there, following the speedrun's
      SKILL.md with the flags in that file and the IDs in
-     `tmp/speedrun-all-ids.txt`, and skipping Step 0.
+     `tmp/speedrun-all-ids.txt` (`tmp/initiative-speedrun-all-ids.txt` for
+     Initiatives), and skipping Step 0.
    Then write the result file from `python3 scripts/pipeline_state.py status`
    and the newest run report under `artifacts/` (for `rfe`,
    `artifacts/auto-fix-runs/<run>.yaml`) as described under Output, validate

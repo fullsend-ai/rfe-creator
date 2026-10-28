@@ -271,6 +271,11 @@ def test_prompt_retry_after_a_completed_pipeline_resumes_instead_of_restarting()
         ):
             assert f"`{phase}`" in dispatch and remains in dispatch, (name, phase)
         assert "skipping Step 0" in dispatch, name
+        # Both state files are per type (pipeline.state_prefix): the Initiative paths are
+        # named next to the rfe ones, for the config and for the ID list alike.
+        for stem in ("speedrun-config.yaml", "speedrun-all-ids.txt"):
+            assert f"`tmp/{stem}`" in dispatch, (name, stem)
+            assert f"`tmp/initiative-{stem}`" in dispatch, (name, stem)
         assert "A DONE state without that feedback" in dispatch, name
 
 
