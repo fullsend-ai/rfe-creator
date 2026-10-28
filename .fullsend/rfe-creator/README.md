@@ -98,7 +98,10 @@ still owes after its auto-fix phase (the speedrun records its phase in
 writes the result file, without starting the task over (`/rfe-speedrun` would otherwise
 reset `tmp/` and redo the batch). fullsend starts a second iteration only when the agent finished and its output failed
 validation, never after a timeout, so a first iteration that ran out of time is not followed
-by a second one.
+by a second one. The second iteration gets what is left of the eval's 10800 s: enough to write
+the result file after a completed pipeline, not to resume one the first iteration left
+unfinished. A retry the harness cuts short loses nothing a single iteration would have kept,
+since fullsend skips the post-script after a failed validation either way.
 
 The model comes from `fullsend run --model`. `tests/test_fullsend_eval_harness.py` pins the
 child to exactly these overrides. Run it locally, with no `JIRA_*` variables on the host, from

@@ -42,7 +42,10 @@ timeout_minutes: 150
 # (it records its phase in tmp/speedrun-config.yaml) and writes the result
 # file, without starting the task over. fullsend starts a second iteration only when the agent finished and
 # its output failed validation, never after a timeout, so a first iteration
-# that ran out of time is not followed by a second one.
+# that ran out of time is not followed by a second one. The retry gets what
+# is left of the eval's execution.timeout: enough to write the result file,
+# not to resume an unfinished pipeline; cut short, it loses nothing a single
+# iteration would have kept (no post-script after a failed validation).
 
 env:
   sandbox:
