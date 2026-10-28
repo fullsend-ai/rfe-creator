@@ -13,6 +13,7 @@ the composed eval harness differs from the production file in exactly the keys t
 so any other drift (a model, an image, a gate) fails CI.
 """
 
+import re
 from pathlib import Path
 
 import yaml
@@ -246,10 +247,12 @@ def test_eval_prompt_is_the_production_prompt_under_the_eval_name():
     assert eval_body == prod_body, "prompt-eval.md body drifted from prompt.md: copy it over"
 
 
-def test_prompt_retry_after_a_completed_run_only_writes_the_result_file():
+def test_prompt_retry_after_a_completed_pipeline_resumes_instead_of_restarting():
     """The second validation iteration meets a DONE pipeline state. Without a rule for it
     the prompt falls through to running FULLSEND_TASK again, and /rfe-speedrun starts by
-    resetting tmp/ and redoing the batch (review of #273). The rule is keyed on fullsend's
+    resetting tmp/ and redoing the batch (review of #273). DONE ends the auto-fix pipeline,
+    not the speedrun, whose Phase 3 and 4 follow, so the rule resumes the speedrun from the
+    phase it recorded and only then writes the result file. It is keyed on fullsend's
     feedback preamble, so a stale DONE state on a first iteration is still reset by the
     skill."""
     for name in ("prompt.md", "prompt-eval.md"):
@@ -258,8 +261,43 @@ def test_prompt_retry_after_a_completed_run_only_writes_the_result_file():
         dispatch = " ".join(dispatch.split())  # the prose is hard-wrapped
         assert "its phase is DONE and this prompt" in dispatch, name
         assert "The previous iteration's output failed validation" in dispatch, name
-        assert "Do not run the task again" in dispatch, name
+        assert "Do not start the task over" in dispatch, name
+        assert "DONE is the end of the auto-fix pipeline, not necessarily of the task" in dispatch
+        assert "`done` means the speedrun finished" in dispatch, name
+        for phase, remains in (
+            ("autofix", "Phase 2"),
+            ("submit", "Phase 3"),
+            ("summary", "Phase 4"),
+        ):
+            assert f"`{phase}`" in dispatch and remains in dispatch, (name, phase)
+        assert "skipping Step 0" in dispatch, name
         assert "A DONE state without that feedback" in dispatch, name
+
+
+def test_speedrun_records_the_phase_the_retry_rule_resumes_from():
+    """The prompt's rule reads `phase` in the speedrun config; the generic speedrun body
+    must write it at every boundary, in order, with the values the rule names."""
+    skill = (REPO / ".claude" / "skills" / "rfe-speedrun" / "SKILL.md").read_text()
+    init = re.search(r"state\.py init tmp/\{STATE_PREFIX\}speedrun-config\.yaml [^\n]*", skill)
+    assert init and "phase=create" in init.group(0), "Step 0 seeds phase=create"
+    marks = re.findall(
+        r"state\.py set tmp/\{STATE_PREFIX\}speedrun-config\.yaml phase=(\w+)", skill
+    )
+    assert marks == ["autofix", "submit", "summary", "done"], marks
+    # The markers sit where the prompt says they do: autofix before the auto-fix Skill call,
+    # submit after the verify+retry cycle, summary before Phase 4, done after the summary.
+    order = [
+        skill.index("phase=autofix"),
+        skill.index('Skill(skill: "rfe-auto-fix"'),
+        skill.index("3 retries have been exhausted"),
+        skill.index("phase=submit"),
+        skill.index("## Phase 3: Submit"),
+        skill.index("phase=summary"),
+        skill.index("## Phase 4: Summary"),
+        skill.index("batch_summary.py"),
+        skill.index("phase=done"),
+    ]
+    assert order == sorted(order), order
 
 
 def test_config_registers_eval_harness():

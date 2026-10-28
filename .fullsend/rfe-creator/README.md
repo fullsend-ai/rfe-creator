@@ -92,9 +92,11 @@ first fullsend eval run that completed the pipeline ended its turn on the skill'
 without writing `agent-result.json` (rfe-creator-eval job 17541721893, `FAIL:
 output/agent-result.json not found`); with a single iteration fullsend skips the post-script
 and the eval collects nothing. On the retry, Dispatch rule 3 of the prompt sees the DONE
-pipeline state together with fullsend's validation feedback and writes the result file
-without running the task again (`/rfe-speedrun` would otherwise reset `tmp/` and redo the
-batch). fullsend starts a second iteration only when the agent finished and its output failed
+pipeline state together with fullsend's validation feedback, finishes whatever the speedrun
+still owes after its auto-fix phase (the speedrun records its phase in
+`tmp/speedrun-config.yaml`; DONE is the auto-fix pipeline's end, Phase 3 and 4 follow) and
+writes the result file, without starting the task over (`/rfe-speedrun` would otherwise
+reset `tmp/` and redo the batch). fullsend starts a second iteration only when the agent finished and its output failed
 validation, never after a timeout, so a first iteration that ran out of time is not followed
 by a second one.
 
