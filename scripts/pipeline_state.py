@@ -2048,7 +2048,10 @@ def _env_budget_secs(var):
     raw = raw.strip()
     if not _ASCII_DIGITS_RE.fullmatch(raw):
         return None  # int() alone would accept "6_00000" and non-ASCII digits
-    ms = int(raw)
+    try:
+        ms = int(raw)
+    except ValueError:
+        return None  # a digit string past the interpreter's int-conversion limit
     if ms <= 0:
         return None
     return ms // 1000

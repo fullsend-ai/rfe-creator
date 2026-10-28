@@ -3185,6 +3185,16 @@ class TestBarrierBlockSecs:
         assert ps._barrier_block_secs() == 90
         assert capsys.readouterr() == ("", "")  # silent: output unchanged
 
+    def test_over_long_digit_string_default_is_90(self, monkeypatch, capsys):
+        monkeypatch.setenv("BASH_DEFAULT_TIMEOUT_MS", "0" * 5000 + "600000")
+        assert ps._barrier_block_secs() == 90
+        assert capsys.readouterr() == ("", "")  # silent: output unchanged
+
+    def test_over_long_digit_string_max_budget_is_ignored(self, monkeypatch):
+        monkeypatch.setenv("BASH_DEFAULT_TIMEOUT_MS", "600000")
+        monkeypatch.setenv("BASH_MAX_TIMEOUT_MS", "0" * 5000 + "600000")
+        assert ps._barrier_block_secs() == 570
+
     def test_capped_by_max_budget(self, monkeypatch):
         monkeypatch.setenv("BASH_DEFAULT_TIMEOUT_MS", "600000")
         monkeypatch.setenv("BASH_MAX_TIMEOUT_MS", "300000")
