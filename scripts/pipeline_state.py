@@ -93,6 +93,12 @@ ESCALATE_ONLY_WINDOW_FACTOR = 2
 # PIPELINE_WAVE_RETRY_CAP; 0 escalates on the first stall.
 DEFAULT_WAVE_RETRY_CAP = 2
 
+# Block length of one wait-for-wave poll (AISDLC-453 item 2), derived from the Bash budget
+# Claude Code applies (BASH_DEFAULT_TIMEOUT_MS, capped by BASH_MAX_TIMEOUT_MS) minus the margin,
+# never below the floor; with no usable budget in the environment it is the floor, today's 90.
+BARRIER_BLOCK_FLOOR_SECS = 90
+BARRIER_BLOCK_MARGIN_SECS = 30
+
 RETRY = "retry"
 ESCALATE = "escalate"
 
@@ -2032,6 +2038,42 @@ def _stall_window(policy):
     return secs if policy == RETRY else secs * ESCALATE_ONLY_WINDOW_FACTOR
 
 
+def _env_budget_secs(var):
+    """Whole seconds of a Claude Code Bash budget variable (milliseconds), or None when the
+    variable is unset, malformed or non-positive. Silent: an unusable budget falls back to the
+    floor without changing the barrier's output."""
+    raw = os.environ.get(var)
+    if raw is None:
+        return None
+    try:
+        ms = int(raw.strip())
+    except ValueError:
+        return None
+    if ms <= 0:
+        return None
+    return ms // 1000
+
+
+def _barrier_block_secs():
+    """Seconds one wait-for-wave poll may block (the ``--max-wait`` of check_review_progress).
+
+    BASH_DEFAULT_TIMEOUT_MS minus BARRIER_BLOCK_MARGIN_SECS, so the poll returns before the
+    Bash call is killed; capped by BASH_MAX_TIMEOUT_MS minus the same margin when that is set
+    and smaller; never below BARRIER_BLOCK_FLOOR_SECS. Unset, malformed or non-positive
+    BASH_DEFAULT_TIMEOUT_MS gives the floor (90). Assumes the barrier is called with the
+    default budget, as the skill's command line (no ``timeout``) implies; the telemetry does
+    not record the Bash ``timeout`` parameter.
+    """
+    default = _env_budget_secs("BASH_DEFAULT_TIMEOUT_MS")
+    if default is None:
+        return BARRIER_BLOCK_FLOOR_SECS
+    block = default - BARRIER_BLOCK_MARGIN_SECS
+    cap = _env_budget_secs("BASH_MAX_TIMEOUT_MS")
+    if cap is not None:
+        block = min(block, cap - BARRIER_BLOCK_MARGIN_SECS)
+    return max(BARRIER_BLOCK_FLOOR_SECS, block)
+
+
 def _wave_poll_phases(config):
     """The poll phases a wave barrier watches: the phase's own plus its parallel agents'."""
     phases = [config["poll_phase"]] if config.get("poll_phase") else []
@@ -2386,6 +2428,16 @@ def cmd_wait_for_wave(args):
     in the wave and its ids file, a ``wait-for-wave: ESCALATION FAILED`` line
     names it, and the command exits 1. Without a stall, the command's files,
     output and exit codes are unchanged.
+
+    Block length (AISDLC-453 item 2): the poll's ``--max-wait`` is
+    _barrier_block_secs(), computed once per call from the Bash budget Claude
+    Code applies to a call that names no timeout (BASH_DEFAULT_TIMEOUT_MS,
+    capped by BASH_MAX_TIMEOUT_MS) minus a 30-second margin, floor 90; with no
+    budget set it is 90, as before. This assumes the barrier is called with the
+    default budget, as the skill's command line implies (the telemetry does not
+    record the Bash ``timeout`` parameter). The stall guard re-counts after each
+    poll, so a longer poll delays stall detection by at most one poll length;
+    the window and the retry cap are unchanged.
     """
     if not os.path.exists(WAVE_IDS_FILE):
         print(
@@ -2434,7 +2486,7 @@ def cmd_wait_for_wave(args):
         os.path.join(os.path.dirname(__file__), "check_review_progress.py"),
         "--wait",
         "--max-wait",
-        "90",
+        str(_barrier_block_secs()),
         "--phase",
         poll_phase,
     ]
@@ -2454,7 +2506,7 @@ def cmd_wait_for_wave(args):
         return
     if result.returncode == 3:
         if window:
-            # The poll blocked for up to 90s; count again before judging the wave stalled.
+            # The poll blocked for up to --max-wait; count again before judging the wave stalled.
             prog = _track_wave_progress(sig, phase, _terminal_slots(poll_phases, wave_ids))
             idle = _now() - prog["last_progress_ts"]
             if idle >= window:
