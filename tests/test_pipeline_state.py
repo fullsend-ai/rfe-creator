@@ -3176,7 +3176,10 @@ class TestBarrierBlockSecs:
         monkeypatch.setenv("BASH_DEFAULT_TIMEOUT_MS", "60000")
         assert ps._barrier_block_secs() == 90
 
-    @pytest.mark.parametrize("raw", ["abc", "", "  ", "600000ms", "1.5e5", "-1", "0"])
+    @pytest.mark.parametrize(
+        "raw",
+        ["abc", "", "  ", "600000ms", "1.5e5", "-1", "0", "6_00000", "+600000", "٦٠٠٠٠٠"],
+    )
     def test_malformed_or_non_positive_is_90(self, monkeypatch, capsys, raw):
         monkeypatch.setenv("BASH_DEFAULT_TIMEOUT_MS", raw)
         assert ps._barrier_block_secs() == 90

@@ -2045,10 +2045,10 @@ def _env_budget_secs(var):
     raw = os.environ.get(var)
     if raw is None:
         return None
-    try:
-        ms = int(raw.strip())
-    except ValueError:
-        return None
+    raw = raw.strip()
+    if not _ASCII_DIGITS_RE.fullmatch(raw):
+        return None  # int() alone would accept "6_00000" and non-ASCII digits
+    ms = int(raw)
     if ms <= 0:
         return None
     return ms // 1000
