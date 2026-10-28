@@ -82,12 +82,17 @@ pre-script and post-script. It overrides only:
   host needs no Jira credentials;
 - the `jira` provider (`jira-provider-eval.yaml`, literal placeholder credential) and the
   `jira` OpenShell profile (`jira-profile-eval.yaml`, no endpoints: no Atlassian egress);
-- `timeout_minutes: 170`, below the eval's 10800 s `execution.timeout`;
-- `validation_loop.max_iterations: 1` (the rest of the loop is inherited, as fullsend merges
-  `validation_loop` field by field). `timeout_minutes` is a per-iteration budget, so the
-  inherited `max_iterations: 2` could start a second 170-minute iteration after a late DONE-gate
-  failure, exceed `execution.timeout`, and get fullsend killed before the post-script copies the
-  artifacts back.
+- `timeout_minutes: 170`, below the eval's 10800 s `execution.timeout`.
+
+The validation loop is inherited whole (`max_iterations: 2`, `feedback_mode: append`). The
+first fullsend eval run that completed the pipeline ended its turn on the skill's own summary
+without writing `agent-result.json` (rfe-creator-eval job 17541721893, `FAIL:
+output/agent-result.json not found`); with a single iteration fullsend skips the post-script
+and the eval collects nothing. The second iteration resumes from `tmp/pipeline-state.yaml`
+(phase DONE) and only writes the result file. `timeout_minutes` is a per-iteration budget, but
+fullsend starts a second iteration only when the agent finished and its output failed
+validation, never after a timeout, so a first iteration that ran out of time is not followed
+by a second one.
 
 The model comes from `fullsend run --model`. `tests/test_fullsend_eval_harness.py` pins the
 child to exactly these overrides. Run it locally, with no `JIRA_*` variables on the host, from

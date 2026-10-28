@@ -31,7 +31,6 @@ EVAL_JIRA_TOKEN = "eval-no-jira"
 EXPECTED_DIFF = {
     "agent",
     "timeout_minutes",
-    "validation_loop.max_iterations",
     "env.sandbox.JIRA_SERVER",
     "env.sandbox.JIRA_USER",
     "env.sandbox.CLAUDE_CODE_SUBAGENT_MODEL",
@@ -112,7 +111,6 @@ def test_eval_sets_only_the_listed_keys():
         "base",
         "agent",
         "timeout_minutes",
-        "validation_loop",
         "env",
         "openshell",
         "providers",
@@ -150,8 +148,6 @@ def test_composed_lists_swap_only_the_jira_entries():
 def test_eval_values():
     child = _load(EVAL)
     assert child["timeout_minutes"] == 170
-    # timeout_minutes is per iteration: one iteration keeps the run inside execution.timeout.
-    assert child["validation_loop"] == {"max_iterations": 1}
     assert child["env"]["sandbox"] == {
         "JIRA_SERVER": EVAL_JIRA_SERVER,
         "JIRA_USER": EVAL_JIRA_USER,
@@ -163,6 +159,20 @@ def test_eval_values():
         "JIRA_USER": EVAL_JIRA_USER,
         "JIRA_TOKEN": EVAL_JIRA_TOKEN,
     }
+
+
+def test_eval_inherits_the_validation_loop_with_its_second_iteration():
+    """An agent that finishes the pipeline but ends its turn without agent-result.json
+    (job 17541721893) is recovered only by the second iteration: it resumes from the DONE
+    pipeline state and writes the file. With max_iterations 1 fullsend skips the post-script
+    and the eval collects nothing. fullsend starts a second iteration only after a finished
+    agent whose output failed validation, never after a timeout."""
+    base = _load(PRODUCTION)
+    composed = _compose(base, _load(EVAL))
+    assert "validation_loop" not in _load(EVAL)
+    assert composed["validation_loop"] == base["validation_loop"]
+    assert composed["validation_loop"]["max_iterations"] == 2
+    assert composed["validation_loop"]["feedback_mode"] == "append"
 
 
 def test_eval_provider_replaces_jira_provider_with_literal_credential():

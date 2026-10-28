@@ -30,13 +30,16 @@ agent: rfe-creator/prompt-eval.md
 # 105-110 minutes under claude-code.
 timeout_minutes: 170
 
-# timeout_minutes is a per-iteration budget. With the inherited max_iterations: 2,
-# a DONE-gate failure late in iteration 1 would start a second 170-minute
-# iteration, and 2 x 170 min exceeds the eval's 10800 s execution.timeout: the
-# harness would kill fullsend before the post-script copies the artifacts back.
-# validation_loop merges field by field, so this overrides only the count.
-validation_loop:
-  max_iterations: 1
+# validation_loop is inherited (max_iterations: 2, feedback append). The first
+# fullsend eval run that completed the pipeline ended its turn on the skill's
+# own summary without writing agent-result.json (rfe-creator-eval job
+# 17541721893, "FAIL: output/agent-result.json not found"); with one iteration
+# fullsend skips the post-script and every artifact is lost. The second
+# iteration resumes from tmp/pipeline-state.yaml (phase DONE) and only writes
+# the result file. timeout_minutes is a per-iteration budget, but fullsend
+# starts a second iteration only when the agent finished and its output failed
+# validation, never after a timeout, so a first iteration that ran out of time
+# is not followed by a second 170-minute one.
 
 env:
   sandbox:
