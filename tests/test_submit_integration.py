@@ -2581,7 +2581,7 @@ class TestAlignmentLabels:
         r = _run_initiative_submit(init_art_dir, jira.url)
         assert r.returncode == 0, r.stderr
 
-        issues = jira.search("project = RHOAIENG")
+        issues = jira.search("project = RHAISTRAT")
         assert len(issues) == 1
         issue = jira.get(issues[0]["key"])
         assert "initiative-alignment-strong" in issue["fields"]["labels"]
@@ -2602,7 +2602,7 @@ class TestAlignmentLabels:
         r = _run_initiative_submit(init_art_dir, jira.url)
         assert r.returncode == 0, r.stderr
 
-        issues = jira.search("project = RHOAIENG")
+        issues = jira.search("project = RHAISTRAT")
         assert len(issues) == 1
         issue = jira.get(issues[0]["key"])
         assert "initiative-alignment-partial" in issue["fields"]["labels"]
@@ -2622,7 +2622,7 @@ class TestAlignmentLabels:
         r = _run_initiative_submit(init_art_dir, jira.url)
         assert r.returncode == 0, r.stderr
 
-        issues = jira.search("project = RHOAIENG")
+        issues = jira.search("project = RHAISTRAT")
         assert len(issues) == 1
         issue = jira.get(issues[0]["key"])
         assert "initiative-alignment-weak" in issue["fields"]["labels"]
@@ -2662,7 +2662,7 @@ Looks good.
         r = _run_initiative_submit(init_art_dir, jira.url)
         assert r.returncode == 0, r.stderr
 
-        issues = jira.search("project = RHOAIENG")
+        issues = jira.search("project = RHAISTRAT")
         assert len(issues) == 1
         issue = jira.get(issues[0]["key"])
         labels = issue["fields"]["labels"]
@@ -2964,19 +2964,19 @@ class TestOverriddenProjectBinding:
         _write(f"{art_dir}/rfe-reviews/RFE-001-review.md", _review("RFE-001"))
         env = _env_for(
             jira,
-            RFE_CREATOR_BINDING_RFE_PROJECT="RHOAIENG",
+            RFE_CREATOR_BINDING_RFE_PROJECT="RHAISTRAT",
             RFE_CREATOR_BINDING_RFE_ISSUE_TYPE="Initiative",
         )
         r = _run_submit_with(env, art_dir)
         assert r.returncode == 1
         assert r.stdout == ""
         assert r.stderr.startswith(
-            "Error: rfe: effective binding ('jira', 'RHOAIENG', 'Initiative') (source: env) is "
+            "Error: rfe: effective binding ('jira', 'RHAISTRAT', 'Initiative') (source: env) is "
             "the binding registered for type 'initiative'; a tracker binding must be owned by "
             "exactly one type"
         )
         assert r.stderr.count("\n") == 1 and "Traceback" not in r.stderr
-        assert jira.search("project = RHOAIENG") == []
+        assert jira.search("project = RHAISTRAT") == []
         assert jira.search("project = RHAIRFE") == []
         assert os.path.exists(f"{art_dir}/rfe-tasks/RFE-001.md")
 
@@ -2988,7 +2988,7 @@ class TestOverriddenProjectBinding:
         _write(
             f"{art_dir}/rfe-tasks/RHAIRFE-1234.md",
             "---\nrfe_id: RHAIRFE-1234\ntitle: Test RFE\npriority: Major\nstatus: Ready\n"
-            "type: rfe\ntracker_ref: RHOAIENG-7\n"
+            "type: rfe\ntracker_ref: RHAISTRAT-7\n"
             "original_labels:\n- rfe-creator-autofix-rubric-pass\n---\nRevised.",
         )
         _write(
@@ -3002,7 +3002,7 @@ class TestOverriddenProjectBinding:
         assert r.returncode == 1
         assert r.stdout == ""
         assert r.stderr == (
-            "Error: RHAIRFE-1234 carries tracker_ref 'RHOAIENG-7', a key type initiative owns, "
+            "Error: RHAIRFE-1234 carries tracker_ref 'RHAISTRAT-7', a key type initiative owns, "
             "not the resolved type rfe (key prefixes: RHAIRFE-); an artifact bound to another "
             "type is never updated or created here — fix the artifact before re-running; "
             "nothing submitted\n"
@@ -3597,17 +3597,17 @@ class TestSplitHold:
         """The same switch holds an Initiative split with the initiative descriptor's comment
         prefix and needs-attention label (the Initiative jobs are its first user)."""
         jira.create(
-            "RHOAIENG-1000", "Parent Initiative", "Parent content.", issue_type="Initiative"
+            "RHAISTRAT-1000", "Parent Initiative", "Parent content.", issue_type="Initiative"
         )
-        _write(f"{init_art_dir}/initiative-originals/RHOAIENG-1000.md", "Parent content.")
+        _write(f"{init_art_dir}/initiative-originals/RHAISTRAT-1000.md", "Parent content.")
         _write(
-            f"{init_art_dir}/initiatives/RHOAIENG-1000.md",
-            "---\ninitiative_id: RHOAIENG-1000\ntitle: Parent Initiative\n"
+            f"{init_art_dir}/initiatives/RHAISTRAT-1000.md",
+            "---\ninitiative_id: RHAISTRAT-1000\ntitle: Parent Initiative\n"
             "priority: Major\nstatus: Archived\n---\n\nParent content.\n",
         )
         _write(
-            f"{init_art_dir}/initiative-reviews/RHOAIENG-1000-review.md",
-            "---\ninitiative_id: RHOAIENG-1000\nscore: 6\npass: false\n"
+            f"{init_art_dir}/initiative-reviews/RHAISTRAT-1000-review.md",
+            "---\ninitiative_id: RHAISTRAT-1000\nscore: 6\npass: false\n"
             "recommendation: split\nfeasibility: feasible\nalignment: strong\n"
             "auto_revised: false\nneeds_attention: false\n"
             "scores:\n  what: 2\n  why: 1\n  scope: 1\n  open_to_how: 2\n  right_sized: 0\n"
@@ -3617,7 +3617,7 @@ class TestSplitHold:
             _write(
                 f"{init_art_dir}/initiatives/INIT-{i:03d}.md",
                 f"---\ninitiative_id: INIT-{i:03d}\ntitle: Child Initiative {i}\n"
-                "priority: Major\nstatus: Ready\nparent_key: RHOAIENG-1000\n---\n\n"
+                "priority: Major\nstatus: Ready\nparent_key: RHAISTRAT-1000\n---\n\n"
                 f"## Objective\n\nDeliver part {i}.\n",
             )
             _write(
@@ -3627,14 +3627,14 @@ class TestSplitHold:
 
         r = _run_initiative_submit(init_art_dir, jira.url, ["--hold-splits"])
         assert r.returncode == 0, r.stderr
-        assert "RHOAIENG-1000: Split held — 2 children proposed" in r.stdout
-        issue = jira.get("RHOAIENG-1000")
+        assert "RHAISTRAT-1000: Split held — 2 children proposed" in r.stdout
+        issue = jira.get("RHAISTRAT-1000")
         assert issue["fields"]["labels"] == ["initiative-needs-attention"]
-        (comment,) = self._hold_comments(jira, "RHOAIENG-1000")
+        (comment,) = self._hold_comments(jira, "RHAISTRAT-1000")
         body = json.dumps(comment["body"])
         assert "[Initiative Creator]" in body
         assert "splitting this Initiative into 2 child Initiatives" in body
         assert "Child Initiative 1" in body and "Deliver part 2." in body
-        assert self._summaries(jira, "RHOAIENG") == ["Parent Initiative"]
-        fm = _read_frontmatter(f"{init_art_dir}/initiative-reviews/RHOAIENG-1000-review.md")
+        assert self._summaries(jira, "RHAISTRAT") == ["Parent Initiative"]
+        fm = _read_frontmatter(f"{init_art_dir}/initiative-reviews/RHAISTRAT-1000-review.md")
         assert fm["error"] == self.HELD_ERROR

@@ -323,7 +323,7 @@ Automated evaluation of the `rfe-speedrun --type initiative` pipeline using the 
 
 ## How it works
 
-The evaluation runs the `rfe-speedrun` skill with `--type initiative` headlessly against 21 test cases: 16 derived from real RHOAIENG Jira initiatives (two of them, `case-007` and `case-013`, retargeted into weak drafts) and five deliberately weak drafts. Each test case provides an objective (prompt + clarifying context), and the pipeline creates, reviews (with assessment, feasibility, and strategic alignment), auto-fixes, and (dry-run) submits Initiatives.
+The evaluation runs the `rfe-speedrun` skill with `--type initiative` headlessly against 21 test cases: 16 derived from real RHOAIENG Jira initiatives (the project Initiatives lived in until 2026-10-28) (two of them, `case-007` and `case-013`, retargeted into weak drafts) and five deliberately weak drafts. Each test case provides an objective (prompt + clarifying context), and the pipeline creates, reviews (with assessment, feasibility, and strategic alignment), auto-fixes, and (dry-run) submits Initiatives.
 
 ### Configuration
 

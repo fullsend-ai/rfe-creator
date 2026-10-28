@@ -143,21 +143,21 @@ class TestUnrevisedFlagGuard:
         """The submit-time content guard runs for every type: a set auto_revised on an
         initiative whose body equals its original is lowered before the label is derived."""
         body = "## Objective\n\nSame content.\n"
-        _write(f"{art_dir}/initiative-originals/RHOAIENG-1234.md", body)
+        _write(f"{art_dir}/initiative-originals/RHAISTRAT-1234.md", body)
         _write(
-            f"{art_dir}/initiatives/RHOAIENG-1234.md",
-            f"---\ninitiative_id: RHOAIENG-1234\ntitle: Test Initiative\n"
+            f"{art_dir}/initiatives/RHAISTRAT-1234.md",
+            f"---\ninitiative_id: RHAISTRAT-1234\ntitle: Test Initiative\n"
             f"priority: Major\nstatus: Ready\n---\n{body}",
         )
         _write(
-            f"{art_dir}/initiative-reviews/RHOAIENG-1234-review.md",
-            _default_review("RHOAIENG-1234", auto_revised="true"),
+            f"{art_dir}/initiative-reviews/RHAISTRAT-1234-review.md",
+            _default_review("RHAISTRAT-1234", auto_revised="true"),
         )
 
         stdout, _, rc = _run_submit(art_dir)
         assert rc == 0
         assert (
-            "Lowered auto_revised on 1 item(s) whose text equals the original: RHOAIENG-1234"
+            "Lowered auto_revised on 1 item(s) whose text equals the original: RHAISTRAT-1234"
             in stdout
         )
         assert "auto-revised" not in stdout
@@ -165,7 +165,7 @@ class TestUnrevisedFlagGuard:
 
 class TestNewInitiative:
     def test_new_initiative_would_create(self, art_dir):
-        """INIT-NNN → Would create RHOAIENG Initiative."""
+        """INIT-NNN → Would create RHAISTRAT Initiative."""
         _write(f"{art_dir}/initiatives/INIT-001.md", TASK_FM.format(initiative_id="INIT-001"))
         _write(
             f"{art_dir}/initiative-reviews/INIT-001-review.md",
@@ -175,20 +175,20 @@ class TestNewInitiative:
         stdout, _, rc = _run_submit(art_dir)
         assert rc == 0
         assert "Would create" in stdout
-        assert "RHOAIENG" in stdout
+        assert "RHAISTRAT" in stdout
         assert "Initiative" in stdout
 
 
 class TestExistingInitiative:
     def test_existing_initiative_would_update(self, art_dir):
-        """RHOAIENG-NNNN → Would update."""
+        """RHAISTRAT-NNNN → Would update."""
         _write(
-            f"{art_dir}/initiatives/RHOAIENG-1234.md",
-            TASK_FM.format(initiative_id="RHOAIENG-1234"),
+            f"{art_dir}/initiatives/RHAISTRAT-1234.md",
+            TASK_FM.format(initiative_id="RHAISTRAT-1234"),
         )
         _write(
-            f"{art_dir}/initiative-reviews/RHOAIENG-1234-review.md",
-            _default_review("RHOAIENG-1234"),
+            f"{art_dir}/initiative-reviews/RHAISTRAT-1234-review.md",
+            _default_review("RHAISTRAT-1234"),
         )
 
         stdout, _, rc = _run_submit(art_dir)
@@ -226,8 +226,8 @@ class TestSkipLogic:
     def test_already_submitted_skipped(self, art_dir):
         """Initiative with status=Submitted → excluded from plan."""
         _write(
-            f"{art_dir}/initiatives/RHOAIENG-1234.md",
-            TASK_FM.format(initiative_id="RHOAIENG-1234").replace(
+            f"{art_dir}/initiatives/RHAISTRAT-1234.md",
+            TASK_FM.format(initiative_id="RHAISTRAT-1234").replace(
                 "status: Ready", "status: Submitted"
             ),
         )
@@ -327,15 +327,15 @@ class TestAutoRevisedLabel:
 class TestAutoApprove:
     def test_passing_review_prints_would_transition(self, art_dir):
         """--auto-approve + passing review → prints would-transition."""
-        _write(f"{art_dir}/initiative-originals/RHOAIENG-1234.md", "Original.\n")
+        _write(f"{art_dir}/initiative-originals/RHAISTRAT-1234.md", "Original.\n")
         _write(
-            f"{art_dir}/initiatives/RHOAIENG-1234.md",
-            "---\ninitiative_id: RHOAIENG-1234\ntitle: Test Initiative\n"
+            f"{art_dir}/initiatives/RHAISTRAT-1234.md",
+            "---\ninitiative_id: RHAISTRAT-1234\ntitle: Test Initiative\n"
             "priority: Major\nstatus: Ready\n---\nRevised.",
         )
         _write(
-            f"{art_dir}/initiative-reviews/RHOAIENG-1234-review.md",
-            _default_review("RHOAIENG-1234", auto_revised="true"),
+            f"{art_dir}/initiative-reviews/RHAISTRAT-1234-review.md",
+            _default_review("RHAISTRAT-1234", auto_revised="true"),
         )
 
         stdout, stderr, rc = _run_submit(art_dir, ["--auto-approve"])
@@ -344,15 +344,15 @@ class TestAutoApprove:
 
     def test_failing_review_no_transition(self, art_dir):
         """--auto-approve + failing review → no transition message."""
-        _write(f"{art_dir}/initiative-originals/RHOAIENG-1234.md", "Original.\n")
+        _write(f"{art_dir}/initiative-originals/RHAISTRAT-1234.md", "Original.\n")
         _write(
-            f"{art_dir}/initiatives/RHOAIENG-1234.md",
-            "---\ninitiative_id: RHOAIENG-1234\ntitle: Test Initiative\n"
+            f"{art_dir}/initiatives/RHAISTRAT-1234.md",
+            "---\ninitiative_id: RHAISTRAT-1234\ntitle: Test Initiative\n"
             "priority: Major\nstatus: Ready\n---\nRevised.",
         )
         _write(
-            f"{art_dir}/initiative-reviews/RHOAIENG-1234-review.md",
-            REJECT_REVIEW_FM.format(initiative_id="RHOAIENG-1234"),
+            f"{art_dir}/initiative-reviews/RHAISTRAT-1234-review.md",
+            REJECT_REVIEW_FM.format(initiative_id="RHAISTRAT-1234"),
         )
 
         stdout, stderr, rc = _run_submit(art_dir, ["--auto-approve"])
@@ -490,15 +490,15 @@ class TestContentDiffGuard:
     def test_existing_initiative_no_changes_label_only(self, art_dir):
         """Existing Initiative with identical content and passing review → Label only."""
         body = "## Problem\n\nSame content.\n"
-        _write(f"{art_dir}/initiative-originals/RHOAIENG-1234.md", body)
+        _write(f"{art_dir}/initiative-originals/RHAISTRAT-1234.md", body)
         _write(
-            f"{art_dir}/initiatives/RHOAIENG-1234.md",
-            f"---\ninitiative_id: RHOAIENG-1234\ntitle: Test Initiative\n"
+            f"{art_dir}/initiatives/RHAISTRAT-1234.md",
+            f"---\ninitiative_id: RHAISTRAT-1234\ntitle: Test Initiative\n"
             f"priority: Major\nstatus: Ready\n---\n{body}",
         )
         _write(
-            f"{art_dir}/initiative-reviews/RHOAIENG-1234-review.md",
-            _default_review("RHOAIENG-1234", auto_revised="false"),
+            f"{art_dir}/initiative-reviews/RHAISTRAT-1234-review.md",
+            _default_review("RHAISTRAT-1234", auto_revised="false"),
         )
 
         stdout, _, rc = _run_submit(art_dir)
@@ -509,18 +509,18 @@ class TestContentDiffGuard:
     def test_existing_initiative_with_changes_submitted(self, art_dir):
         """Existing Initiative with different content → update."""
         _write(
-            f"{art_dir}/initiative-originals/RHOAIENG-1234.md",
+            f"{art_dir}/initiative-originals/RHAISTRAT-1234.md",
             "## Problem\n\nOriginal content.\n",
         )
         _write(
-            f"{art_dir}/initiatives/RHOAIENG-1234.md",
-            "---\ninitiative_id: RHOAIENG-1234\ntitle: Test Initiative\n"
+            f"{art_dir}/initiatives/RHAISTRAT-1234.md",
+            "---\ninitiative_id: RHAISTRAT-1234\ntitle: Test Initiative\n"
             "priority: Major\nstatus: Ready\n---\n"
             "## Problem\n\nRevised content with improvements.\n",
         )
         _write(
-            f"{art_dir}/initiative-reviews/RHOAIENG-1234-review.md",
-            _default_review("RHOAIENG-1234", auto_revised="true"),
+            f"{art_dir}/initiative-reviews/RHAISTRAT-1234-review.md",
+            _default_review("RHAISTRAT-1234", auto_revised="true"),
         )
 
         stdout, _, rc = _run_submit(art_dir)
@@ -550,12 +550,12 @@ class TestTypeConfigProjection:
     in key order (the rfe twin and the shared invariants live in tests/test_submit.py)."""
 
     INITIATIVE = {
-        "project": "RHOAIENG",
+        "project": "RHAISTRAT",
         "issue_type": "Initiative",
         "type_label": "Initiative",
         "id_field": "initiative_id",
         "local_prefix": "INIT-",
-        "jira_prefix": "RHOAIENG-",
+        "jira_prefix": "RHAISTRAT-",
         "tasks_dir": "initiatives",
         "reviews_dir": "initiative-reviews",
         "originals_dir": "initiative-originals",

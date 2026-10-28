@@ -2677,7 +2677,7 @@ class TestLaunchWaveFile:
 
     CASES = [
         ("rfe", "RHAIRFE", 25, "rfe-scorer"),
-        ("initiative", "RHOAIENG", 17, "initiative-scorer"),  # 2 parallel: ceil(50/3) = 17 ids
+        ("initiative", "RHAISTRAT", 17, "initiative-scorer"),  # 2 parallel: ceil(50/3) = 17 ids
     ]
 
     def _wave(self, monkeypatch, pipeline_type, key, n):
@@ -2787,7 +2787,7 @@ class TestLaunchWaveFile:
             out = read_launch("--agent", bad)
             assert out.returncode == 1 and f"agent_count: {2 * n_ids}" in out.stderr
 
-    @pytest.mark.parametrize("pipeline_type,key", [("rfe", "RHAIRFE"), ("initiative", "RHOAIENG")])
+    @pytest.mark.parametrize("pipeline_type,key", [("rfe", "RHAIRFE"), ("initiative", "RHAISTRAT")])
     @pytest.mark.parametrize(
         "phase", ["REVIEW", "REASSESS_REVIEW", "SPLIT_REVIEW", "SPLIT_RE_REVIEW", "ASSESS"]
     )
@@ -2824,7 +2824,7 @@ class TestLaunchWaveFile:
     def test_a_wave_too_big_for_the_listing_is_cut_and_the_rest_follows(self, tmp_dir, monkeypatch):
         import yaml as _yaml
 
-        ids = [f"RHOAIENG-{1000 + i}" for i in range(50)]
+        ids = [f"RHAISTRAT-{1000 + i}" for i in range(50)]
         write_ids("tmp/pipeline-active-ids.txt", ids)
         ps._save_state(make_state(phase="REVIEW", type="initiative", batch=1))
         monkeypatch.setattr(ps, "_run_script", lambda cmd: "")
@@ -2900,17 +2900,18 @@ class TestLaunchWaveFile:
         assert ps._load_state()["wave_ordinal"] == 1
 
     def test_the_total_counts_every_cut_wave(self, tmp_dir, monkeypatch):
-        """An initiative REVIEW batch of 100 ids is cut to the listing budget into three waves:
-        the total is exact from the first call, and each wave reads its own number."""
-        ids = [f"RHOAIENG-{1000 + i}" for i in range(100)]
+        """An initiative REVIEW batch of 100 ids is cut to the listing budget into four waves
+        (RHAISTRAT- keys; three with the shorter RHOAIENG- keys before 2026-10-28): the total
+        is exact from the first call, and each wave reads its own number."""
+        ids = [f"RHAISTRAT-{1000 + i}" for i in range(100)]
         write_ids("tmp/pipeline-active-ids.txt", ids)
         ps._save_state(make_state(phase="REVIEW", type="initiative", batch=1, batch_size=100))
         monkeypatch.setattr(ps, "_run_script", lambda cmd: "")
         seen = []
-        for n in (1, 2, 3):
+        for n in (1, 2, 3, 4):
             result = _run_next_action()
             wave = read_ids(ps.WAVE_IDS_FILE)
-            assert result["message"] == f"REVIEW: wave {n}/3 ({len(wave)} IDs)"
+            assert result["message"] == f"REVIEW: wave {n}/4 ({len(wave)} IDs)"
             seen.extend(wave)
             _finish_wave(ps._load_state(), wave)
         assert seen == ids
@@ -3393,7 +3394,7 @@ class TestValidateIds:
     """Every id list is interpolated into shell=True commands, so _read_ids validates."""
 
     def test_accepts_every_id_shape_the_pipeline_produces(self):
-        ids = ["RFE-001", "INIT-004", "RHAIRFE-2685", "RHOAIENG-9876", "RHAISTRAT-42"]
+        ids = ["RFE-001", "INIT-004", "RHAIRFE-2685", "RHAISTRAT-9876", "RHAISTRAT-42"]
         assert ps._validate_ids(ids) == ids
 
     @pytest.mark.parametrize(
@@ -4722,18 +4723,18 @@ class TestWaveStall:
     def test_initiative_stub_uses_its_id_field_and_score_fields(
         self, stall_dir, monkeypatch, capsys
     ):
-        self._assess(["RHOAIENG-1002"], pipeline_type="initiative")
+        self._assess(["RHAISTRAT-1002"], pipeline_type="initiative")
         monkeypatch.setenv("PIPELINE_WAVE_RETRY_CAP", "0")
-        clock, pending = _Clock(), {"RHOAIENG-1002"}
+        clock, pending = _Clock(), {"RHAISTRAT-1002"}
         _arm(monkeypatch, clock, pending)
         assert _drive() == 10
         from artifact_utils import read_frontmatter
 
-        data, _ = read_frontmatter("artifacts/initiative-reviews/RHOAIENG-1002-review.md")
-        assert data == _expected_stub("initiative", "RHOAIENG-1002", "assess_stalled")
-        assert data["initiative_id"] == "RHOAIENG-1002"
+        data, _ = read_frontmatter("artifacts/initiative-reviews/RHAISTRAT-1002-review.md")
+        assert data == _expected_stub("initiative", "RHAISTRAT-1002", "assess_stalled")
+        assert data["initiative_id"] == "RHAISTRAT-1002"
         assert "scope" in data["scores"] and "not_a_task" not in data["scores"]
-        assert not os.path.exists("artifacts/rfe-reviews/RHOAIENG-1002-review.md")
+        assert not os.path.exists("artifacts/rfe-reviews/RHAISTRAT-1002-review.md")
         _, lines = _stall_lines(capsys)
         assert lines[0].startswith(
             "wait-for-wave: STALL in ASSESS"

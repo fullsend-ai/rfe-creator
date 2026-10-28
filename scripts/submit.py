@@ -221,7 +221,7 @@ def _is_existing(data, id_field, type_name, binding, registry=None, env=None):
     present it decides — a reference the resolved type's effective binding owns
     (``_owned_key``) is an existing issue; one it does NOT own is a ``TrackerRefError`` naming
     the id, the reference, the resolved type and the type that owns it (a ``type: rfe``
-    artifact carrying ``tracker_ref: RHOAIENG-123`` is never an update and never a create:
+    artifact carrying ``tracker_ref: RHAISTRAT-123`` is never an update and never a create:
     main() raises this before the first Jira write). Absent (a pre-migration artifact), the
     fallback is membership of the id in the effective ``key_prefixes`` union — with no
     override exactly the single-prefix ``startswith`` this replaces.
@@ -1255,7 +1255,7 @@ def main():
         ``Archived``, which is what the split skill leaves behind for the parent it decomposed
         (a Jira parent split in this run, or a local draft split before submit whose own
         parent is in Jira). A ``parent_key`` that names a Jira issue with no task here is not
-        a split: a batch entry's RHOAIENG Outcome above a new Initiative, say, is a hierarchy
+        a split: a batch entry's RHAISTRAT Outcome above a new Initiative, say, is a hierarchy
         link the create step forwards as Jira's ``parent``. Before this rule such a task was in
         no plan at all — not a split parent for Phase 1, excluded from Phase 2 — and a batch
         run ended green without ever creating it.

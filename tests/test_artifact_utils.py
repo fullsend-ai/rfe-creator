@@ -766,7 +766,7 @@ class TestInitiativeValidate:
         assert any("initiative_id" in e for e in errors)
 
     def test_initiative_task_accepts_rhoaieng_id(self):
-        data = {**VALID_INITIATIVE_TASK_FM, "initiative_id": "RHOAIENG-5000"}
+        data = {**VALID_INITIATIVE_TASK_FM, "initiative_id": "RHAISTRAT-5000"}
         errors = validate(data, "initiative-task")
         assert errors == []
 
@@ -855,9 +855,9 @@ class TestRenamePersistsLocalId:
             "initiative-task",
         )
 
-        rename_initiative_to_jira_key("artifacts", "INIT-001", "RHOAIENG-1234")
+        rename_initiative_to_jira_key("artifacts", "INIT-001", "RHAISTRAT-1234")
 
-        data, _ = read_frontmatter("artifacts/initiatives/RHOAIENG-1234.md")
+        data, _ = read_frontmatter("artifacts/initiatives/RHAISTRAT-1234.md")
         assert data["local_id"] == "INIT-001"
 
     def test_local_id_pattern_rejects_jira_keys(self):
@@ -891,9 +891,9 @@ class TestRenameRejectsMalformedIds:
     def test_initiative_guards(self, tmp_dir):
         os.makedirs("artifacts/initiatives")
         with pytest.raises(ValueError, match="invalid Jira key"):
-            rename_initiative_to_jira_key("artifacts", "INIT-001", "RHOAIENG-1/../2")
+            rename_initiative_to_jira_key("artifacts", "INIT-001", "RHAISTRAT-1/../2")
         with pytest.raises(ValueError, match="invalid local id"):
-            rename_initiative_to_jira_key("artifacts", "INIT-001x", "RHOAIENG-1234")
+            rename_initiative_to_jira_key("artifacts", "INIT-001x", "RHAISTRAT-1234")
 
 
 class TestRenameInitiativeToJiraKey:
@@ -918,19 +918,19 @@ class TestRenameInitiativeToJiraKey:
     def test_comments_companion_keeps_its_suffix(self, tmp_dir):
         self._setup(tmp_dir, ["INIT-001-comments.md"])
 
-        rename_initiative_to_jira_key("artifacts", "INIT-001", "RHOAIENG-1234")
+        rename_initiative_to_jira_key("artifacts", "INIT-001", "RHAISTRAT-1234")
 
-        assert os.path.exists("artifacts/initiatives/RHOAIENG-1234-comments.md")
-        with open("artifacts/initiatives/RHOAIENG-1234-comments.md") as f:
+        assert os.path.exists("artifacts/initiatives/RHAISTRAT-1234-comments.md")
+        with open("artifacts/initiatives/RHAISTRAT-1234-comments.md") as f:
             assert f.read() == "contents of INIT-001-comments.md\n"
 
     def test_task_file_survives_companion_rename(self, tmp_dir):
         self._setup(tmp_dir, ["INIT-001-comments.md"])
 
-        rename_initiative_to_jira_key("artifacts", "INIT-001", "RHOAIENG-1234")
+        rename_initiative_to_jira_key("artifacts", "INIT-001", "RHAISTRAT-1234")
 
-        data, _ = read_frontmatter("artifacts/initiatives/RHOAIENG-1234.md")
-        assert data["initiative_id"] == "RHOAIENG-1234"
+        data, _ = read_frontmatter("artifacts/initiatives/RHAISTRAT-1234.md")
+        assert data["initiative_id"] == "RHAISTRAT-1234"
         assert data["status"] == "Submitted"
 
     def test_removed_context_companions_still_handled(self, tmp_dir):
@@ -939,11 +939,11 @@ class TestRenameInitiativeToJiraKey:
             ["INIT-001-removed-context.yaml", "INIT-001-removed-context.md"],
         )
 
-        rename_initiative_to_jira_key("artifacts", "INIT-001", "RHOAIENG-1234")
+        rename_initiative_to_jira_key("artifacts", "INIT-001", "RHAISTRAT-1234")
 
-        assert os.path.exists("artifacts/initiatives/RHOAIENG-1234-removed-context.yaml")
-        assert os.path.exists("artifacts/initiatives/RHOAIENG-1234-removed-context.md")
-        assert os.path.exists("artifacts/initiatives/RHOAIENG-1234.md")
+        assert os.path.exists("artifacts/initiatives/RHAISTRAT-1234-removed-context.yaml")
+        assert os.path.exists("artifacts/initiatives/RHAISTRAT-1234-removed-context.md")
+        assert os.path.exists("artifacts/initiatives/RHAISTRAT-1234.md")
 
 
 # ── Registry-derived generics (PR-2b) ────────────────────────────────────────
@@ -993,7 +993,7 @@ class TestScanGenerics:
                 "artifacts/rfe-tasks/RFE-003.md": "---\nbogus: 1\n---\n",
                 "artifacts/rfe-tasks/notes.txt": "x\n",
                 # initiative: mirror shape
-                "artifacts/initiatives/RHOAIENG-9.md": _task_fm("initiative_id", "RHOAIENG-9"),
+                "artifacts/initiatives/RHAISTRAT-9.md": _task_fm("initiative_id", "RHAISTRAT-9"),
                 "artifacts/initiatives/INIT-002.md": _task_fm("initiative_id", "INIT-002"),
                 "artifacts/initiatives/INIT-001.md": _task_fm(
                     "initiative_id", "INIT-001", status="Archived"
@@ -1017,7 +1017,7 @@ class TestScanGenerics:
         rfe_ids = [d["rfe_id"] for _, d in scan_task_files("artifacts")]
         assert rfe_ids == ["RFE-001", "RFE-002", "RHAIRFE-1595"]
         init_ids = [d["initiative_id"] for _, d in scan_initiative_task_files("artifacts")]
-        assert init_ids == ["INIT-001", "INIT-002", "RHOAIENG-9"]
+        assert init_ids == ["INIT-001", "INIT-002", "RHAISTRAT-9"]
         capsys.readouterr()
 
     def test_companions_and_non_markdown_are_skipped(self, tmp_dir, capsys):
@@ -1083,9 +1083,9 @@ class TestRenameGenerics:
         self._populate("a")
         self._populate("b")
         rename_to_jira_key("a", "RFE-001", "RHAIRFE-99999")
-        rename_initiative_to_jira_key("a", "INIT-001", "RHOAIENG-99999")
+        rename_initiative_to_jira_key("a", "INIT-001", "RHAISTRAT-99999")
         rename_to_tracker_key("b", "RFE-001", "RHAIRFE-99999", RFE)
-        rename_to_tracker_key("b", "INIT-001", "RHOAIENG-99999", INITIATIVE)
+        rename_to_tracker_key("b", "INIT-001", "RHAISTRAT-99999", INITIATIVE)
         assert _snapshot("a") == _snapshot("b")
         renamed = set(_snapshot("a"))
         assert {
@@ -1096,10 +1096,10 @@ class TestRenameGenerics:
             "rfe-tasks/RFE-0010.md",  # RFE-001 is not a prefix of RFE-0010-
             "rfe-reviews/RHAIRFE-99999-review.md",
             "rfe-reviews/RFE-001-feasibility.md",  # not a -review.md
-            "initiatives/RHOAIENG-99999.md",
-            "initiatives/RHOAIENG-99999-comments.md",
-            "initiatives/RHOAIENG-99999-removed-context.yaml",
-            "initiative-reviews/RHOAIENG-99999-review.md",
+            "initiatives/RHAISTRAT-99999.md",
+            "initiatives/RHAISTRAT-99999-comments.md",
+            "initiatives/RHAISTRAT-99999-removed-context.yaml",
+            "initiative-reviews/RHAISTRAT-99999-review.md",
             "initiative-reviews/INIT-001-feasibility.md",
         } == renamed
         task, _ = read_frontmatter("a/rfe-tasks/RHAIRFE-99999.md")
@@ -1110,9 +1110,9 @@ class TestRenameGenerics:
         )
         review, _ = read_frontmatter("a/rfe-reviews/RHAIRFE-99999-review.md")
         assert (review["rfe_id"], review["local_id"]) == ("RHAIRFE-99999", "RFE-001")
-        init, _ = read_frontmatter("a/initiatives/RHOAIENG-99999.md")
+        init, _ = read_frontmatter("a/initiatives/RHAISTRAT-99999.md")
         assert (init["initiative_id"], init["status"], init["local_id"]) == (
-            "RHOAIENG-99999",
+            "RHAISTRAT-99999",
             "Submitted",
             "INIT-001",
         )
@@ -1125,18 +1125,18 @@ class TestRenameGenerics:
             (RFE, "../RFE-001", "RHAIRFE-1", "rename_to_jira_key: invalid local id '../RFE-001'"),
             (RFE, "RFE-001", "RHAIRFE-1/x", "rename_to_jira_key: invalid Jira key 'RHAIRFE-1/x'"),
             (RFE, "INIT-001", "RHAIRFE-1", "rename_to_jira_key: invalid local id 'INIT-001'"),
-            (RFE, "RFE-001", "RHOAIENG-1", "rename_to_jira_key: invalid Jira key 'RHOAIENG-1'"),
+            (RFE, "RFE-001", "RHAISTRAT-1", "rename_to_jira_key: invalid Jira key 'RHAISTRAT-1'"),
             (
                 INITIATIVE,
                 "INIT-001x",
-                "RHOAIENG-1",
+                "RHAISTRAT-1",
                 "rename_initiative_to_jira_key: invalid local id 'INIT-001x'",
             ),
             (
                 INITIATIVE,
                 "INIT-001",
-                "RHOAIENG-1/../2",
-                "rename_initiative_to_jira_key: invalid Jira key 'RHOAIENG-1/../2'",
+                "RHAISTRAT-1/../2",
+                "rename_initiative_to_jira_key: invalid Jira key 'RHAISTRAT-1/../2'",
             ),
         ]
         wrappers = {"rfe": rename_to_jira_key, "initiative": rename_initiative_to_jira_key}
@@ -1174,13 +1174,13 @@ class TestRenameGenerics:
             VALID_INITIATIVE_REVIEW_FM.copy(),
             "initiative-review",
         )
-        rename_to_tracker_key("artifacts", "INIT-001", "RHOAIENG-7", INITIATIVE)
+        rename_to_tracker_key("artifacts", "INIT-001", "RHAISTRAT-7", INITIATIVE)
         assert os.listdir("artifacts/initiative-reviews") == ["INIT-001-some-slug-review.md"]
 
     def test_missing_dirs_are_tolerated(self, tmp_dir):
         os.makedirs("artifacts")
         rename_to_tracker_key("artifacts", "RFE-001", "RHAIRFE-1", RFE)
-        rename_to_tracker_key("artifacts", "INIT-001", "RHOAIENG-1", INITIATIVE)
+        rename_to_tracker_key("artifacts", "INIT-001", "RHAISTRAT-1", INITIATIVE)
         assert os.listdir("artifacts") == []
 
 
@@ -1227,17 +1227,17 @@ class TestParseChildGenerics:
 
 class TestLookupsUseDetect:
     """find_review_file / find_removed_context_yaml route by TypeRegistry.detect(); every
-    id that is not INIT-/RHOAIENG- (incl. a peer pipeline's RHAISTRAT- key and a malformed
+    id that is not INIT-/RHAISTRAT- (incl. a peer pipeline's RHAISTRAT- key and a malformed
     local id) keeps going to the rfe dirs, exactly like the prefix sniff they replace."""
 
     IDS = [
         ("RFE-001", "rfe"),
         ("RHAIRFE-1595", "rfe"),
-        ("RHAISTRAT-42", "rfe"),
+        ("RHOAIENG-42", "rfe"),
         ("RFE-x", "rfe"),
         ("", "rfe"),
         ("INIT-001", "initiative"),
-        ("RHOAIENG-1234", "initiative"),
+        ("RHAISTRAT-1234", "initiative"),
         ("INIT-x", "initiative"),
     ]
 
@@ -1259,7 +1259,7 @@ class TestLookupsUseDetect:
                 _write(f"artifacts/{d}/{ident}-removed-context.yaml", "blocks: []\n")
         for ident, owner in self.IDS:
             path = find_removed_context_yaml("artifacts", ident)
-            if ident in ("RHAISTRAT-42", ""):
+            if ident in ("RHOAIENG-42", ""):
                 # rfe dir, but the inner prefix test (RHAIRFE-/RFE-) rejects the id
                 assert path is None, ident
             else:
@@ -1464,7 +1464,7 @@ class TestTypeForProbesTheTaskFrontmatter:
             artifact_utils, "_declared_type", lambda path: pytest.fail(f"probed {path}")
         )
         for ident, owner in TestLookupsUseDetect.IDS:
-            if ident in ("RHAISTRAT-42", ""):
+            if ident in ("RHOAIENG-42", ""):
                 continue  # provisional / no candidate: probed (and unrouted) below
             assert artifact_utils._type_for(ident).name == owner, ident
 
@@ -1551,7 +1551,7 @@ class TestTypeForProbesTheTaskFrontmatter:
         monkeypatch.setattr(
             artifact_utils, "_declared_type", lambda path: pytest.fail(f"probed {path}")
         )
-        assert artifact_utils._type_for("RHAISTRAT-1/../x").name == "rfe"
+        assert artifact_utils._type_for("RHOAIENG-1/../x").name == "rfe"
 
 
 class TestFindTaskFileDescriptorForm:
@@ -1567,12 +1567,12 @@ class TestFindTaskFileDescriptorForm:
         "artifacts/rfe-tasks/RFE-x.md": ("rfe_id", "RFE-x"),
         "artifacts/initiatives/INIT-001.md": ("initiative_id", "INIT-001"),
         "artifacts/initiatives/INIT-002-slug.md": ("initiative_id", "INIT-002"),
-        "artifacts/initiatives/RHOAIENG-1.md": ("initiative_id", "RHOAIENG-1"),
-        "artifacts/initiatives/RHAISTRAT-42.md": ("initiative_id", "RHAISTRAT-42"),
+        "artifacts/initiatives/RHAISTRAT-1.md": ("initiative_id", "RHAISTRAT-1"),
+        "artifacts/initiatives/RHOAIENG-42.md": ("initiative_id", "RHOAIENG-42"),  # unowned
     }
     IDS = [
         "RFE-001", "RFE-002", "RHAIRFE-1", "RHAIRFE-2", "RFE-x", "INIT-001", "INIT-002",
-        "RHOAIENG-1", "RHAISTRAT-42", "RFE-404", "",
+        "RHAISTRAT-1", "RHOAIENG-42", "RFE-404", "",
     ]  # fmt: skip
 
     def _populate(self):
@@ -1592,7 +1592,7 @@ class TestFindTaskFileDescriptorForm:
             ("rfe", "RFE-x"): "artifacts/rfe-tasks/RFE-x.md",  # parity rung: local prefix
             ("initiative", "INIT-001"): "artifacts/initiatives/INIT-001.md",
             ("initiative", "INIT-002"): "artifacts/initiatives/INIT-002-slug.md",
-            ("initiative", "RHOAIENG-1"): "artifacts/initiatives/RHOAIENG-1.md",
+            ("initiative", "RHAISTRAT-1"): "artifacts/initiatives/RHAISTRAT-1.md",
         }
         for desc in (RFE, INITIATIVE):
             bare = desc.dirs("bare")["tasks"]
@@ -1771,7 +1771,7 @@ class TestRenameStampsSelfDescribingFields:
         )
         before = _snapshot("artifacts")
         with pytest.raises(ValueError) as exc:
-            rename_initiative_to_jira_key("artifacts", "INIT-001", "RHOAIENG-1")
+            rename_initiative_to_jira_key("artifacts", "INIT-001", "RHAISTRAT-1")
         assert str(exc.value) == (
             "rename_initiative_to_jira_key: artifacts/initiatives/INIT-001.md declares "
             "type='rfe', expected initiative; nothing renamed"
@@ -1789,15 +1789,15 @@ class TestRenameStampsSelfDescribingFields:
             VALID_INITIATIVE_REVIEW_FM.copy(),
             "initiative-review",
         )
-        rename_initiative_to_jira_key("artifacts", "INIT-001", "RHOAIENG-1234")
+        rename_initiative_to_jira_key("artifacts", "INIT-001", "RHAISTRAT-1234")
         for path in (
-            "artifacts/initiatives/RHOAIENG-1234.md",
-            "artifacts/initiative-reviews/RHOAIENG-1234-review.md",
+            "artifacts/initiatives/RHAISTRAT-1234.md",
+            "artifacts/initiative-reviews/RHAISTRAT-1234-review.md",
         ):
             data, _ = read_frontmatter(path)
             assert list(data)[-2:] == ["type", "tracker_ref"], path
-            assert (data["type"], data["tracker_ref"]) == ("initiative", "RHOAIENG-1234")
-            assert (data["initiative_id"], data["local_id"]) == ("RHOAIENG-1234", "INIT-001")
+            assert (data["type"], data["tracker_ref"]) == ("initiative", "RHAISTRAT-1234")
+            assert (data["initiative_id"], data["local_id"]) == ("RHAISTRAT-1234", "INIT-001")
 
     def test_renamed_files_validate_and_the_wrappers_agree_with_the_generic(self, tmp_dir):
         self._draft("a")
@@ -2044,7 +2044,7 @@ class TestEffectiveIdGrammar:
         assert pattern == r"^(RFE-\d+|KONFLUX-\d+|RHAIRFE-\d+)$"
         for ident in ("RFE-001", "KONFLUX-1", "RHAIRFE-1"):
             assert re.fullmatch(pattern, ident), ident
-        for ident in ("RHOAIENG-1", "KONFLUX-", "konflux-1", "INIT-001"):
+        for ident in ("RHAISTRAT-1", "KONFLUX-", "konflux-1", "INIT-001"):
             assert not re.fullmatch(pattern, ident), ident
         task, review = artifact_utils._task_schema(desc), artifact_utils._review_schema(desc)
         assert task["rfe_id"]["pattern"] == review["rfe_id"]["pattern"] == pattern
@@ -2077,7 +2077,7 @@ class TestEffectiveIdGrammar:
             "print(json.dumps([a.SCHEMAS['rfe-task']['parent_key']['pattern'], "
             "a.validate({**fm, 'parent_key': 'KONFLUX-1'}, 'rfe-task'), "
             "a.validate({**fm, 'parent_key': 'RHAIRFE-1'}, 'rfe-task'), "
-            "a.validate({**fm, 'parent_key': 'RHOAIENG-1'}, 'rfe-task')]))"
+            "a.validate({**fm, 'parent_key': 'RHAISTRAT-1'}, 'rfe-task')]))"
         )
         result = subprocess.run(
             [sys.executable, "-c", code],
@@ -2090,7 +2090,7 @@ class TestEffectiveIdGrammar:
         pattern, konflux, rhairfe, rhoaieng = json.loads(result.stdout)
         assert pattern == r"^(KONFLUX-\d+|RFE-\d+|RHAIRFE-\d+)$"
         assert konflux == [] and rhairfe == []
-        assert rhoaieng == [f"parent_key: 'RHOAIENG-1' does not match {pattern}"]
+        assert rhoaieng == [f"parent_key: 'RHAISTRAT-1' does not match {pattern}"]
         fm = {"rfe_id": "RFE-001", "title": "T", "priority": "Major", "status": "Ready"}
         assert validate({**fm, "parent_key": "KONFLUX-1"}, "rfe-task") == [
             f"parent_key: 'KONFLUX-1' does not match {SCHEMAS['rfe-task']['parent_key']['pattern']}"
@@ -2114,7 +2114,7 @@ class TestEffectiveIdGrammar:
             "a.SCHEMAS['initiative-task']['initiative_id']['pattern'], "
             "a.validate({'rfe_id': 'KONFLUX-1', **fm}, 'rfe-task'), "
             "a.validate({'rfe_id': 'RHAIRFE-1', **fm}, 'rfe-task'), "
-            "a.validate({'rfe_id': 'RHOAIENG-1', **fm}, 'rfe-task')]))"
+            "a.validate({'rfe_id': 'RHAISTRAT-1', **fm}, 'rfe-task')]))"
         )
         result = subprocess.run(
             [sys.executable, "-c", code],
@@ -2128,7 +2128,7 @@ class TestEffectiveIdGrammar:
         assert rfe_pattern == r"^(RFE-\d+|KONFLUX-\d+|RHAIRFE-\d+)$"
         assert init_pattern == SCHEMAS["initiative-task"]["initiative_id"]["pattern"]
         assert konflux == [] and rhairfe == []
-        assert rhoaieng == [f"rfe_id: 'RHOAIENG-1' does not match {rfe_pattern}"]
+        assert rhoaieng == [f"rfe_id: 'RHAISTRAT-1' does not match {rfe_pattern}"]
         # In this process (no override) the overridden key is not an rfe id.
         assert validate(
             {"rfe_id": "KONFLUX-1", "title": "T", "priority": "Major", "status": "Ready"},

@@ -36,12 +36,12 @@ class TestDetectSchemaType:
             ("artifacts/rfe-reviews/RFE-001-review.md", "rfe-review"),
             ("rfe-reviews/RHAIRFE-1595-review.md", "rfe-review"),
             ("artifacts/initiatives/INIT-001.md", "initiative-task"),
-            ("initiatives/RHOAIENG-1.md", "initiative-task"),
+            ("initiatives/RHAISTRAT-1.md", "initiative-task"),
             ("artifacts/initiative-reviews/INIT-001-review.md", "initiative-review"),
-            ("/abs/artifacts/initiative-reviews/RHOAIENG-1-review.md", "initiative-review"),
+            ("/abs/artifacts/initiative-reviews/RHAISTRAT-1-review.md", "initiative-review"),
             # Not a task/review dir: originals, staging, anything else.
             ("artifacts/rfe-originals/RHAIRFE-1595.md", None),
-            ("artifacts/initiative-originals/RHOAIENG-1.md", None),
+            ("artifacts/initiative-originals/RHAISTRAT-1.md", None),
             ("tmp/rfe-assess/single/RFE-001.md", None),
             ("RFE-001.md", None),
         ],
@@ -154,15 +154,15 @@ LEGACY = {
         ("auto_revised", "false", "true"),
     ),
     "initiative-task": (
-        "artifacts/initiatives/RHOAIENG-12345.md",
-        "---\ninitiative_id: RHOAIENG-12345\ntitle: Legacy initiative\npriority: Normal\n"
+        "artifacts/initiatives/RHAISTRAT-12345.md",
+        "---\ninitiative_id: RHAISTRAT-12345\ntitle: Legacy initiative\npriority: Normal\n"
         "status: Ready\nparent_key: RHAISTRAT-42\nlocal_id: null\noriginal_labels: null\n"
         "---\n\nBody.\n",
         ("status", "Ready", "Submitted"),
     ),
     "initiative-review": (
-        "artifacts/initiative-reviews/RHOAIENG-12345-review.md",
-        "---\ninitiative_id: RHOAIENG-12345\nscore: 7\npass: true\nrecommendation: submit\n"
+        "artifacts/initiative-reviews/RHAISTRAT-12345-review.md",
+        "---\ninitiative_id: RHAISTRAT-12345\nscore: 7\npass: true\nrecommendation: submit\n"
         "feasibility: feasible\nauto_revised: false\nneeds_attention: false\nscores:\n"
         "  what: 2\n  why: 1\n  scope: 1\n  open_to_how: 2\n  right_sized: 1\n"
         "alignment: weak\nlocal_id: null\nerror: null\nbefore_score: null\n"

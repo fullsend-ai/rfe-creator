@@ -448,7 +448,7 @@ subtree name is the descriptor field `snapshot.results_subdir`
 | Type | `snapshot.results_subdir` | Runs | `latest` |
 |------|---------------------------|------|----------|
 | `rfe` | `""` — the root, grandfathered: the repository's history and the production `latest` live there | `<ts>/` | `latest` |
-| `initiative` | `initiative-rhoaieng` | `initiative-rhoaieng/<ts>/` | `initiative-rhoaieng/latest` |
+| `initiative` | `initiative-rhaistrat` | `initiative-rhaistrat/<ts>/` | `initiative-rhaistrat/latest` |
 
 A subtree is named `<type>-<project lowercased>`: the Jira project is part
 of the name because a second deployment of the same type against another
@@ -473,7 +473,7 @@ reads the same field the same way. On the read side:
   subtree's `latest`, then walks its run directories backwards for the
   type's `<snapshot.prefix>*.yaml`. Only a name that parses as
   `YYYYMMDD-HHMMSS` is a run directory (the rule `bootstrap_snapshot.py`
-  applies too), so the rfe read at the root never enters `initiative-rhoaieng/`,
+  applies too), so the rfe read at the root never enters `initiative-rhaistrat/`,
   `test-data/` or a hand-made `test-run/`, whatever they hold; the
   subtree-name grammar (a letter first) guarantees no subdir can parse
   as a run, and gate 1 refuses `latest`, `test-data` and `test-run` as
@@ -493,7 +493,7 @@ Two consequences worth knowing:
   has had, is what spares `rfe` this.
 - **A manual baseline for a subtree needs a full clone.**
   `bootstrap_snapshot.py` takes the subtree as its results directory:
-  `python3 scripts/bootstrap_snapshot.py "<jql>" --type initiative --results-dir <full clone>/initiative-rhoaieng`.
+  `python3 scripts/bootstrap_snapshot.py "<jql>" --type initiative --results-dir <full clone>/initiative-rhaistrat`.
   Its partial-clone probe (`_run_dir_has_snapshots`) is rfe-prefixed for
   every type (grandfathered, see the adoption table in
   `docs/work-item-types-development.md`),

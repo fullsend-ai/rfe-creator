@@ -196,7 +196,7 @@ def _parent_key_pattern(desc):
     ``Descriptor.parent_key_pattern_effective``, the one join the batch validator
     (validate_batch_input.py) applies too, so the task schema and the batch rule cannot diverge
     (PR-1 decision Q14, reconciled in PR-3b). Reproduces the pre-registry literal for both
-    shipped types (rfe: RFE-/RHAIRFE-; initiative: RHAISTRAT-/RHOAIENG-/INIT-); under a project
+    shipped types (rfe: RFE-/RHAIRFE-; initiative: RHAISTRAT-/INIT-); under a project
     override the effective write prefix joins first (``^(KONFLUX-\\d+|RFE-\\d+|RHAIRFE-\\d+)$``)
     so a child of a parent fetched under the override validates — the descriptor join byte for
     byte with no override, and under a malformed one (see ``_effective_binding``). A shipped type
@@ -838,13 +838,13 @@ def _type_for(identifier, artifacts_dir="artifacts"):
     """The descriptor that owns ``identifier`` for the id-only routers (design §5, D5).
 
     ``TypeRegistry.candidates`` decides: a single non-provisional candidate wins outright
-    (every RFE-/RHAIRFE-/INIT-/RHOAIENG- id, no disk access). When the candidates are
+    (every RFE-/RHAIRFE-/INIT-/RHAISTRAT- id, no disk access). When the candidates are
     ambiguous (two types matching at the same rung) or provisional (a key that only the
     tracker's generic grammar admits, e.g. an overridden project's ``KONFLUX-1``), each
     candidate's ``dirs.tasks/<identifier>.md`` under ``artifacts_dir`` is probed for the
     ``type:`` its frontmatter declares (PR-3c self-describing artifacts) and a match wins.
     Otherwise today's rule stands: ``TypeRegistry.detect`` else rfe — the default branch of
-    the prefix sniffs this replaced (anything that was not INIT-/RHOAIENG- went to the rfe
+    the prefix sniffs this replaced (anything that was not INIT-/RHAISTRAT- went to the rfe
     dirs), so every pre-migration id routes exactly as before. ``candidates()`` reads every
     type's effective binding; under a malformed ``RFE_CREATOR_BINDING_*`` value (the entry
     scripts' error, see ``_effective_binding``) that fallback applies directly.
@@ -1121,7 +1121,7 @@ def _reject_declared_type_conflict(path, desc, label):
 def rename_to_tracker_key(artifacts_dir, item_id, tracker_key, desc):
     """Rename a submitted item's files from its local id to its tracker key.
 
-    ``RFE-NNN.md`` -> ``RHAIRFE-NNNN.md`` (``INIT-NNN.md`` -> ``RHOAIENG-NNNN.md``): the
+    ``RFE-NNN.md`` -> ``RHAIRFE-NNNN.md`` (``INIT-NNN.md`` -> ``RHAISTRAT-NNNN.md``): the
     task file, its companion files and the review file under the type's ``dirs``. The
     task file's frontmatter becomes ``{<id_field>: tracker_key, status: Submitted,
     local_id: item_id}`` and the review file's ``{<id_field>: tracker_key, local_id:
@@ -1260,7 +1260,7 @@ def rename_to_jira_key(artifacts_dir, rfe_id, jira_key):
 
 
 def rename_initiative_to_jira_key(artifacts_dir, initiative_id, jira_key):
-    """Rename INIT-NNN.md files to RHOAIENG-NNNN.md after submission —
+    """Rename INIT-NNN.md files to RHAISTRAT-NNNN.md after submission —
     ``rename_to_tracker_key`` for the initiative type."""
     rename_to_tracker_key(artifacts_dir, initiative_id, jira_key, _TYPES.get("initiative"))
 

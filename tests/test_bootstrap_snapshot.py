@@ -1198,12 +1198,12 @@ class TestBootstrapIntegration:
         """The walk-back must read reports through the type config — the
         initiative report is initiative-run-<ts>.yaml with per_initiative."""
         url, server = mock_jira
-        server.issues = {"RHOAIENG-1": "Initiative one."}
+        server.issues = {"RHAISTRAT-1": "Initiative one."}
         results = _make_results_dir(
             tmp_path, ["20260331-110000", "20260401-120000"], latest="20260401-120000"
         )
         for run, items in (
-            ("20260331-110000", [{"id": "RHOAIENG-1", "recommendation": "submit"}]),
+            ("20260331-110000", [{"id": "RHAISTRAT-1", "recommendation": "submit"}]),
             ("20260401-120000", []),
         ):
             _write(
@@ -1215,7 +1215,7 @@ class TestBootstrapIntegration:
 
         # The JQL must name the initiative project: bootstrap runs the JQL/binding check too.
         r = self._run_bootstrap(
-            results, art_dir, url, extra=["--type", "initiative"], jql="project = RHOAIENG"
+            results, art_dir, url, extra=["--type", "initiative"], jql="project = RHAISTRAT"
         )
         assert r.returncode == 0, r.stderr
         assert "walking back to 20260331-110000" in r.stderr
@@ -1225,7 +1225,7 @@ class TestBootstrapIntegration:
         assert snaps == ["initiative-snapshot-20260401-120000.yaml"]
         with open(os.path.join(snapshot_dir, snaps[0])) as f:
             snap = yaml.safe_load(f)
-        assert set(snap["issues"]) == {"RHOAIENG-1"}
+        assert set(snap["issues"]) == {"RHAISTRAT-1"}
 
     def test_walk_back_ignores_symlinked_run_dirs(self, tmp_path, mock_jira):
         """A timestamp-named symlink must not route the walk-back to a report
@@ -1381,7 +1381,7 @@ class TestBootstrapIntegration:
             reports={
                 "20260401-120000": {
                     "type": "initiative",
-                    "per_initiative": [{"id": "RHOAIENG-1", "recommendation": "submit"}],
+                    "per_initiative": [{"id": "RHAISTRAT-1", "recommendation": "submit"}],
                 }
             },
         )
@@ -1769,7 +1769,7 @@ class TestLoadRunReportTypeCrossCheck:
         # An initiative report under the rfe bootstrap: the type verdict, not the drift shape
         # ("has no per_rfe item list") the same file would otherwise produce.
         results, run = self._write(
-            tmp_path, "type: initiative\nper_initiative:\n" + self.ENTRY.format(key="RHOAIENG-1")
+            tmp_path, "type: initiative\nper_initiative:\n" + self.ENTRY.format(key="RHAISTRAT-1")
         )
         path = os.path.join(results, run, "auto-fix-runs", f"{run}.yaml")
         with pytest.raises(ValueError) as exc:
@@ -1853,13 +1853,13 @@ class TestLoadRunReportConfig:
         run_name = "20260401-120000"
         report_dir = os.path.join(results, run_name, "auto-fix-runs")
         os.makedirs(report_dir)
-        report = {"per_initiative": [{"id": "RHOAIENG-1"}, {"id": "RHOAIENG-2"}]}
+        report = {"per_initiative": [{"id": "RHAISTRAT-1"}, {"id": "RHAISTRAT-2"}]}
         with open(os.path.join(report_dir, f"initiative-run-{run_name}.yaml"), "w") as f:
             yaml.dump(report, f)
 
         config = BOOTSTRAP_CONFIG["initiative"]
         ids, _ = _load_run_report(results, run_name, config=config)
-        assert ids == {"RHOAIENG-1", "RHOAIENG-2"}
+        assert ids == {"RHAISTRAT-1", "RHAISTRAT-2"}
 
     def test_initiative_config_no_rfe_report(self, tmp_path):
         """Initiative config doesn't find RFE-format report."""
@@ -1881,7 +1881,7 @@ class TestBootstrapInitiativeType:
 
     def test_initiative_snapshot_filename(self, tmp_path, mock_jira):
         url, server = mock_jira
-        server.issues = {"RHOAIENG-1": "Initiative description."}
+        server.issues = {"RHAISTRAT-1": "Initiative description."}
         results = str(tmp_path / "results")
         run_name = "20260401-120000"
         os.makedirs(os.path.join(results, run_name))
@@ -1906,7 +1906,7 @@ class TestBootstrapInitiativeType:
                 art_dir,
                 "--type",
                 "initiative",
-                "project = RHOAIENG",
+                "project = RHAISTRAT",
             ],
             capture_output=True,
             text=True,
@@ -2059,17 +2059,17 @@ class TestBootstrapJqlBindingCheck:
     CONFLICTS = [
         (
             "rfe",
-            "project = RHOAIENG",
-            "ERROR: --jql names project RHOAIENG but the rfe binding is RHAIRFE",
+            "project = RHAISTRAT",
+            "ERROR: --jql names project RHAISTRAT but the rfe binding is RHAIRFE",
         ),
         (
             "rfe",
-            "project in (RHAIRFE, RHOAIENG)",
-            "ERROR: --jql names project RHOAIENG but the rfe binding is RHAIRFE",
+            "project in (RHAIRFE, RHAISTRAT)",
+            "ERROR: --jql names project RHAISTRAT but the rfe binding is RHAIRFE",
         ),
         (
             "initiative",
-            'project = RHOAIENG AND issuetype = "Feature Request"',
+            'project = RHAISTRAT AND issuetype = "Feature Request"',
             "ERROR: --jql names issuetype Feature Request but the initiative binding is Initiative",
         ),
     ]
@@ -2137,7 +2137,7 @@ class TestBootstrapJqlBindingCheck:
         cases += [
             ("rfe", "project = RHAIRFE AND issuetype = 'Feature Request'"),
             ("rfe", "project in (RHAIRFE) AND NOT (issuetype = Epic)"),
-            ("initiative", "project = RHOAIENG AND issuetype not in (Epic)"),
+            ("initiative", "project = RHAISTRAT AND issuetype not in (Epic)"),
         ]
         for type_name, jql in cases:
             assert jql, type_name
@@ -2200,7 +2200,7 @@ class TestBootstrapJqlBindingCheck:
                 str(tmp_path / "results"),
                 "--artifacts-dir",
                 str(tmp_path / "artifacts"),
-                "project = RHOAIENG AND issuetype = Initiative",
+                "project = RHAISTRAT AND issuetype = Initiative",
             ],
             capture_output=True,
             text=True,
@@ -2209,7 +2209,7 @@ class TestBootstrapJqlBindingCheck:
         assert r.returncode == 1
         assert (r.stdout, r.stderr) == (
             "",
-            "ERROR: --jql names project RHOAIENG but the rfe binding is RHAIRFE\n",
+            "ERROR: --jql names project RHAISTRAT but the rfe binding is RHAIRFE\n",
         )
         assert "Traceback" not in r.stderr
         assert sorted(os.listdir(tmp_path)) == []

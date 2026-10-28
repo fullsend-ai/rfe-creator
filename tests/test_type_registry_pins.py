@@ -1127,7 +1127,11 @@ class TestJqlAndJiraUtils:
         for ident in ctx.sample_ids:
             stripped = jira_utils.strip_metadata(f"# {ident}: Title\nbody\n")
             heading_dropped = not stripped.startswith("# ")
-            assert heading_dropped is (ctx.t == "rfe"), f"{ident}: {stripped!r}"
+            # the literal decides, not the type: every rfe id and — since Initiatives live in
+            # RHAISTRAT (2026-10-28) — a RHAISTRAT- Initiative key, never an INIT- id
+            assert heading_dropped is bool(re.match(literal, f"# {ident}: Title")), (
+                f"{ident}: {stripped!r}"
+            )
 
     def test_create_issue_sends_project_key_and_issuetype_by_name(self, ctx, monkeypatch):
         # rows: 64 — jira_utils.py:172-179; callers submit.py:1096-1107, split_submit.py:696-709
@@ -1408,10 +1412,12 @@ class TestRunReportConfig:
     def test_child_parent_prefixes_guard(self, ctx):
         # rows: 71-81 are MIGRATED (the scanner is artifact_utils.scan_tasks bound to the
         # descriptor since PR-2b); still pinned: the derivation guard that child_parent_prefixes
-        # is (local_prefix, *key_prefixes) and NOT conventions.parent_key_patterns (RHAISTRAT-
-        # must stay excluded, :104)
+        # is (local_prefix, *key_prefixes) and NOT conventions.parent_key_patterns. Since
+        # Initiatives live in RHAISTRAT (2026-10-28) the Outcome prefix IS a key prefix;
+        # split_children_map tells an Outcome link from a split parent by the workspace rule
+        # (the parent has a task here), see test_generate_run_report.
         g = generate_run_report.TYPE_CONFIG[ctx.t]
-        assert "RHAISTRAT-" not in g["child_parent_prefixes"]
+        assert g["child_parent_prefixes"] == (ctx.lp, *ctx.jira["key_prefixes"])
 
     def test_predicates_and_rfe_only_keys_in_source(self, ctx):
         # rows: 82, 83, 84, 85, 86 —
@@ -1490,7 +1496,15 @@ class TestReviewPdfConfig:
         # link predicate is the key_prefixes union behind the task's own tracker_ref — the
         # write-prefix-only startswith sites are gone
         source = read("scripts/generate_review_pdf.py")
-        assert 'is_split_child = bool(parent_key) and config["desc"].owns(parent_key)' in source
+        # ...and, since Initiatives live in RHAISTRAT (2026-10-28), the workspace rule: a
+        # same-family parent is a split parent only when its task is here (an Outcome's never is)
+        site = (
+            "is_split_child = (\n"
+            "            bool(parent_key)\n"
+            "            and desc.owns(parent_key)\n"
+            "            and find_task_file_including_archived("
+        )
+        assert site in source
         assert re.search(
             r'find_task_file_including_archived\(\s*artifacts_dir, rfe_id, config\["tasks_dir"\], '
             r'desc=config\["desc"\]\s*\)',
@@ -1513,7 +1527,7 @@ class TestReviewPdfConfig:
         assert isinstance(cfg["desc"], type_registry.Descriptor)
         assert cfg["desc"].name == ctx.t
         assert cfg["desc"].owns(ctx.sample_ids[0]) and cfg["desc"].owns(ctx.sample_ids[1])
-        assert not cfg["desc"].owns("RHAISTRAT-42")
+        assert not cfg["desc"].owns("RHOAIENG-42")
         assert (
             'task_fm.get("status") == "Archived" and review_fm.get("recommendation") == "split"'
             in source
@@ -1795,7 +1809,7 @@ class TestPipelineTypes:
         write(
             Path(ctx.dirs["tasks"]) / "A.md", fm({cond["frontmatter_field"]: f"{cond['prefix']}1"})
         )
-        write(Path(ctx.dirs["tasks"]) / "B.md", fm({cond["frontmatter_field"]: f"{ctx.wp}1"}))
+        write(Path(ctx.dirs["tasks"]) / "B.md", fm({cond["frontmatter_field"]: f"{ctx.lp}1"}))
         assert pipeline_state._has_rhaistrat_parent("A", {"type": ctx.t}) is True
         assert pipeline_state._has_rhaistrat_parent("B", {"type": ctx.t}) is False
         assert pipeline_state._has_rhaistrat_parent("A", {"type": "rfe"}) is False
@@ -2156,7 +2170,7 @@ class TestSkillLayer:
                 for m in (re.match(r"[A-Z]+-", p) for p in c.conv.get("parent_key_patterns", []))
                 if m
             }
-        assert {"RHAIRFE-", "RHOAIENG-", "RFE-", "INIT-", "RHAISTRAT-"} <= prefixes
+        assert {"RHAIRFE-", "RHAISTRAT-", "RFE-", "INIT-", "RHAISTRAT-"} <= prefixes
         boundary = re.compile(r"(?<![\w-])(?:" + "|".join(map(re.escape, sorted(prefixes))) + ")")
         surfaces = {}
         for stage in ctx.pipe["stages"]:
@@ -2190,6 +2204,8 @@ class TestSkillLayer:
             assert "{DIMENSION_" not in text and "FEASIBILITY_PATH" not in text
             assert "feasibility agent" not in text.lower()
             assert "feasibility file" not in text.lower()
+        # the generic surface carries no type literal (the values arrive by rendering)
+        assert "RHAISTRAT" not in read(GENERIC_SKILL.format(stage="review"))
         # and for the shipped types the same body launches every declared dimension by rule
         for t in TYPES:
             rendered = skill(t, "review")
@@ -2199,7 +2215,6 @@ class TestSkillLayer:
                 "`<field> startswith <prefix>`" in rendered
                 and "`context_exists <path>`" in rendered
             )
-            assert "RHAISTRAT" not in rendered
 
     TYPED_KEYS = {
         "TEMPLATE_PATH": "template",

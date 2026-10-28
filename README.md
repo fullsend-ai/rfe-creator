@@ -1,6 +1,6 @@
 # RFE Creator
 
-Claude Code skills for creating, reviewing, and submitting RFEs to the RHAIRFE Jira project and Initiatives to the RHOAIENG Jira project.
+Claude Code skills for creating, reviewing, and submitting RFEs to the RHAIRFE Jira project and Initiatives to the RHAISTRAT Jira project.
 
 Inspired by the [PRD/RFE workflow](https://github.com/ambient-code/workflows/tree/main/workflows/prd-rfe-workflow) in ambient, which established the pipeline pattern and multi-perspective review concept.
 
@@ -23,26 +23,26 @@ Works for every registered type: RFEs by default, Initiatives with --type initia
 
 # Improve an existing Jira work item
 /rfe-review RHAIRFE-1234                         # Fetch, review, and auto-revise an RFE
-/rfe-review --type initiative RHOAIENG-12345     # Fetch, review, and auto-revise an Initiative
+/rfe-review --type initiative RHAISTRAT-12345     # Fetch, review, and auto-revise an Initiative
 /rfe-split RHAIRFE-1234                          # Split an oversized RFE
-/rfe-split --type initiative RHOAIENG-12345      # Split an oversized Initiative
+/rfe-split --type initiative RHAISTRAT-12345      # Split an oversized Initiative
 /rfe-speedrun RHAIRFE-1234                       # Fetch, review, revise, and update an RFE in one step
-/rfe-speedrun --type initiative RHOAIENG-12345   # Fetch, review, revise, and update an Initiative in one step
+/rfe-speedrun --type initiative RHAISTRAT-12345   # Fetch, review, revise, and update an Initiative in one step
 
 # Batch operations
 /rfe-speedrun --input batch.yaml --headless --dry-run                     # Batch create + review RFEs from YAML
 /rfe-speedrun --type initiative --input batch.yaml --headless --dry-run   # Batch create + review Initiatives from YAML
 /rfe-speedrun --input batch.yaml --headless --announce-complete           # Print completion marker for CI
 /rfe-auto-fix --jql "project = RHAIRFE AND ..."                           # Batch review RFEs from a JQL query
-/rfe-auto-fix --type initiative --jql "project = RHOAIENG AND ..."        # Batch review Initiatives from a JQL query
+/rfe-auto-fix --type initiative --jql "project = RHAISTRAT AND ..."        # Batch review Initiatives from a JQL query
 /rfe-auto-fix RHAIRFE-1234 RHAIRFE-5678                                   # Batch review explicit RFE keys
-/rfe-auto-fix --type initiative RHOAIENG-12345 RHOAIENG-12346             # Batch review explicit Initiative keys
+/rfe-auto-fix --type initiative RHAISTRAT-12345 RHAISTRAT-12346             # Batch review explicit Initiative keys
 
 # Maintenance
 /rfe-creator.update-deps   # Force update vendored dependencies
 ```
 
-Every skill takes `--type <type>` (`rfe` or `initiative`); without it the type is resolved from the ids you pass (`RHAIRFE-*` / `RFE-*` are RFEs, `RHOAIENG-*` / `INIT-*` are Initiatives) and defaults to `rfe`. The dotted names of the original RFE skills (`/rfe.create`, `/rfe.review`, `/rfe.split`, `/rfe.submit`, `/rfe.speedrun`, `/rfe.auto-fix`) remain as compatibility aliases that run the same bodies. See [docs/working-with-work-item-types.md](docs/working-with-work-item-types.md) for how the type is chosen and what changes with it.
+Every skill takes `--type <type>` (`rfe` or `initiative`); without it the type is resolved from the ids you pass (`RHAIRFE-*` / `RFE-*` are RFEs, `RHAISTRAT-*` / `INIT-*` are Initiatives) and defaults to `rfe`. The dotted names of the original RFE skills (`/rfe.create`, `/rfe.review`, `/rfe.split`, `/rfe.submit`, `/rfe.speedrun`, `/rfe.auto-fix`) remain as compatibility aliases that run the same bodies. See [docs/working-with-work-item-types.md](docs/working-with-work-item-types.md) for how the type is chosen and what changes with it.
 
 ## Work Item Types
 
@@ -51,7 +51,7 @@ RFE and Initiative are the two registered work item types:
 | Type | Jira project | Jira issue type | Flag | Id before submit |
 |---|---|---|---|---|
 | RFE | RHAIRFE | Feature Request | `--type rfe` (the default) | `RFE-001` |
-| Initiative | RHOAIENG | Initiative | `--type initiative` | `INIT-001` |
+| Initiative | RHAISTRAT | Initiative | `--type initiative` | `INIT-001` |
 
 The skill bodies are shared; each type's judgement — template, clarifying questions, review rules, split rules and review dimensions — lives under `types/<type>/`, next to a data-only descriptor, `types/<type>/type.yaml`, which `python3 scripts/validate_types.py` lints and `python3 scripts/type_registry.py` reads. The field reference is [types/README.md](types/README.md), the guide to adding a type is [docs/type-provider-guide.md](docs/type-provider-guide.md), and the mechanism's development notes (which scripts read the registry, its delivery history) are in [docs/work-item-types-development.md](docs/work-item-types-development.md).
 
@@ -82,10 +82,10 @@ The same commands run the pipeline for both types: RFEs by default, Initiatives 
 
 ```
 /rfe-review RHAIRFE-1234 → /rfe-submit
-/rfe-review --type initiative RHOAIENG-12345 → /rfe-submit --type initiative
+/rfe-review --type initiative RHAISTRAT-12345 → /rfe-submit --type initiative
 ```
 
-Or in one step: `/rfe-speedrun RHAIRFE-1234`, `/rfe-speedrun --type initiative RHOAIENG-12345`. Use `RHAIRFE-*` / `RHOAIENG-*` keys for existing Jira items and `RFE-*` / `INIT-*` ids for new ones.
+Or in one step: `/rfe-speedrun RHAIRFE-1234`, `/rfe-speedrun --type initiative RHAISTRAT-12345`. Use `RHAIRFE-*` / `RHAISTRAT-*` keys for existing Jira items and `RFE-*` / `INIT-*` ids for new ones.
 
 ### Batch Operations
 
@@ -111,8 +111,8 @@ Review a batch of existing Jira work items:
 ```
 /rfe-auto-fix --jql "project = RHAIRFE AND status = New" --limit 20
 /rfe-auto-fix RHAIRFE-1234 RHAIRFE-5678 RHAIRFE-9012
-/rfe-auto-fix --type initiative --jql "project = RHOAIENG AND status = New" --limit 20
-/rfe-auto-fix --type initiative RHOAIENG-12345 RHOAIENG-12346
+/rfe-auto-fix --type initiative --jql "project = RHAISTRAT AND status = New" --limit 20
+/rfe-auto-fix --type initiative RHAISTRAT-12345 RHAISTRAT-12346
 ```
 
 Auto-fix processes in batches (default 5), handles review, revision, splitting, retry, and report generation.

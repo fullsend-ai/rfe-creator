@@ -226,9 +226,9 @@ class TestRFECleanup:
 class TestInitiativeCleanup:
     def test_children_deleted_parent_restored(self, init_workspace):
         write_frontmatter(
-            str(init_workspace / "artifacts/initiatives/RHOAIENG-10.md"),
+            str(init_workspace / "artifacts/initiatives/RHAISTRAT-10.md"),
             {
-                "initiative_id": "RHOAIENG-10",
+                "initiative_id": "RHAISTRAT-10",
                 "title": "Parent",
                 "priority": "Normal",
                 "status": "Archived",
@@ -236,50 +236,50 @@ class TestInitiativeCleanup:
             "initiative-task",
         )
         write_frontmatter(
-            str(init_workspace / "artifacts/initiatives/RHOAIENG-11.md"),
+            str(init_workspace / "artifacts/initiatives/RHAISTRAT-11.md"),
             {
-                "initiative_id": "RHOAIENG-11",
+                "initiative_id": "RHAISTRAT-11",
                 "title": "Child",
                 "priority": "Normal",
                 "status": "Ready",
-                "parent_key": "RHOAIENG-10",
+                "parent_key": "RHAISTRAT-10",
             },
             "initiative-task",
         )
-        out, _, rc = _run(["--type", "initiative", "RHOAIENG-10"], cwd=str(init_workspace))
+        out, _, rc = _run(["--type", "initiative", "RHAISTRAT-10"], cwd=str(init_workspace))
         assert rc == 0
-        assert not os.path.exists(init_workspace / "artifacts/initiatives/RHOAIENG-11.md")
-        assert "RHOAIENG-11.md" in out
-        fm, _ = read_frontmatter(str(init_workspace / "artifacts/initiatives/RHOAIENG-10.md"))
+        assert not os.path.exists(init_workspace / "artifacts/initiatives/RHAISTRAT-11.md")
+        assert "RHAISTRAT-11.md" in out
+        fm, _ = read_frontmatter(str(init_workspace / "artifacts/initiatives/RHAISTRAT-10.md"))
         assert fm["status"] == "Ready"
 
     def test_split_status_deleted(self, init_workspace):
         write_frontmatter(
-            str(init_workspace / "artifacts/initiatives/RHOAIENG-21.md"),
+            str(init_workspace / "artifacts/initiatives/RHAISTRAT-21.md"),
             {
-                "initiative_id": "RHOAIENG-21",
+                "initiative_id": "RHAISTRAT-21",
                 "title": "Child",
                 "priority": "Normal",
                 "status": "Ready",
-                "parent_key": "RHOAIENG-20",
+                "parent_key": "RHAISTRAT-20",
             },
             "initiative-task",
         )
         _write_raw(
-            str(init_workspace / "artifacts/initiative-reviews/RHOAIENG-20-split-status.yaml"),
+            str(init_workspace / "artifacts/initiative-reviews/RHAISTRAT-20-split-status.yaml"),
             "action: split\n",
         )
-        out, _, rc = _run(["--type", "initiative", "RHOAIENG-20"], cwd=str(init_workspace))
+        out, _, rc = _run(["--type", "initiative", "RHAISTRAT-20"], cwd=str(init_workspace))
         assert rc == 0
         assert not os.path.exists(
-            init_workspace / "artifacts/initiative-reviews/RHOAIENG-20-split-status.yaml"
+            init_workspace / "artifacts/initiative-reviews/RHAISTRAT-20-split-status.yaml"
         )
 
     def test_output_format(self, init_workspace):
         write_frontmatter(
-            str(init_workspace / "artifacts/initiatives/RHOAIENG-30.md"),
+            str(init_workspace / "artifacts/initiatives/RHAISTRAT-30.md"),
             {
-                "initiative_id": "RHOAIENG-30",
+                "initiative_id": "RHAISTRAT-30",
                 "title": "Parent",
                 "priority": "Normal",
                 "status": "Archived",
@@ -287,17 +287,17 @@ class TestInitiativeCleanup:
             "initiative-task",
         )
         write_frontmatter(
-            str(init_workspace / "artifacts/initiatives/RHOAIENG-31.md"),
+            str(init_workspace / "artifacts/initiatives/RHAISTRAT-31.md"),
             {
-                "initiative_id": "RHOAIENG-31",
+                "initiative_id": "RHAISTRAT-31",
                 "title": "Child",
                 "priority": "Normal",
                 "status": "Ready",
-                "parent_key": "RHOAIENG-30",
+                "parent_key": "RHAISTRAT-30",
             },
             "initiative-task",
         )
-        out, _, rc = _run(["--type", "initiative", "RHOAIENG-30"], cwd=str(init_workspace))
+        out, _, rc = _run(["--type", "initiative", "RHAISTRAT-30"], cwd=str(init_workspace))
         assert rc == 0
         lines = out.splitlines()
         assert lines[0].startswith("DELETED=")

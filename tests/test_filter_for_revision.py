@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tests for scripts/filter_for_revision.py — revision filtering with score regression blocking.
 
-Covers both RFE (RHAIRFE-*, RFE-*) and Initiative (INIT-*, RHOAIENG-*) ID routing.
+Covers both RFE (RHAIRFE-*, RFE-*) and Initiative (INIT-*, RHAISTRAT-*) ID routing.
 """
 
 import os
@@ -102,15 +102,15 @@ class TestInitiativeRouting:
         assert "INIT-001" in out
 
     def test_rhoaieng_id_routes_to_initiative_reviews(self, workspace):
-        data = {**INITIATIVE_REVIEW_DATA, "initiative_id": "RHOAIENG-5000"}
+        data = {**INITIATIVE_REVIEW_DATA, "initiative_id": "RHAISTRAT-5000"}
         write_frontmatter(
-            str(workspace / "artifacts/initiative-reviews/RHOAIENG-5000-review.md"),
+            str(workspace / "artifacts/initiative-reviews/RHAISTRAT-5000-review.md"),
             data,
             "initiative-review",
         )
-        out, _, rc = _run(["RHOAIENG-5000"], cwd=str(workspace))
+        out, _, rc = _run(["RHAISTRAT-5000"], cwd=str(workspace))
         assert rc == 0
-        assert "RHOAIENG-5000" in out
+        assert "RHAISTRAT-5000" in out
 
 
 class TestScoreRegressionBlocking:

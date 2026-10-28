@@ -292,23 +292,23 @@ class TestSparsePatterns:
 
     def test_initiative_subtree(self):
         assert sparse_patterns(["initiative"]) == [
-            "/initiative-rhoaieng/latest",
-            "/initiative-rhoaieng/*/auto-fix-runs/initiative-snapshot-*.yaml",
+            "/initiative-rhaistrat/latest",
+            "/initiative-rhaistrat/*/auto-fix-runs/initiative-snapshot-*.yaml",
             "!/test-data/**",
         ]
-        assert INIT_SUBDIR == "initiative-rhoaieng" and INIT_PREFIX == "initiative-snapshot-"
+        assert INIT_SUBDIR == "initiative-rhaistrat" and INIT_PREFIX == "initiative-snapshot-"
 
     def test_both_types_in_order_with_one_exclusion(self):
         assert sparse_patterns(["rfe", "initiative"]) == [
             "/latest",
             "/*/auto-fix-runs/issue-snapshot-*.yaml",
-            "/initiative-rhoaieng/latest",
-            "/initiative-rhoaieng/*/auto-fix-runs/initiative-snapshot-*.yaml",
+            "/initiative-rhaistrat/latest",
+            "/initiative-rhaistrat/*/auto-fix-runs/initiative-snapshot-*.yaml",
             "!/test-data/**",
         ]
         assert sparse_patterns(["initiative", "rfe"])[:-1] == [
-            "/initiative-rhoaieng/latest",
-            "/initiative-rhoaieng/*/auto-fix-runs/initiative-snapshot-*.yaml",
+            "/initiative-rhaistrat/latest",
+            "/initiative-rhaistrat/*/auto-fix-runs/initiative-snapshot-*.yaml",
             "/latest",
             "/*/auto-fix-runs/issue-snapshot-*.yaml",
         ]
@@ -378,8 +378,8 @@ class TestMainArgv:
                 "sparse-checkout",
                 "set",
                 "--no-cone",
-                "/initiative-rhoaieng/latest",
-                "/initiative-rhoaieng/*/auto-fix-runs/initiative-snapshot-*.yaml",
+                "/initiative-rhaistrat/latest",
+                "/initiative-rhaistrat/*/auto-fix-runs/initiative-snapshot-*.yaml",
                 "!/test-data/**",
             ],
             dest,
@@ -398,7 +398,7 @@ class TestMainArgv:
         assert "DATA_REPO_TYPES: unknown type 'bogus'" in capsys.readouterr().err
 
 
-# ── Sparse checkout of the shared layout (root = rfe, initiative-rhoaieng/ = initiative) ──
+# ── Sparse checkout of the shared layout (root = rfe, initiative-rhaistrat/ = initiative) ──
 
 
 def _snapshot(issues):
@@ -426,12 +426,12 @@ INIT_RUN = "20260402-130000"
 RFE_SNAP = f"{RFE_RUN}/auto-fix-runs/{RFE_PREFIX}{RFE_RUN}.yaml"
 INIT_SNAP = f"{INIT_SUBDIR}/{INIT_RUN}/auto-fix-runs/{INIT_PREFIX}{INIT_RUN}.yaml"
 INIT_REPORT = f"{INIT_SUBDIR}/{INIT_RUN}/auto-fix-runs/initiative-run-{INIT_RUN}.yaml"
-INIT_TASK = f"{INIT_SUBDIR}/{INIT_RUN}/initiatives/RHOAIENG-1.md"
+INIT_TASK = f"{INIT_SUBDIR}/{INIT_RUN}/initiatives/RHAISTRAT-1.md"
 
 
 def _shared_layout_repo(tmp_path, with_initiative=True):
     """The production results repository after AISDLC-202: an rfe run and `latest` at
-    the root, an initiative run and `latest` under initiative-rhoaieng/, plus test-data/."""
+    the root, an initiative run and `latest` under initiative-rhaistrat/, plus test-data/."""
     src = _init_source_repo(str(tmp_path / "source"))
     _commit_file(src, RFE_SNAP, _snapshot({"RHAIRFE-1": "abc123"}))
     _commit_file(src, f"{RFE_RUN}/auto-fix-runs/{RFE_RUN}.yaml", "rfe run report")
@@ -439,7 +439,7 @@ def _shared_layout_repo(tmp_path, with_initiative=True):
     _commit_symlink(src, "latest", RFE_RUN)
     _commit_file(src, "test-data/auto-fix-runs/issue-snapshot-test.yaml", _snapshot({"X-1": "f"}))
     if with_initiative:
-        _commit_file(src, INIT_SNAP, _snapshot({"RHOAIENG-1": "def456"}))
+        _commit_file(src, INIT_SNAP, _snapshot({"RHAISTRAT-1": "def456"}))
         _commit_file(src, INIT_REPORT, "initiative run report")
         _commit_file(src, INIT_TASK, "initiative content")
         _commit_symlink(src, f"{INIT_SUBDIR}/latest", INIT_RUN)
@@ -472,7 +472,7 @@ class TestSharedLayoutCheckout:
         assert r.stdout.strip() == dest
         assert _exists(dest, INIT_SNAP)
         with open(os.path.join(dest, INIT_SNAP)) as f:
-            assert yaml.safe_load(f)["issues"] == {"RHOAIENG-1": "def456"}
+            assert yaml.safe_load(f)["issues"] == {"RHAISTRAT-1": "def456"}
         latest = os.path.join(dest, INIT_SUBDIR, "latest")
         assert os.path.islink(latest) and os.readlink(latest) == INIT_RUN
         # Not the subtree's reports or tasks, not the root, not test-data.
@@ -495,7 +495,7 @@ class TestSharedLayoutCheckout:
 
     def test_first_run_sees_an_empty_subtree_not_a_missing_path(self, tmp_path, capsys):
         """Before the first Initiative push nothing matches the subtree patterns; the
-        script still creates initiative-rhoaieng/ so the fetch reads "no 'latest' symlink" (an
+        script still creates initiative-rhaistrat/ so the fetch reads "no 'latest' symlink" (an
         empty baseline) rather than "Data repo path not found" (a setup failure)."""
         src = _shared_layout_repo(tmp_path, with_initiative=False)
         dest = str(tmp_path / "clone")

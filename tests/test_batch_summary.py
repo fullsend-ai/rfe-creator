@@ -50,7 +50,7 @@ RFE_REVIEW_SPLIT = {
 }
 
 INIT_REVIEW = {
-    "initiative_id": "RHOAIENG-100",
+    "initiative_id": "RHAISTRAT-100",
     "score": 7,
     "pass": True,
     "recommendation": "submit",
@@ -304,59 +304,59 @@ class TestIdsFile:
 class TestInitiativeType:
     def test_initiative_reads_from_initiative_dirs(self, workspace):
         write_frontmatter(
-            str(workspace / "artifacts/initiative-reviews/RHOAIENG-100-review.md"),
+            str(workspace / "artifacts/initiative-reviews/RHAISTRAT-100-review.md"),
             {**INIT_REVIEW},
             "initiative-review",
         )
-        out, _, rc = _run(["--type", "initiative", "RHOAIENG-100"], cwd=str(workspace))
+        out, _, rc = _run(["--type", "initiative", "RHAISTRAT-100"], cwd=str(workspace))
         assert rc == 0
         assert "TOTAL=1" in out.splitlines()[0]
         assert "PASSED=1" in out.splitlines()[0]
 
     def test_initiative_detail_shows_feasibility(self, workspace):
         write_frontmatter(
-            str(workspace / "artifacts/initiative-reviews/RHOAIENG-100-review.md"),
+            str(workspace / "artifacts/initiative-reviews/RHAISTRAT-100-review.md"),
             {**INIT_REVIEW, "feasibility": "infeasible"},
             "initiative-review",
         )
-        out, _, rc = _run(["--type", "initiative", "RHOAIENG-100"], cwd=str(workspace))
+        out, _, rc = _run(["--type", "initiative", "RHAISTRAT-100"], cwd=str(workspace))
         assert rc == 0
         detail = out.splitlines()[1]
         assert "feasibility=infeasible" in detail
 
     def test_initiative_detail_shows_alignment(self, workspace):
         _write_raw(
-            str(workspace / "artifacts/initiative-reviews/RHOAIENG-200-review.md"),
-            "---\ninitiative_id: RHOAIENG-200\nscore: 7\npass: true\n"
+            str(workspace / "artifacts/initiative-reviews/RHAISTRAT-200-review.md"),
+            "---\ninitiative_id: RHAISTRAT-200\nscore: 7\npass: true\n"
             "recommendation: submit\nfeasibility: feasible\n"
             "auto_revised: false\nneeds_attention: false\n"
             "alignment: strong\nscores: {}\n---\n",
         )
-        out, _, rc = _run(["--type", "initiative", "RHOAIENG-200"], cwd=str(workspace))
+        out, _, rc = _run(["--type", "initiative", "RHAISTRAT-200"], cwd=str(workspace))
         assert rc == 0
         detail = out.splitlines()[1]
         assert "alignment=strong" in detail
 
     def test_initiative_feasible_not_shown(self, workspace):
         write_frontmatter(
-            str(workspace / "artifacts/initiative-reviews/RHOAIENG-100-review.md"),
+            str(workspace / "artifacts/initiative-reviews/RHAISTRAT-100-review.md"),
             {**INIT_REVIEW, "feasibility": "feasible"},
             "initiative-review",
         )
-        out, _, rc = _run(["--type", "initiative", "RHOAIENG-100"], cwd=str(workspace))
+        out, _, rc = _run(["--type", "initiative", "RHAISTRAT-100"], cwd=str(workspace))
         assert rc == 0
         detail = out.splitlines()[1]
         assert "feasibility" not in detail
 
     def test_initiative_not_assessed_alignment_not_shown(self, workspace):
         _write_raw(
-            str(workspace / "artifacts/initiative-reviews/RHOAIENG-300-review.md"),
-            "---\ninitiative_id: RHOAIENG-300\nscore: 7\npass: true\n"
+            str(workspace / "artifacts/initiative-reviews/RHAISTRAT-300-review.md"),
+            "---\ninitiative_id: RHAISTRAT-300\nscore: 7\npass: true\n"
             "recommendation: submit\nfeasibility: feasible\n"
             "auto_revised: false\nneeds_attention: false\n"
             "alignment: not_assessed\nscores: {}\n---\n",
         )
-        out, _, rc = _run(["--type", "initiative", "RHOAIENG-300"], cwd=str(workspace))
+        out, _, rc = _run(["--type", "initiative", "RHAISTRAT-300"], cwd=str(workspace))
         assert rc == 0
         detail = out.splitlines()[1]
         assert "alignment" not in detail

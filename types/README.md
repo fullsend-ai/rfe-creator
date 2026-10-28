@@ -256,7 +256,7 @@ alone. In order, before the first artifact scan or tracker call:
 **`is_existing`.** One rule for every site: a task is an existing tracker issue when its
 frontmatter `tracker_ref` is a non-empty string **owned by the resolved type** — it starts with
 one of the effective `key_prefixes`. A `tracker_ref` owned by another type (a `type: rfe`
-artifact carrying `tracker_ref: RHOAIENG-123`) is a hard error naming the id, the reference and
+artifact carrying `tracker_ref: RHAISTRAT-123`) is a hard error naming the id, the reference and
 the type that owns it — never an update, never a create (`submit.py` exits 1 before any write,
 `check_conflicts.py` exits 2). A pre-migration artifact without the field falls back to the id
 itself: existing when the id starts with one of the same prefixes. Before an existing issue is
@@ -367,9 +367,9 @@ The rules are `resolve`'s, so the two scripts cannot drift from the ladder:
   `KONFLUX-1` parent — and `Descriptor.parent_key_pattern` itself when the override is malformed
   (the validator takes the type verdict only). It is the same string `artifact_utils` puts on
   the `<type>-task` schema, applied only when the type lists `parent_key` in
-  `batch.extra_fields`: an initiative batch accepts `RHAISTRAT-`, `RHOAIENG-` and `INIT-`
-  parents, and the error text is rendered from the patterns (`'parent_key' must match one of
-  RHAISTRAT-\d+, RHOAIENG-\d+, INIT-\d+`); an rfe entry carrying `parent_key` gets the
+  `batch.extra_fields`: an initiative batch accepts `RHAISTRAT-` and `INIT-` parents, and
+  the error text is rendered from the patterns (`'parent_key' must match one of
+  RHAISTRAT-\d+, INIT-\d+`); an rfe entry carrying `parent_key` gets the
   unknown-field warning, never a pattern error (`--strict`, which both speedruns pass, blocks the
   warning). The priority vocabulary is the resolved type's `schema.task.priority.enum`.
 
@@ -486,19 +486,21 @@ judges what it fetches.
 A parent that is NOT recorded is noted once on stderr (`Note: <key>: parent <P> not recorded as
 parent_key - ...`, never fatal) and left in Jira:
 
-- **A parent in the type's own key family — an RHOAIENG Outcome above an Initiative.**
-  Deliberately not written, although
-  `conventions.parent_key_patterns` admits `RHOAIENG-\d+`: in the artifact model a same-family
-  `parent_key` means "split from" to the run report, which lists such a task under that parent
-  (`child_parent_prefixes`: the local and tracker prefixes, deliberately not `parent_key_patterns`),
-  so recording it would misreport a fetched Initiative as a split child. (`submit.py` keeps it:
-  `_has_jira_ancestor` counts a chain as a split tree only when it passes through an archived task
-  in the workspace — the split skill's trace — so a Jira parent with no task here is a hierarchy
-  link, forwarded as Jira's `parent` on create and ignored on update.) Nothing is lost: the
-  Outcome link stays in Jira (`submit.py` never writes `parent` on an update), split children
-  inherit it from Jira directly (`split_submit.discover_state` reads the parent's
-  `fields.parent`), and the alignment stage — RHAISTRAT-only by its condition — skips with its
-  stub. A field of its own is the follow-up if the pipeline ever reads that link.
+- **A parent in the type's own key family.** Recorded when it also carries a dimension
+  condition's prefix — since Initiatives live in RHAISTRAT (2026-10-28, AISDLC-461) their
+  Outcome parent is exactly that case: own family (`key_prefixes`) and the alignment
+  condition's `RHAISTRAT-` at once. What tells it from a split parent is the workspace, never
+  the key family: `generate_run_report.split_children_map` and the review report count a
+  `parent_key` as "split from" only when the parent has a task here (a split parent is always
+  here, archived by the split, or torn mid-write; an Outcome never is), and `submit.py` counts
+  a chain as a split tree only when it passes through an archived task in the workspace
+  (`_has_jira_ancestor`). A Jira parent with no task here is a hierarchy link: forwarded as
+  Jira's `parent` on create, ignored on update (`submit.py` never writes `parent` on an
+  update), and inherited by split children from Jira directly (`split_submit.discover_state`
+  reads the parent's `fields.parent`). A same-family parent of a type whose dimensions do not
+  read `parent_key` is still left in Jira with the `Note:`; so is a parent outside the
+  prefixes (the Outcome of the project Initiatives lived in before, `RHAISTRAT`, is the live
+  example).
 - **A parent outside every prefix (`FOO-1`), or one carrying a prefix but failing the grammar
   (`RHAISTRAT-x`).** Not written; the schema would refuse the latter and fail the whole fetch.
 - **A parent object without a key.** Not written.
@@ -596,7 +598,7 @@ the `extra_rules` consistency check, the `annotations_extra` lines, the run-repo
    bootstrap cannot read stops the run there, with the bootstrap's message and no report.
 
 Alongside: `python3 scripts/lint_prefix_predicates.py` rejects new literal key/snapshot prefixes
-(`RHAIRFE-`, `RHOAIENG-`, `RFE-`, `INIT-`, `RHAISTRAT-`, `issue-snapshot-`, `initiative-snapshot-`,
+(`RHAIRFE-`, `RFE-`, `INIT-`, `RHAISTRAT-`, `issue-snapshot-`, `initiative-snapshot-`,
 `initiative-run-`) in code outside the registry; the per-file baseline in
 `tests/data/prefix_predicate_baseline.json` may only shrink.
 

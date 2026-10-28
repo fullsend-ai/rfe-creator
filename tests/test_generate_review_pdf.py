@@ -489,8 +489,8 @@ class TestIdPredicates:
     @pytest.mark.parametrize(
         "type_name, tracker, local, foreign",
         [
-            ("rfe", "RHAIRFE-1595", "RFE-001", "RHOAIENG-1"),
-            ("initiative", "RHOAIENG-12345", "INIT-001", "RHAIRFE-1"),
+            ("rfe", "RHAIRFE-1595", "RFE-001", "RHAISTRAT-1"),
+            ("initiative", "RHAISTRAT-12345", "INIT-001", "RHAIRFE-1"),
         ],
     )
     def test_shipped_types(self, type_name, tracker, local, foreign):
@@ -502,8 +502,8 @@ class TestIdPredicates:
         assert cfg["desc"].owns(tracker) and cfg["desc"].owns(local)
         assert not cfg["desc"].owns(foreign)
         # The strategy rollup an initiative's parent_key may carry is neither.
-        assert not generate_review_pdf._is_tracker_key("RHAISTRAT-42", cfg)
-        assert not cfg["desc"].owns("RHAISTRAT-42")
+        assert not generate_review_pdf._is_tracker_key("RHOAIENG-42", cfg)
+        assert not cfg["desc"].owns("RHOAIENG-42")
 
     def test_local_id_parity_rung(self):
         """A malformed local id stays with its type (Descriptor.owns' parity rung), so a
@@ -676,25 +676,25 @@ class TestReportLinksAndSplitClassification:
             root,
             "initiative",
             "INIT-002",
-            extra="type: initiative\ntracker_ref: RHOAIENG-777\n",
+            extra="type: initiative\ntracker_ref: RHAISTRAT-777\n",
         )
         _review(root, "initiative", "INIT-002")
-        _task(root, "initiative", "RHOAIENG-12345")
-        _review(root, "initiative", "RHOAIENG-12345")
+        _task(root, "initiative", "RHAISTRAT-12345")
+        _review(root, "initiative", "RHAISTRAT-12345")
 
         html = _render(tmp_path, monkeypatch, "initiative")
 
         assert "from Splits" not in html
-        assert _link("RHOAIENG-777", "INIT-002") in html
-        assert _link("RHOAIENG-12345", "RHOAIENG-12345") in html
+        assert _link("RHAISTRAT-777", "INIT-002") in html
+        assert _link("RHAISTRAT-12345", "RHAISTRAT-12345") in html
         assert "browse/INIT-001" not in html
         assert "browse/RHAISTRAT-42" not in html
 
     def test_initiative_same_family_parent_is_a_split(self, tmp_path, monkeypatch):
         root = tmp_path / "artifacts"
-        _task(root, "initiative", "RHOAIENG-100", status="Archived")
-        _review(root, "initiative", "RHOAIENG-100", recommendation="split")
-        _task(root, "initiative", "INIT-003", extra="parent_key: RHOAIENG-100\n")
+        _task(root, "initiative", "RHAISTRAT-100", status="Archived")
+        _review(root, "initiative", "RHAISTRAT-100", recommendation="split")
+        _task(root, "initiative", "INIT-003", extra="parent_key: RHAISTRAT-100\n")
         _review(root, "initiative", "INIT-003")
         _task(root, "initiative", "INIT-004", extra="parent_key: INIT-003\n")
         _review(root, "initiative", "INIT-004")

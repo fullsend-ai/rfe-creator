@@ -224,7 +224,7 @@
     "initiative_id": {
       "type": "string",
       "required": true,
-      "pattern": "^(INIT-\\d+|RHOAIENG-\\d+)$"
+      "pattern": "^(INIT-\\d+|RHAISTRAT-\\d+)$"
     },
     "local_id": {
       "type": "string",
@@ -269,7 +269,7 @@
     "parent_key": {
       "type": "string",
       "required": false,
-      "pattern": "^(RHAISTRAT-\\d+|RHOAIENG-\\d+|INIT-\\d+)$",
+      "pattern": "^(RHAISTRAT-\\d+|INIT-\\d+)$",
       "default": null
     },
     "original_labels": {
@@ -282,7 +282,7 @@
     "initiative_id": {
       "type": "string",
       "required": true,
-      "pattern": "^(INIT-\\d+|RHOAIENG-\\d+)$"
+      "pattern": "^(INIT-\\d+|RHAISTRAT-\\d+)$"
     },
     "local_id": {
       "type": "string",

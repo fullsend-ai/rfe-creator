@@ -102,9 +102,9 @@ SAMPLES = {
         {"needs_attention": False},
     ),
     "initiative-task": (
-        "initiatives/RHOAIENG-12345.md",
+        "initiatives/RHAISTRAT-12345.md",
         {
-            "initiative_id": "RHOAIENG-12345",
+            "initiative_id": "RHAISTRAT-12345",
             "title": "Unify model serving telemetry across RHOAI components",
             "priority": "Normal",
             "status": "Ready",
@@ -113,9 +113,9 @@ SAMPLES = {
         {"status": "Submitted"},
     ),
     "initiative-review": (
-        "initiative-reviews/RHOAIENG-12345-review.md",
+        "initiative-reviews/RHAISTRAT-12345-review.md",
         {
-            "initiative_id": "RHOAIENG-12345",
+            "initiative_id": "RHAISTRAT-12345",
             "score": 7,
             "pass": True,
             "recommendation": "submit",
@@ -148,13 +148,13 @@ GOLDEN = {
         b"before_scores: null\n---\n" + BODY.encode()
     ),
     "initiative-task": (
-        b"---\ninitiative_id: RHOAIENG-12345\n"
+        b"---\ninitiative_id: RHAISTRAT-12345\n"
         b"title: Unify model serving telemetry across RHOAI components\n"
         b"priority: Normal\nstatus: Submitted\nparent_key: RHAISTRAT-42\nlocal_id: null\n"
         b"original_labels: null\n---\n" + BODY.encode()
     ),
     "initiative-review": (
-        b"---\ninitiative_id: RHOAIENG-12345\nscore: 7\npass: true\nrecommendation: submit\n"
+        b"---\ninitiative_id: RHAISTRAT-12345\nscore: 7\npass: true\nrecommendation: submit\n"
         b"feasibility: feasible\nauto_revised: false\nneeds_attention: true\n"
         b"needs_attention_reason: 'Alignment weak: parent outcome scope differs'\nscores:\n"
         b"  what: 2\n  why: 1\n  scope: 1\n  open_to_how: 2\n  right_sized: 1\n"

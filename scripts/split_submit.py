@@ -11,7 +11,7 @@ Identifies parent (status: Archived, id matches parent key) and children
 
 Usage:
     python scripts/split_submit.py RHAIRFE-XXXX [--dry-run] [--artifacts-dir DIR]
-    python scripts/split_submit.py RHOAIENG-XXXX --type initiative [--dry-run]
+    python scripts/split_submit.py RHAISTRAT-XXXX --type initiative [--dry-run]
 
 Environment variables:
     JIRA_SERVER  Jira server URL (e.g. https://mysite.atlassian.net)

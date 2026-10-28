@@ -1031,7 +1031,7 @@ class TypeRegistry:
 
         1. ``identity.local_id_pattern`` full-matches ``item_id`` (``RFE-001``, ``INIT-001``);
         2. ``item_id`` starts with one of the tracker's ``identity.<tracker>.key_prefixes``
-           (``RHAIRFE-1``, ``RHOAIENG-1`` — the Jira key grammar, design §3.6);
+           (``RHAIRFE-1``, ``RHAISTRAT-1`` — the Jira key grammar, design §3.6);
         3. ``item_id`` starts with ``identity.local_prefix`` — the parity rung: the sniffs this
            replaced tested ``startswith(local_prefix) or startswith(key_prefix)``, so a
            malformed local id (``INIT-x``) stays with the type it went to before PR-2. Ranked

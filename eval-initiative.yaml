@@ -162,7 +162,7 @@ outputs:
     batch_pattern: "INIT-{n:03d}"
     schema: |
       Initiative task files in Markdown with YAML frontmatter.
-      Naming: INIT-NNN.md (new, pre-submission) or RHOAIENG-NNNN.md (fetched).
+      Naming: INIT-NNN.md (new, pre-submission) or RHAISTRAT-NNNN.md (fetched).
       Frontmatter fields (validated by scripts/frontmatter.py):
         initiative_id, title, priority (Blocker/Critical/Major/Normal/Minor),
         status (Draft/Ready/Submitted/Archived),

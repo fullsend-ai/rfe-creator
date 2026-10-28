@@ -822,7 +822,7 @@ def _validate_ids(ids, source=""):
     so both are argument-injection and path-traversal vectors. The grammar is
     deliberately type-neutral: it accepts every local and Jira id shape the
     pipeline produces (``RFE-001``, ``INIT-004``, ``RHAIRFE-2685``,
-    ``RHOAIENG-9876``) and nothing else. Per-type grammars belong to the type
+    ``RHAISTRAT-9876``) and nothing else. Per-type grammars belong to the type
     registry (design-proposals/work-item-types-unified.md §3.2); this is the floor.
     """
     bad = [i for i in ids if not _VALID_ID_RE.fullmatch(i)]

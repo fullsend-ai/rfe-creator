@@ -41,9 +41,12 @@ class TestTaskDirRouting:
             ("RHAIRFE-1", "artifacts/rfe-tasks"),
             ("RFE-001", "artifacts/rfe-tasks"),
             ("INIT-001", "artifacts/initiatives"),
-            ("RHOAIENG-1", "artifacts/initiatives"),
+            ("RHAISTRAT-1", "artifacts/initiatives"),
             ("INIT-x", "artifacts/initiatives"),  # malformed local id: the local_prefix rung
-            ("RHAISTRAT-1", "artifacts/rfe-tasks"),  # a peer pipeline's key: rfe default
+            (
+                "RHOAIENG-1",
+                "artifacts/rfe-tasks",
+            ),  # the former Initiative project: unowned, rfe default
             ("", "artifacts/rfe-tasks"),
             ("init-001", "artifacts/rfe-tasks"),  # case-sensitive, like the sniff it replaced
         ],
@@ -77,6 +80,6 @@ class TestStagingCopy:
         assert r.stdout == "FILE=tmp/rfe-assess/single/RHAIRFE-1.md\n"
 
     def test_unowned_id_is_looked_up_under_rfe_tasks(self, tmp_path):
-        r = _run(tmp_path, "RHAISTRAT-1")
+        r = _run(tmp_path, "RHOAIENG-1")
         assert r.returncode == 1
-        assert "Task file not found: artifacts/rfe-tasks/RHAISTRAT-1.md" in r.stderr
+        assert "Task file not found: artifacts/rfe-tasks/RHOAIENG-1.md" in r.stderr

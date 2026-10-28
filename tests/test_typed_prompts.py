@@ -167,6 +167,14 @@ for _t in ("rfe", "initiative"):
     _allow(_t, f"{LEGACY}/{_t}/prompts/review-agent.md", *_DIMENSION_GENERIC_REVIEW)
     _allow(_t, f"{LEGACY}/{_t}/review.md", *_DIMENSION_GENERIC_BODY)
 _allow("initiative", f"{LEGACY}/initiative/review.md", *_DIMENSION_GENERIC_BODY_INIT)
+# 2026-10-28 (AISDLC-461): Initiatives moved from RHOAIENG to RHAISTRAT; the generic speedrun
+# body renders the type's write prefix, so the legacy example key is not carried.
+_allow("initiative", f"{LEGACY}/initiative/speedrun.md", "argument is a jira key (rhoaieng-nnnn)")
+_allow(
+    "initiative",
+    f"{LEGACY}/initiative/create.md",
+    "initiatives are a separate entity type in rhoaieng, not rhairfe",
+)
 # CodeRabbit on #200: the acceptance-criteria size ranges were overlapping (5 -> M or L, 8 -> L or
 # XL) in the legacy body and template alike; the typed guidance and template use exclusive ranges
 # (S 1-2, M 3-4, L 5-7, XL 8+).

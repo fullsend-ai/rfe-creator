@@ -1071,15 +1071,15 @@ class TestCrossTypeGate:
 
     def test_duplicate_results_subdir(self, types_copy):
         """AISDLC-202: two types in one results subtree would read and move each other's
-        `latest`; a second type reusing 'initiative-rhoaieng' is a cross-type finding."""
+        `latest`; a second type reusing 'initiative-rhaistrat' is a cross-type finding."""
         _mutate(
             types_copy,
             "rfe",
-            lambda d: d["snapshot"].__setitem__("results_subdir", "initiative-rhoaieng"),
+            lambda d: d["snapshot"].__setitem__("results_subdir", "initiative-rhaistrat"),
         )
         hits = _assert_finding(
             _validate(types_copy),
-            "duplicate snapshot.results_subdir 'initiative-rhoaieng' "
+            "duplicate snapshot.results_subdir 'initiative-rhaistrat' "
             "shared by types: initiative, rfe",
             "*",
         )
@@ -1088,10 +1088,10 @@ class TestCrossTypeGate:
     def test_shipped_results_subdirs(self):
         """The decision record: rfe at the root (grandfathered); every other type under
         `<type>-<project lowercased>`, so a second deployment of the type against another Jira
-        project (AISDLC-8) never shares a subtree — initiative under initiative-rhoaieng/."""
+        project (AISDLC-8) never shares a subtree — initiative under initiative-rhaistrat/."""
         reg = type_registry.load(root=TYPES_ROOT, extra_roots=[], env={})
         assert reg.get("rfe").get("snapshot.results_subdir") == ""
-        assert reg.get("initiative").get("snapshot.results_subdir") == "initiative-rhoaieng"
+        assert reg.get("initiative").get("snapshot.results_subdir") == "initiative-rhaistrat"
         for name in reg.names():
             if name == "rfe":
                 continue
@@ -1150,12 +1150,12 @@ class TestCrossTypeGate:
         _mutate(
             types_copy,
             "initiative",
-            lambda d: d["identity"].__setitem__("local_prefix", "RHOAIENG-"),
+            lambda d: d["identity"].__setitem__("local_prefix", "RHAISTRAT-"),
         )
         hits = _assert_finding(
             _validate(types_copy),
-            "identity.local_prefix 'RHOAIENG-' of type 'initiative' has the same stem as the "
-            "effective project key 'RHOAIENG' of type 'initiative'",
+            "identity.local_prefix 'RHAISTRAT-' of type 'initiative' has the same stem as the "
+            "effective project key 'RHAISTRAT' of type 'initiative'",
             "*",
         )
         assert hits[0].types == frozenset({"initiative"})

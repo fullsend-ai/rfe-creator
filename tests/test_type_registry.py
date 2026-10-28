@@ -349,8 +349,8 @@ class TestDescriptorProjections:
 
     def test_identity_properties_initiative(self):
         desc = _shipped().get("initiative")
-        assert desc.key_prefixes == ["RHOAIENG-"]
-        assert desc.write_prefix == "RHOAIENG-"
+        assert desc.key_prefixes == ["RHAISTRAT-"]
+        assert desc.write_prefix == "RHAISTRAT-"
         assert desc.local_prefix == "INIT-"
         assert desc.local_id_pattern == r"^INIT-\d+$"
         assert desc.id_field == "initiative_id"
@@ -361,9 +361,7 @@ class TestDescriptorProjections:
         # (validate_batch_input) — PR-1 checklist Q14 reconciled by construction.
         reg = _shipped()
         assert reg.get("rfe").parent_key_pattern == r"^(RFE-\d+|RHAIRFE-\d+)$"
-        assert reg.get("initiative").parent_key_pattern == (
-            r"^(RHAISTRAT-\d+|RHOAIENG-\d+|INIT-\d+)$"
-        )
+        assert reg.get("initiative").parent_key_pattern == (r"^(RHAISTRAT-\d+|INIT-\d+)$")
         for name in SHIPPED:
             desc = reg.get(name)
             patterns = desc.get("conventions.parent_key_patterns")
@@ -553,8 +551,8 @@ class TestBinding:
     def test_initiative_default(self):
         binding = _shipped().get("initiative").binding()
         assert binding["source"] == "descriptor"
-        assert (binding["project"], binding["issue_type"]) == ("RHOAIENG", "Initiative")
-        assert binding["key_prefixes"] == ["RHOAIENG-"]
+        assert (binding["project"], binding["issue_type"]) == ("RHAISTRAT", "Initiative")
+        assert binding["key_prefixes"] == ["RHAISTRAT-"]
         assert binding["local_prefix"] == "INIT-"
 
     def test_project_override_derives_write_prefix_and_keeps_read_prefixes(self):
@@ -596,7 +594,7 @@ class TestBinding:
         }
         binding = _shipped().get("initiative").binding(env)
         assert (binding["project"], binding["issue_type"]) == ("PLAN", "Epic")
-        assert binding["key_prefixes"] == ["PLAN-", "RHOAIENG-"]
+        assert binding["key_prefixes"] == ["PLAN-", "RHAISTRAT-"]
         assert binding["local_prefix"] == "PL-"
         assert binding["source"] == "env"
 
@@ -609,7 +607,7 @@ class TestBinding:
         env = {"RFE_CREATOR_BINDING_RFE_PROJECT": "ACME"}
         reg = _shipped()
         assert reg.get("initiative").binding(env)["source"] == "descriptor"
-        assert reg.get("initiative").binding(env)["project"] == "RHOAIENG"
+        assert reg.get("initiative").binding(env)["project"] == "RHAISTRAT"
         assert reg.get("rfe").binding(env)["project"] == "ACME"
 
     @pytest.mark.parametrize("value", ["acme", "1ACME", "AC ME", "ACME-"])
@@ -1076,7 +1074,7 @@ class TestCli:
     def test_binding_text_is_yaml(self):
         result = _cli("binding", "initiative")
         assert result.returncode == 0
-        assert yaml.safe_load(result.stdout)["project"] == "RHOAIENG"
+        assert yaml.safe_load(result.stdout)["project"] == "RHAISTRAT"
 
     def test_binding_honours_env_override(self):
         result = _cli("binding", "rfe", "--json", env={"RFE_CREATOR_BINDING_RFE_PROJECT": "ACME"})
@@ -1176,8 +1174,8 @@ class TestDetect:
             ("RFE-001", "rfe"),
             ("RHAIRFE-1", "rfe"),
             ("INIT-001", "initiative"),
-            ("RHOAIENG-1", "initiative"),
-            ("RHAISTRAT-1", None),  # a peer pipeline's key: no shipped type owns it
+            ("RHAISTRAT-1", "initiative"),
+            ("RHOAIENG-1", None),  # the former Initiative project (to 2026-10-28): unowned
             ("", None),
             ("rfe-001", None),  # case-sensitive, like every predicate it replaces
             ("init-001", None),
@@ -1209,7 +1207,7 @@ class TestDetect:
 
     def test_owns_agrees_with_detect_for_every_shipped_type(self):
         reg = _shipped()
-        for item_id in ("RFE-001", "RHAIRFE-1", "INIT-001", "RHOAIENG-1", "RHAISTRAT-1", ""):
+        for item_id in ("RFE-001", "RHAIRFE-1", "INIT-001", "RHAISTRAT-1", "RHOAIENG-1", ""):
             owner = reg.detect(item_id)
             for desc in reg:
                 assert desc.owns(item_id) is (owner is not None and owner.name == desc.name)
@@ -1217,7 +1215,7 @@ class TestDetect:
     def test_returns_the_registry_descriptor_instance(self):
         reg = _shipped()
         assert reg.detect("RFE-001") is reg.get("rfe")
-        assert reg.detect("RHOAIENG-1") is reg.get("initiative")
+        assert reg.detect("RHAISTRAT-1") is reg.get("initiative")
 
     def test_local_id_pattern_beats_another_types_key_prefix(self, tmp_path):
         """Rung order, not names() order, decides: alpha sorts first and holds the ``AB-`` key
@@ -1280,7 +1278,7 @@ class TestOwnsEffective:
     ``owns`` and ``detect`` stay descriptor-only for the per-id routers."""
 
     ENV = {"RFE_CREATOR_BINDING_RFE_PROJECT": "KONFLUX"}
-    IDS = ("RFE-001", "RHAIRFE-1", "INIT-001", "RHOAIENG-1", "RHAISTRAT-1", "KONFLUX-1", "RFE-x")
+    IDS = ("RFE-001", "RHAIRFE-1", "INIT-001", "RHAISTRAT-1", "RHOAIENG-1", "KONFLUX-1", "RFE-x")
 
     def test_no_override_equals_owns_for_every_shipped_id(self):
         reg = _shipped()
@@ -1310,9 +1308,9 @@ class TestOwnsEffective:
 
     def test_never_the_provisional_rung(self):
         reg = _shipped()
-        found = reg.candidates("RHAISTRAT-1", env=self.ENV)
+        found = reg.candidates("RHOAIENG-1", env=self.ENV)
         assert found.provisional and found.names == ["rfe", "initiative"]
-        assert not any(d.owns_effective("RHAISTRAT-1", env=self.ENV) for d in reg)
+        assert not any(d.owns_effective("RHOAIENG-1", env=self.ENV) for d in reg)
         assert not any(d.owns_effective("AB1-9", env={}) for d in reg)
 
     def test_env_defaults_to_the_registry_environment(self):
@@ -1702,12 +1700,12 @@ class TestCandidates:
             ("RFE-001", "local_id_pattern", ["rfe"], False),
             ("INIT-001", "local_id_pattern", ["initiative"], False),
             ("RHAIRFE-1", "key_prefix", ["rfe"], False),
-            ("RHOAIENG-1", "key_prefix", ["initiative"], False),
+            ("RHAISTRAT-1", "key_prefix", ["initiative"], False),
             ("RHAIRFE-1234x", "key_prefix", ["rfe"], False),
             ("INIT-x", "local_prefix", ["initiative"], False),
             ("RFE-", "local_prefix", ["rfe"], False),
             ("KONFLUX-12", "tracker_grammar", ["rfe", "initiative"], True),
-            ("RHAISTRAT-1", "tracker_grammar", ["rfe", "initiative"], True),
+            ("RHOAIENG-1", "tracker_grammar", ["rfe", "initiative"], True),
             ("AB1-9", "tracker_grammar", ["rfe", "initiative"], True),
             ("konflux-12", None, [], False),
             ("KONFLUX-", None, [], False),
@@ -1741,7 +1739,7 @@ class TestCandidates:
 
     def test_rung_order_and_provisional_flag_are_consistent_with_detect(self):
         reg = _shipped()
-        for item_id in ("RFE-001", "RHAIRFE-1", "INIT-x", "RHOAIENG-1", "RHAISTRAT-1", "nope"):
+        for item_id in ("RFE-001", "RHAIRFE-1", "INIT-x", "RHAISTRAT-1", "RHOAIENG-1", "nope"):
             found = reg.candidates(item_id)
             owner = reg.detect(item_id)
             if owner is not None:
@@ -1834,13 +1832,13 @@ class TestAssertRegisteredBinding:
         assert binding == RFE_DESCRIPTOR_BINDING
         assert assert_registered_binding(reg.get("initiative"), env={}, registry=reg)[
             "project"
-        ] == ("RHOAIENG")
+        ] == ("RHAISTRAT")
 
     def test_registry_defaults_to_a_fresh_load_with_the_same_env(self):
         desc = _shipped().get("rfe")
         assert assert_registered_binding(desc, env={})["source"] == "descriptor"
         env = {
-            "RFE_CREATOR_BINDING_RFE_PROJECT": "RHOAIENG",
+            "RFE_CREATOR_BINDING_RFE_PROJECT": "RHAISTRAT",
             "RFE_CREATOR_BINDING_RFE_ISSUE_TYPE": "Initiative",
         }
         with pytest.raises(RegistryError, match="registered for type 'initiative'"):
@@ -1849,19 +1847,19 @@ class TestAssertRegisteredBinding:
     def test_override_selecting_another_types_pair_is_rejected(self):
         reg = _shipped()
         env = {
-            "RFE_CREATOR_BINDING_RFE_PROJECT": "RHOAIENG",
+            "RFE_CREATOR_BINDING_RFE_PROJECT": "RHAISTRAT",
             "RFE_CREATOR_BINDING_RFE_ISSUE_TYPE": "Initiative",
         }
         with pytest.raises(RegistryError) as excinfo:
             assert_registered_binding(reg.get("rfe"), env=env, registry=reg)
         message = str(excinfo.value)
-        assert message.startswith("rfe: effective binding ('jira', 'RHOAIENG', 'Initiative')")
+        assert message.startswith("rfe: effective binding ('jira', 'RHAISTRAT', 'Initiative')")
         assert "registered for type 'initiative'" in message
         assert "--type initiative" in message
 
     def test_ownership_not_membership_for_the_shorthand(self):
         reg = _shipped()
-        env = {"JIRA_PROJECT": "RHOAIENG", "JIRA_ISSUE_TYPE": "Initiative"}
+        env = {"JIRA_PROJECT": "RHAISTRAT", "JIRA_ISSUE_TYPE": "Initiative"}
         # without shorthand the pair is not applied at all
         assert assert_registered_binding(reg.get("rfe"), env=env, registry=reg)["source"] == (
             "descriptor"
@@ -1876,20 +1874,20 @@ class TestAssertRegisteredBinding:
 
     def test_same_project_with_a_distinct_issue_type_is_owned(self):
         reg = _shipped()
-        env = {"RFE_CREATOR_BINDING_RFE_PROJECT": "RHOAIENG"}
+        env = {"RFE_CREATOR_BINDING_RFE_PROJECT": "RHAISTRAT"}
         binding = assert_registered_binding(reg.get("rfe"), env=env, registry=reg)
-        assert (binding["project"], binding["issue_type"]) == ("RHOAIENG", "Feature Request")
+        assert (binding["project"], binding["issue_type"]) == ("RHAISTRAT", "Feature Request")
 
     def test_effective_triples_are_compared(self):
         """The rule is over EFFECTIVE bindings: a pair another type moved away from is free."""
         reg = _shipped()
         env = {
-            "RFE_CREATOR_BINDING_RFE_PROJECT": "RHOAIENG",
+            "RFE_CREATOR_BINDING_RFE_PROJECT": "RHAISTRAT",
             "RFE_CREATOR_BINDING_RFE_ISSUE_TYPE": "Initiative",
             "RFE_CREATOR_BINDING_INITIATIVE_PROJECT": "PLAN",
         }
         assert assert_registered_binding(reg.get("rfe"), env=env, registry=reg)["project"] == (
-            "RHOAIENG"
+            "RHAISTRAT"
         )
 
     def test_workspace_override_is_rejected_when_headless(self):
@@ -1933,7 +1931,7 @@ class TestAssertRegisteredBinding:
 
     def test_env_defaults_to_the_descriptors_registry_env(self):
         env = {
-            "RFE_CREATOR_BINDING_RFE_PROJECT": "RHOAIENG",
+            "RFE_CREATOR_BINDING_RFE_PROJECT": "RHAISTRAT",
             "RFE_CREATOR_BINDING_RFE_ISSUE_TYPE": "Initiative",
         }
         reg = load(root=TYPES_ROOT, extra_roots=[], env=env)
@@ -2042,7 +2040,7 @@ class TestResolve:
             resolve(_shipped(), explicit_type="rfe", batch=batch, env={})
 
     def test_legacy_list_gives_no_rung_two_signal_but_its_string_items_join_the_ids(self, tmp_path):
-        batch = _write_yaml(tmp_path / "b.yaml", ["RHOAIENG-1", {"prompt": "x"}, "RHOAIENG-2"])
+        batch = _write_yaml(tmp_path / "b.yaml", ["RHAISTRAT-1", {"prompt": "x"}, "RHAISTRAT-2"])
         res = resolve(_shipped(), batch=batch, env={})
         assert (res.type_name, res.rung) == ("initiative", "id grammar")
         prompts_only = _write_yaml(tmp_path / "p.yaml", [{"prompt": "x"}, {"prompt": "y"}])
@@ -2124,7 +2122,7 @@ class TestResolve:
             assert resolve(_shipped(), artifact=art, env={}).type_name == "rfe"
 
     def test_artifact_stem_joins_the_ids_when_the_dir_is_unknown(self, tmp_path):
-        art = _artifact(tmp_path / "misc" / "RHOAIENG-42.md")
+        art = _artifact(tmp_path / "misc" / "RHAISTRAT-42.md")
         res = resolve(_shipped(), artifact=art, env={})
         assert (res.type_name, res.rung) == ("initiative", "id grammar")
         art = _artifact(tmp_path / "misc" / "RHAIRFE-1595-comments.md")
@@ -2411,7 +2409,7 @@ class TestResolveCli:
         assert result.stdout == "TYPE RESOLVED: rfe (legacy default)\n"
 
     def test_ids(self):
-        result = _cli("resolve", "RHOAIENG-1", "INIT-2")
+        result = _cli("resolve", "RHAISTRAT-1", "INIT-2")
         assert result.returncode == 0, result.stderr
         assert result.stdout == "TYPE RESOLVED: initiative (id grammar)\n"
 
@@ -2581,7 +2579,7 @@ class TestResolveCli:
             == "tracker_grammar (provisional): rfe initiative\n"
         )
         assert _cli("candidates", "RFE-1").stdout == "local_id_pattern: rfe\n"
-        assert _cli("candidates", "RHOAIENG-1").stdout == "key_prefix: initiative\n"
+        assert _cli("candidates", "RHAISTRAT-1").stdout == "key_prefix: initiative\n"
         assert _cli("candidates", "INIT-x").stdout == "local_prefix: initiative\n"
         none = _cli("candidates", "nope")
         assert none.returncode == 0 and none.stdout == "none: -\n"
@@ -2739,7 +2737,7 @@ class TestReadParityStrictIdsAndWorkspaceNames:
         assert "-> initiative" in message and "RHAIRFE-7 -> rfe" in message
 
     def test_artifact_stem_agreeing_with_its_dir_resolves_at_artifact_dir(self, tmp_path):
-        art = _artifact(tmp_path / "initiatives" / "RHOAIENG-7.md", {"title": "t"})
+        art = _artifact(tmp_path / "initiatives" / "RHAISTRAT-7.md", {"title": "t"})
         res = resolve(_shipped(), artifact=art, env={})
         assert (res.type_name, res.rung) == ("initiative", "artifact dir")
 
@@ -2775,7 +2773,7 @@ class TestReadBatch:
         assert type_registry.BATCH_MAPPING_KEYS == ("type", "items")
 
     def test_legacy_list_is_returned_as_is_with_no_type(self, tmp_path):
-        items = [{"prompt": "x"}, "RHOAIENG-1", {"prompt": "y", "type": "rfe"}]
+        items = [{"prompt": "x"}, "RHAISTRAT-1", {"prompt": "y", "type": "rfe"}]
         batch = _write_yaml(tmp_path / "b.yaml", items)
         # The per-item type key is NOT read_batch's business (resolve rejects it, D2).
         assert read_batch(batch) == (None, items)
@@ -2875,7 +2873,7 @@ class TestResolveBatchItems:
     def test_string_items_are_ids_by_default(self, tmp_path):
         # PR-3a semantics, kept for a batch of ids (the ``resolve`` CLI's ``--batch``).
         label = tmp_path / "ids.yaml"
-        res = resolve(_shipped(), batch=label, batch_items=(None, ["RHOAIENG-1"]), env={})
+        res = resolve(_shipped(), batch=label, batch_items=(None, ["RHAISTRAT-1"]), env={})
         assert (res.type_name, res.rung) == ("initiative", "id grammar")
         with pytest.raises(ResolveError, match="no registered type owns id 'alpha'"):
             resolve(_shipped(), batch=label, batch_items=(None, ["alpha"]), env={"CI": "true"})
@@ -2891,7 +2889,7 @@ class TestResolveBatchItems:
         res = resolve(reg, batch_items=(None, ["RHAIRFE-123"]), env={}, **kw)
         assert (res.type_name, res.rung) == ("rfe", "legacy default")
         res = resolve(
-            reg, explicit_type="rfe", batch_items=(None, ["RHOAIENG-123"]), env={"CI": "1"}, **kw
+            reg, explicit_type="rfe", batch_items=(None, ["RHAISTRAT-123"]), env={"CI": "1"}, **kw
         )
         assert (res.type_name, res.rung) == ("rfe", "--type")
         res = resolve(reg, batch_items=("initiative", ["RHAIRFE-1"]), env={"CI": "1"}, **kw)
@@ -2993,12 +2991,12 @@ class TestParentKeyPatternEffective:
         assert pattern == r"^(KONFLUX-\d+|RFE-\d+|RHAIRFE-\d+)$"
         for key in ("KONFLUX-1", "RFE-001", "RHAIRFE-7"):
             assert re.fullmatch(pattern, key), key
-        for key in ("RHOAIENG-1", "KONFLUX-", "konflux-1"):
+        for key in ("RHAISTRAT-1", "KONFLUX-", "konflux-1"):
             assert re.fullmatch(pattern, key) is None, key
         init = _shipped().get("initiative")
         assert (
             init.parent_key_pattern_effective({"RFE_CREATOR_BINDING_INITIATIVE_PROJECT": "KONFLUX"})
-            == r"^(KONFLUX-\d+|RHAISTRAT-\d+|RHOAIENG-\d+|INIT-\d+)$"
+            == r"^(KONFLUX-\d+|RHAISTRAT-\d+|INIT-\d+)$"
         )
 
     def test_an_override_naming_a_declared_alternative_adds_nothing(self):

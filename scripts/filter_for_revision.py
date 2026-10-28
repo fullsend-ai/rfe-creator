@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Filter IDs to those needing revision, rejecting score regressions.
 
-Supports both RFE IDs (RHAIRFE-*, RFE-*) and Initiative IDs (RHOAIENG-*, INIT-*).
+Supports both RFE IDs (RHAIRFE-*, RFE-*) and Initiative IDs (RHAISTRAT-*, INIT-*).
 
 For each ID:
 - If score < before_score: sets recommendation=autorevise_reject (revision made it worse)
