@@ -195,7 +195,7 @@ field.
 
 - [ ] **Descriptor lint** — `python3 scripts/validate_types.py` (gate 1; add
   `--extra-roots <dir>` for a drop-in root, `--verify --type <name>` for a one-line verdict on one
-  type).
+  type, without the eval gate the pipeline does not need).
   - Passes with `OK: <n> type(s) valid: rfe, initiative, <name>`.
   - Fails with one `ERROR <type>: <message>` line per finding, `*` in place of the type for a
     cross-type finding, then a `validate_types: <n> finding(s) across <m> type(s)` summary on

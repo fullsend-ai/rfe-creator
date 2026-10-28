@@ -1509,6 +1509,63 @@ class TestVerify:
         assert result.returncode == 0
         assert json.loads(result.stdout) == {"ok": True, "types": ["rfe"], "errors": []}
 
+    def test_verify_leaves_out_the_eval_gate(self, types_copy):
+        """Gate 3 decides what the pipeline needs. The eval pointers and the fragment/skeleton
+        render belong to the eval harness and the full lint: a descriptor whose eval tree is
+        broken still verifies, and the full lint still reports it."""
+
+        def break_eval(d):
+            d["eval"]["config"] = "eval-nope.yaml"
+            d["eval"]["dataset"] = "eval/nope/cases"
+
+        _mutate(types_copy, "rfe", break_eval)
+        full = _validate(types_copy)
+        _assert_finding(full, "eval.config: file not found: eval-nope.yaml", "rfe")
+        _assert_finding(full, "eval.dataset: path not found: eval/nope/cases", "rfe")
+        verify = _validate(types_copy, only="rfe", eval_gate=False)
+        assert verify.ok, verify.lines()
+        assert verify.warnings == []  # by design, not a degraded run
+        result = _cli("--root", str(types_copy), "--verify", "--type", "rfe")
+        assert result.returncode == 0, result.stdout
+        assert result.stdout == "VERIFY OK: type 'rfe' passes gate 1\n"
+        assert result.stderr == ""
+
+    @pytest.mark.parametrize("name", SHIPPED)
+    def test_verify_passes_from_a_staged_eval_workspace(self, tmp_path, name):
+        """The shape of the directory the pipeline runs in under the eval harness: scripts/,
+        types/ and the skills staged as copies (the fullsend runner materialises the
+        workspace symlinks), no eval.yaml, no eval/. REPO_ROOT is then that directory. The
+        2026-10-28 fullsend eval run failed SETUP there on eval.config, eval.dataset and
+        the skeleton; the claude-code runner never saw it because its scripts/ symlink
+        resolved REPO_ROOT to the full checkout."""
+        staged = tmp_path / "workspace"
+        ignore = shutil.ignore_patterns("__pycache__", "*.pyc")
+        shutil.copytree(REPO_ROOT / "scripts", staged / "scripts", ignore=ignore)
+        shutil.copytree(REPO_ROOT / "types", staged / "types", ignore=ignore)
+        shutil.copytree(REPO_ROOT / ".claude" / "skills", staged / ".claude" / "skills")
+        assert not (staged / "eval.yaml").exists() and not (staged / "eval").exists()
+        result = subprocess.run(
+            [sys.executable, "scripts/validate_types.py", "--verify", "--type", name],
+            cwd=staged,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            env=_clean_env(),
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert result.stdout == f"VERIFY OK: type {name!r} passes gate 1\n"
+        # The full lint from the same directory does see the missing eval tree.
+        full = subprocess.run(
+            [sys.executable, "scripts/validate_types.py"],
+            cwd=staged,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            env=_clean_env(),
+        )
+        assert full.returncode == 1
+        assert "eval.config: file not found: eval.yaml" in full.stdout
+
     def test_multiple_findings_are_joined_with_pipes(self, types_copy, capsys):
         def two(d):
             d["pipeline"]["rubric"]["ref"] = "short"

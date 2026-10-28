@@ -85,6 +85,13 @@ design-proposals/work-item-types-unified.md §3.3:
       keys other than the identity strings, other values than the ones above (the label and
       template grammars among them), nested shapes no structural rule reads. The full lint
       (no --verify) keeps requiring it.
+    * leaves out the eval gate -- eval.config and eval.dataset existence, the fragment,
+      the skeleton and the regenerate-and-diff: the pipeline reads none of the eval tree,
+      and the tree is not where the pipeline runs (a staged eval workspace carries
+      scripts/, types/ and the skills, not eval.yaml or eval/; the 2026-10-28 fullsend eval
+      run failed SETUP on exactly those three findings, which the claude-code runner never
+      saw only because its scripts/ symlink resolved REPO_ROOT to the full checkout). The
+      full lint keeps the eval gate (eval_gate=True, the Python API default).
 
 Usage:
     python3 scripts/validate_types.py [--root DIR] [--extra-roots A:B]
@@ -388,13 +395,14 @@ def schema_messages(desc, schema):
     return messages
 
 
-def path_messages(desc, repo_root):
+def path_messages(desc, repo_root, eval_gate=True):
     """Every reference gate 1 requires to exist (Q24). A typed file (``pipeline.prompts.*``,
     ``pipeline.dimensions[].prompt``) resolves through ``Descriptor.typed_path`` — the absolute
     resolution ``Descriptor.launch_path`` falls back to — so the existence check does not depend
     on the working directory, a drop-in root's own files are checked where they live and a
     missing one is never masked by a repository file of the same relative path; every other
-    reference is repo-relative."""
+    reference is repo-relative. ``eval_gate=False`` (gate 3) leaves out ``eval.config`` and
+    ``eval.dataset``: the pipeline never reads them (see ``validate_all``)."""
     repo_root = Path(repo_root)
     messages = []
 
@@ -444,8 +452,9 @@ def path_messages(desc, repo_root):
                     typed=True,
                 )
 
-    missing("eval.config", _opt(desc, "eval.config"), want_file=True)
-    missing("eval.dataset", _opt(desc, "eval.dataset"), want_file=False)
+    if eval_gate:
+        missing("eval.config", _opt(desc, "eval.config"), want_file=True)
+        missing("eval.dataset", _opt(desc, "eval.dataset"), want_file=False)
     return messages
 
 
@@ -869,18 +878,20 @@ def per_type_findings(
     skeleton_text=None,
     eval_sync=False,
     isolate=False,
+    eval_gate=True,
 ):
     """Gate 1 for one descriptor. ``isolate`` (a run without the JSON-Schema shape check)
     runs every rule on its own: a rule that trips over a shape the schema would have
     rejected becomes one message naming the rule, and the remaining rules still run, so a
-    malformed dimension cannot hide a bad rubric pin."""
+    malformed dimension cannot hide a bad rubric pin. ``eval_gate=False`` (gate 3) leaves
+    out the eval gate: the eval pointers in the file references and the fragment rule."""
     messages = []
     declared = desc.data.get("type") if isinstance(desc.data, dict) else None
     if declared != desc.name:
         messages.append(f"type field {declared!r} does not match the directory name {desc.name!r}")
     rules = [
         ("kind", lambda: kind_messages(desc)),
-        ("file references", lambda: path_messages(desc, repo_root)),
+        ("file references", lambda: path_messages(desc, repo_root, eval_gate=eval_gate)),
         ("stage skills", lambda: stage_skill_messages(desc, repo_root)),
         ("typed prompts", lambda: typed_prompt_messages(desc, repo_root)),
         ("schema.review.score_fields", lambda: score_fields_messages(desc)),
@@ -888,13 +899,16 @@ def per_type_findings(
         ("conventions.labels.alignment", lambda: alignment_labels_messages(desc)),
         ("pipeline.rubric", lambda: rubric_ref_messages(desc)),
         ("review error stub", lambda: error_stub_messages(desc, artifact_utils)),
-        (
-            "eval fragment",
-            lambda: eval_fragment_messages(
-                desc, fragment_schema, skeleton_text, repo_root, eval_sync
-            ),
-        ),
     ]
+    if eval_gate:
+        rules.append(
+            (
+                "eval fragment",
+                lambda: eval_fragment_messages(
+                    desc, fragment_schema, skeleton_text, repo_root, eval_sync
+                ),
+            )
+        )
     if schema is not None:
         rules.insert(0, ("schema", lambda: schema_messages(desc, schema)))
     else:
@@ -1262,6 +1276,7 @@ def validate_all(
     repo_root=None,
     eval_sync=False,
     allow_missing_jsonschema=False,
+    eval_gate=True,
 ):
     """Run the gates and return a Report.
 
@@ -1275,6 +1290,12 @@ def validate_all(
     Raises MissingDependencyError when jsonschema is not installed -- unless
     ``allow_missing_jsonschema`` (gate 3, --verify): the JSON-Schema shape checks are then
     skipped, ``Report.warnings`` says so, and the structural rules decide.
+
+    ``eval_gate=False`` (gate 3, --verify) leaves out the eval gate -- eval.config and
+    eval.dataset existence, the fragment, the skeleton, the regenerate-and-diff: the
+    pipeline reads none of it, and the eval tree is absent where the pipeline runs from a
+    staged eval workspace (the harness stages scripts/, types/ and the skills). A by-design
+    exclusion, not a degraded run: no warning, the verdict line is unchanged.
     """
     env = os.environ if env is None else env
     repo_root = REPO_ROOT if repo_root is None else Path(repo_root)
@@ -1389,6 +1410,7 @@ def validate_all(
                 skeleton_text=skeleton_text,
                 eval_sync=eval_sync,
                 isolate=not have_jsonschema,
+                eval_gate=eval_gate,
             )
         )
 
@@ -1470,9 +1492,11 @@ def main(argv=None):
             assess_dir=args.assess_dir,
             only=args.type if args.verify else None,
             eval_sync=not args.no_eval_sync,
-            # Gate 3 runs where the pipeline runs, without the dev dependencies: it decides
-            # on what it can check and says what it skipped. The full lint stays strict.
+            # Gate 3 runs where the pipeline runs, without the dev dependencies and without
+            # the eval tree: it decides on what the pipeline needs and says what it skipped.
+            # The full lint stays strict.
             allow_missing_jsonschema=args.verify,
+            eval_gate=not args.verify,
         )
     except MissingDependencyError as exc:
         print(f"ERROR *: {exc}", file=sys.stderr)

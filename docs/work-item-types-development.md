@@ -159,7 +159,10 @@ pin.
   decorated placeholder ("None (first pass).") as empty history — replayed over six eval runs, the
   first two changed no verdict and the third removed exactly two false positives.
 - **Lint gates.** Gate 3 (`--verify --type <t>`) runs at the top of the pipeline's SETUP phase
-  (`pipeline_state.cmd_run_phase`, AISDLC-194): a finding stops the batch before its first scoring
+  (`pipeline_state.cmd_run_phase`, AISDLC-194), without the eval gate: the pipeline reads none of
+  the eval tree, and a staged eval workspace has no `eval.yaml` or `eval/` (the 2026-10-28
+  fullsend eval run failed SETUP on exactly those findings; the claude-code runner never saw them
+  because its `scripts/` symlink resolved `REPO_ROOT` to the full checkout). A finding stops the batch before its first scoring
   wave, with `setup_failed:` stubs on every id of the run and a run report; exit 2 (a usage error;
   without `jsonschema`, which the sandbox lacks, `--verify` skips only the JSON-Schema shape check
   and still decides) is a warning unless an earlier failure of the same run stands; any other exit
