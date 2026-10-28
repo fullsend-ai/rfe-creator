@@ -278,15 +278,18 @@ def test_speedrun_records_the_phase_the_retry_rule_resumes_from():
     """The prompt's rule reads `phase` in the speedrun config; the generic speedrun body
     must write it at every boundary, in order, with the values the rule names."""
     skill = (REPO / ".claude" / "skills" / "rfe-speedrun" / "SKILL.md").read_text()
-    init = re.search(r"state\.py init tmp/\{STATE_PREFIX\}speedrun-config\.yaml [^\n]*", skill)
-    assert init and "phase=create" in init.group(0), "Step 0 seeds phase=create"
+    # Its own command after `state.py init`, so the legacy init invocation stays byte for
+    # byte what tests/test_typed_prompts.py expects of the generic body.
     marks = re.findall(
         r"state\.py set tmp/\{STATE_PREFIX\}speedrun-config\.yaml phase=(\w+)", skill
     )
-    assert marks == ["autofix", "submit", "summary", "done"], marks
-    # The markers sit where the prompt says they do: autofix before the auto-fix Skill call,
-    # submit after the verify+retry cycle, summary before Phase 4, done after the summary.
+    assert marks == ["create", "autofix", "submit", "summary", "done"], marks
+    # The markers sit where the prompt says they do: create right after init, autofix before
+    # the auto-fix Skill call, submit after the verify+retry cycle, summary before Phase 4,
+    # done after the summary.
     order = [
+        skill.index("state.py init tmp/{STATE_PREFIX}speedrun-config.yaml"),
+        skill.index("phase=create"),
         skill.index("phase=autofix"),
         skill.index('Skill(skill: "rfe-auto-fix"'),
         skill.index("3 retries have been exhausted"),

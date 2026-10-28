@@ -45,7 +45,8 @@ Clean temp state and persist parsed flags. `batch_size` MUST always be a concret
 ```bash
 python3 scripts/state.py clean
 python3 scripts/prep_assess.py --clean-all
-python3 scripts/state.py init tmp/{STATE_PREFIX}speedrun-config.yaml type={TYPE} headless=<true/false> announce_complete=<true/false> dry_run=<true/false> batch_size=<N or 5> input_file=<path or null> phase=create
+python3 scripts/state.py init tmp/{STATE_PREFIX}speedrun-config.yaml type={TYPE} headless=<true/false> announce_complete=<true/false> dry_run=<true/false> batch_size=<N or 5> input_file=<path or null>
+python3 scripts/state.py set tmp/{STATE_PREFIX}speedrun-config.yaml phase=create
 ```
 
 `phase` records how far the speedrun got (`create`, `autofix`, `submit`, `summary`, `done`); each
