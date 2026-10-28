@@ -147,7 +147,7 @@ def test_composed_lists_swap_only_the_jira_entries():
 
 def test_eval_values():
     child = _load(EVAL)
-    assert child["timeout_minutes"] == 170
+    assert child["timeout_minutes"] == 150
     assert child["env"]["sandbox"] == {
         "JIRA_SERVER": EVAL_JIRA_SERVER,
         "JIRA_USER": EVAL_JIRA_USER,
@@ -244,6 +244,22 @@ def test_eval_prompt_is_the_production_prompt_under_the_eval_name():
     assert eval_fm["name"] == EVAL.stem == "rfe-creator-eval"
     assert set(eval_fm) == set(prod_fm) == {"name", "description"}
     assert eval_body == prod_body, "prompt-eval.md body drifted from prompt.md: copy it over"
+
+
+def test_prompt_retry_after_a_completed_run_only_writes_the_result_file():
+    """The second validation iteration meets a DONE pipeline state. Without a rule for it
+    the prompt falls through to running FULLSEND_TASK again, and /rfe-speedrun starts by
+    resetting tmp/ and redoing the batch (review of #273). The rule is keyed on fullsend's
+    feedback preamble, so a stale DONE state on a first iteration is still reset by the
+    skill."""
+    for name in ("prompt.md", "prompt-eval.md"):
+        _, body = _prompt(HARNESS_DIR / name)
+        dispatch = body[body.index("## Dispatch") : body.index("## Available skills")]
+        dispatch = " ".join(dispatch.split())  # the prose is hard-wrapped
+        assert "its phase is DONE and this prompt" in dispatch, name
+        assert "The previous iteration's output failed validation" in dispatch, name
+        assert "Do not run the task again" in dispatch, name
+        assert "A DONE state without that feedback" in dispatch, name
 
 
 def test_config_registers_eval_harness():

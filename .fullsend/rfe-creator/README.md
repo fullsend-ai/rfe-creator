@@ -82,15 +82,19 @@ pre-script and post-script. It overrides only:
   host needs no Jira credentials;
 - the `jira` provider (`jira-provider-eval.yaml`, literal placeholder credential) and the
   `jira` OpenShell profile (`jira-profile-eval.yaml`, no endpoints: no Atlassian egress);
-- `timeout_minutes: 170`, below the eval's 10800 s `execution.timeout`.
+- `timeout_minutes: 150`: one iteration plus the sandbox start, the pre-script, a
+  result-file retry and the post-script fit the eval's 10800 s `execution.timeout`
+  (`tests/test_eval_profiles.py` pins the sum; the full 26-case batch took 105-110 minutes
+  under claude-code).
 
 The validation loop is inherited whole (`max_iterations: 2`, `feedback_mode: append`). The
 first fullsend eval run that completed the pipeline ended its turn on the skill's own summary
 without writing `agent-result.json` (rfe-creator-eval job 17541721893, `FAIL:
 output/agent-result.json not found`); with a single iteration fullsend skips the post-script
-and the eval collects nothing. The second iteration resumes from `tmp/pipeline-state.yaml`
-(phase DONE) and only writes the result file. `timeout_minutes` is a per-iteration budget, but
-fullsend starts a second iteration only when the agent finished and its output failed
+and the eval collects nothing. On the retry, Dispatch rule 3 of the prompt sees the DONE
+pipeline state together with fullsend's validation feedback and writes the result file
+without running the task again (`/rfe-speedrun` would otherwise reset `tmp/` and redo the
+batch). fullsend starts a second iteration only when the agent finished and its output failed
 validation, never after a timeout, so a first iteration that ran out of time is not followed
 by a second one.
 

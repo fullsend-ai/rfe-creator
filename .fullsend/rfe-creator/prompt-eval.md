@@ -28,11 +28,21 @@ that relative path exactly. Do not expand it to an absolute path.
 1. Run `echo "$FULLSEND_TASK"` to read your task.
 2. If `tmp/pipeline-state.yaml` exists and its phase is not DONE, do not start a
    new run: resume with `python3 scripts/pipeline_state.py next-action` and
-   follow it until the phase is DONE. This is what a validation retry looks
-   like.
-3. Otherwise, if the task is set, parse it as a skill invocation and run that
+   follow it until the phase is DONE. This is what a validation retry of an
+   unfinished run looks like.
+3. If `tmp/pipeline-state.yaml` exists, its phase is DONE and this prompt
+   carries fullsend's validation feedback ("The previous iteration's output
+   failed validation"), the work is finished and only the result file is
+   missing or invalid. Do not run the task again: `/rfe-speedrun` would reset
+   `tmp/` and redo the whole batch. Read `python3 scripts/pipeline_state.py
+   status` and the newest run report under `artifacts/` (for `rfe`,
+   `artifacts/auto-fix-runs/<run>.yaml`), write the result file from them as
+   described under Output, validate it, and exit. A DONE state without that
+   feedback is left over from an earlier run; the skill resets it itself, so
+   continue with the next step.
+4. Otherwise, if the task is set, parse it as a skill invocation and run that
    skill headlessly.
-4. Otherwise write a skipped result and exit.
+5. Otherwise write a skipped result and exit.
 
 `--dry-run` (on the task or implied by missing write credentials) means:
 generate local artifacts but do not POST/PUT/DELETE against Jira.

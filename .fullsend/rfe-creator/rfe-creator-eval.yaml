@@ -26,20 +26,22 @@ base: rfe-creator.yaml
 # frontmatter; a test keeps the bodies identical.
 agent: rfe-creator/prompt-eval.md
 
-# Below the eval's execution.timeout (10800 s); the full 26-case batch took
-# 105-110 minutes under claude-code.
-timeout_minutes: 170
+# Per-iteration budget. The full 26-case batch took 105-110 minutes under
+# claude-code; 150 leaves the eval's 10800 s execution.timeout room for the
+# sandbox start, the pre-script, a result-file retry and the post-script
+# (tests/test_eval_profiles.py pins the sum).
+timeout_minutes: 150
 
 # validation_loop is inherited (max_iterations: 2, feedback append). The first
 # fullsend eval run that completed the pipeline ended its turn on the skill's
 # own summary without writing agent-result.json (rfe-creator-eval job
 # 17541721893, "FAIL: output/agent-result.json not found"); with one iteration
-# fullsend skips the post-script and every artifact is lost. The second
-# iteration resumes from tmp/pipeline-state.yaml (phase DONE) and only writes
-# the result file. timeout_minutes is a per-iteration budget, but fullsend
-# starts a second iteration only when the agent finished and its output failed
-# validation, never after a timeout, so a first iteration that ran out of time
-# is not followed by a second 170-minute one.
+# fullsend skips the post-script and every artifact is lost. On the retry the
+# prompt's Dispatch rule 3 sees the DONE pipeline state plus fullsend's
+# validation feedback and only writes the result file, without re-running the
+# task. fullsend starts a second iteration only when the agent finished and
+# its output failed validation, never after a timeout, so a first iteration
+# that ran out of time is not followed by a second one.
 
 env:
   sandbox:

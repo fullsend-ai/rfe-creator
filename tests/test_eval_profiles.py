@@ -237,10 +237,18 @@ def test_fullsend_profile_selects_the_eval_child_agent_and_stages_types():
     sources = [a["source"] for a in agents if "source" in a]
     assert "rfe-creator/rfe-creator-eval.yaml" in sources, sources
     child = _load(fullsend_dir / "rfe-creator" / "rfe-creator-eval.yaml")
-    # fullsend must finish (every iteration, then the post-script's copy) inside the eval's
-    # timeout, or the harness kills it before the artifacts reach the workspace.
-    budget = child["validation_loop"]["max_iterations"] * child["timeout_minutes"] * 60
-    assert cfg["execution"]["timeout"] > budget, (cfg["execution"]["timeout"], budget)
+    production = _load(fullsend_dir / "rfe-creator" / child["base"])
+    # fullsend must finish inside the eval's timeout, or the harness kills it before the
+    # post-script copies the artifacts into the workspace. The child inherits the production
+    # validation loop (two iterations): the second runs only after a finished first iteration
+    # whose output failed validation, never after a timeout, and the prompt's completed-run
+    # rule makes it write the result file without re-running the task. So the budget is one
+    # iteration plus room for the sandbox start, the pre-script, that retry and the
+    # post-script.
+    loop = {**production["validation_loop"], **child.get("validation_loop", {})}
+    assert loop["max_iterations"] == 2 and loop["feedback_mode"] == "append", loop
+    budget = child["timeout_minutes"] * 60 + 20 * 60
+    assert cfg["execution"]["timeout"] >= budget, (cfg["execution"]["timeout"], budget)
     # The fullsend runner copies scripts/ for real, so type_registry.py needs types/ beside it.
     assert "types" in cfg["execution"]["symlinks"] and (REPO / "types").is_dir()
     # The runner rejects tool interceptors at config load; the base declares two.
