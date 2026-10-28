@@ -1352,24 +1352,31 @@ def validate_all(
             )
             schema = None
 
-    fragment_schema, fragment_schema_path = load_schema(root, FRAGMENT_SCHEMA_RELPATH)
-    if fragment_schema is None:
-        findings.append(
-            Finding("*", f"eval fragment JSON Schema not found ({FRAGMENT_SCHEMA_RELPATH})")
-        )
-    elif have_jsonschema:
-        jsonschema = _load_jsonschema()
-        try:
-            jsonschema.Draft202012Validator.check_schema(fragment_schema)
-        except jsonschema.exceptions.SchemaError as exc:
+    # The eval gate's own inputs -- the fragment schema and the skeleton -- are read only when
+    # the gate runs: gate 3 leaves it out, so a missing or invalid fragment schema is no
+    # verdict on the type there (the full lint reports it).
+    fragment_schema = skeleton_text = None
+    if eval_gate:
+        fragment_schema, fragment_schema_path = load_schema(root, FRAGMENT_SCHEMA_RELPATH)
+        if fragment_schema is None:
             findings.append(
-                Finding("*", f"{fragment_schema_path} is not a valid JSON Schema: {exc.message}")
+                Finding("*", f"eval fragment JSON Schema not found ({FRAGMENT_SCHEMA_RELPATH})")
             )
-            fragment_schema = None
-    try:
-        skeleton_text = generate_eval_config.load_skeleton(repo_root)
-    except generate_eval_config.GenerateError:
-        skeleton_text = None
+        elif have_jsonschema:
+            jsonschema = _load_jsonschema()
+            try:
+                jsonschema.Draft202012Validator.check_schema(fragment_schema)
+            except jsonschema.exceptions.SchemaError as exc:
+                findings.append(
+                    Finding(
+                        "*", f"{fragment_schema_path} is not a valid JSON Schema: {exc.message}"
+                    )
+                )
+                fragment_schema = None
+        try:
+            skeleton_text = generate_eval_config.load_skeleton(repo_root)
+        except generate_eval_config.GenerateError:
+            skeleton_text = None
 
     if not have_jsonschema:
         # The shape checks need jsonschema (schema_messages, the fragment's schema); every

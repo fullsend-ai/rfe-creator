@@ -1530,6 +1530,20 @@ class TestVerify:
         assert result.stdout == "VERIFY OK: type 'rfe' passes gate 1\n"
         assert result.stderr == ""
 
+    def test_verify_does_not_read_the_eval_fragment_schema(self, types_copy):
+        """The eval gate's own inputs are left out with it: an invalid eval-fragment JSON
+        Schema is a full-lint finding (registry level) and no verdict for --verify."""
+        (types_copy / "_schema" / "eval-fragment.schema.json").write_text(
+            json.dumps({"type": "nope"})
+        )
+        full = _validate(types_copy)
+        _assert_finding(full, "eval-fragment.schema.json is not a valid JSON Schema", "*")
+        verify = _validate(types_copy, only="rfe", eval_gate=False)
+        assert verify.ok, verify.lines()
+        result = _cli("--root", str(types_copy), "--verify", "--type", "rfe")
+        assert result.returncode == 0, result.stdout
+        assert result.stdout == "VERIFY OK: type 'rfe' passes gate 1\n"
+
     @pytest.mark.parametrize("name", SHIPPED)
     def test_verify_passes_from_a_staged_eval_workspace(self, tmp_path, name):
         """The shape of the directory the pipeline runs in under the eval harness: scripts/,
