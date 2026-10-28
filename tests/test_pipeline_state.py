@@ -3157,6 +3157,128 @@ class TestWaitForWave:
         assert "--also-phase" not in parts
 
 
+class TestBarrierBlockSecs:
+    """AISDLC-453 item 2: the poll's --max-wait comes from the Bash budget, floor 90."""
+
+    @pytest.fixture(autouse=True)
+    def _no_budget(self, monkeypatch):
+        monkeypatch.delenv("BASH_DEFAULT_TIMEOUT_MS", raising=False)
+        monkeypatch.delenv("BASH_MAX_TIMEOUT_MS", raising=False)
+
+    def test_unset_is_90(self):
+        assert ps._barrier_block_secs() == 90
+
+    def test_default_budget_minus_margin(self, monkeypatch):
+        monkeypatch.setenv("BASH_DEFAULT_TIMEOUT_MS", "600000")
+        assert ps._barrier_block_secs() == 570
+
+    def test_floor_below_two_minutes(self, monkeypatch):
+        monkeypatch.setenv("BASH_DEFAULT_TIMEOUT_MS", "60000")
+        assert ps._barrier_block_secs() == 90
+
+    @pytest.mark.parametrize(
+        "raw",
+        ["abc", "", "  ", "600000ms", "1.5e5", "-1", "0", "6_00000", "+600000", "٦٠٠٠٠٠"],
+    )
+    def test_malformed_or_non_positive_is_90(self, monkeypatch, capsys, raw):
+        monkeypatch.setenv("BASH_DEFAULT_TIMEOUT_MS", raw)
+        assert ps._barrier_block_secs() == 90
+        assert capsys.readouterr() == ("", "")  # silent: output unchanged
+
+    def test_over_long_digit_string_default_is_90(self, monkeypatch, capsys):
+        monkeypatch.setenv("BASH_DEFAULT_TIMEOUT_MS", "0" * 5000 + "600000")
+        assert ps._barrier_block_secs() == 90
+        assert capsys.readouterr() == ("", "")  # silent: output unchanged
+
+    def test_over_long_digit_string_max_budget_is_ignored(self, monkeypatch):
+        monkeypatch.setenv("BASH_DEFAULT_TIMEOUT_MS", "600000")
+        monkeypatch.setenv("BASH_MAX_TIMEOUT_MS", "0" * 5000 + "600000")
+        assert ps._barrier_block_secs() == 570
+
+    def test_capped_by_max_budget(self, monkeypatch):
+        monkeypatch.setenv("BASH_DEFAULT_TIMEOUT_MS", "600000")
+        monkeypatch.setenv("BASH_MAX_TIMEOUT_MS", "300000")
+        assert ps._barrier_block_secs() == 270
+
+    def test_larger_max_budget_does_not_raise(self, monkeypatch):
+        monkeypatch.setenv("BASH_DEFAULT_TIMEOUT_MS", "600000")
+        monkeypatch.setenv("BASH_MAX_TIMEOUT_MS", "1200000")
+        assert ps._barrier_block_secs() == 570
+
+    def test_cap_never_below_floor(self, monkeypatch):
+        monkeypatch.setenv("BASH_DEFAULT_TIMEOUT_MS", "600000")
+        monkeypatch.setenv("BASH_MAX_TIMEOUT_MS", "60000")
+        assert ps._barrier_block_secs() == 90
+
+    def test_max_budget_alone_is_ignored(self, monkeypatch):
+        monkeypatch.setenv("BASH_MAX_TIMEOUT_MS", "600000")
+        assert ps._barrier_block_secs() == 90
+
+    @pytest.mark.parametrize("raw", ["abc", "-5", "0"])
+    def test_unusable_max_budget_is_ignored(self, monkeypatch, raw):
+        monkeypatch.setenv("BASH_DEFAULT_TIMEOUT_MS", "600000")
+        monkeypatch.setenv("BASH_MAX_TIMEOUT_MS", raw)
+        assert ps._barrier_block_secs() == 570
+
+    def _argv(self, monkeypatch, headless=False, since=True):
+        ps._save_state(make_state(phase="ASSESS", headless=headless))
+        write_ids(ps.WAVE_IDS_FILE, ["RHAIRFE-1001"])
+        if since:
+            monkeypatch.setattr(ps, "_now", lambda: 1_700_000_000.5)
+            ps._write_wave_launch()
+        captured = {}
+
+        def mock_subprocess_run(cmd_parts, **kw):
+            captured["parts"] = list(cmd_parts)
+            return type("R", (), {"returncode": 0})()
+
+        monkeypatch.setattr(subprocess, "run", mock_subprocess_run)
+        import check_review_progress as crp
+
+        try:
+            ps.cmd_wait_for_wave([])
+        finally:
+            crp.set_wave_launch(None)
+        return captured["parts"]
+
+    def test_argv_unchanged_apart_from_max_wait(self, tmp_dir, monkeypatch):
+        script = os.path.join(os.path.dirname(ps.__file__), "check_review_progress.py")
+
+        def expected(n):
+            return [
+                sys.executable,
+                script,
+                "--wait",
+                "--max-wait",
+                n,
+                "--phase",
+                "assess",
+                "--also-phase",
+                "feasibility",
+                "--fast-poll",
+                "--since",
+                "1700000000.500",
+                "--id-file",
+                ps.WAVE_IDS_FILE,
+            ]
+
+        assert self._argv(monkeypatch) == expected("90")
+        monkeypatch.setenv("BASH_DEFAULT_TIMEOUT_MS", "600000")
+        assert self._argv(monkeypatch) == expected("570")
+
+    def test_exit_3_output_unchanged_with_budget(self, tmp_dir, monkeypatch, capsys):
+        monkeypatch.setenv("BASH_DEFAULT_TIMEOUT_MS", "600000")
+        ps._save_state(make_state(phase="ASSESS"))
+        write_ids(ps.WAVE_IDS_FILE, ["RHAIRFE-1001"])
+        monkeypatch.setattr(subprocess, "run", lambda cmd, **kw: type("R", (), {"returncode": 3})())
+        with pytest.raises(SystemExit) as exc_info:
+            ps.cmd_wait_for_wave([])
+        assert exc_info.value.code == 3
+        out, err = capsys.readouterr()
+        assert out == "Re-run: python3 scripts/pipeline_state.py wait-for-wave\n"
+        assert err == ""
+
+
 # ---------- dispatch-context with next-action loop ----------
 
 

@@ -1,8 +1,9 @@
 # Wave stall guard
 
 `python3 scripts/pipeline_state.py wait-for-wave` is the headless pipeline's
-barrier: it runs `check_review_progress.py --wait --max-wait 90` over the
-current wave and exits 3 while any (poll phase, id) slot is pending; the
+barrier: it runs `check_review_progress.py --wait --max-wait <n>` over the
+current wave (`<n>` is the derived block length, see Knobs; 90 when no Bash
+budget is set) and exits 3 while any (poll phase, id) slot is pending; the
 orchestrating model re-runs it on exit 3. A subagent that dies silently — or
 writes its output to the wrong path, or is never actually launched — leaves
 its slot pending forever, and without a guard the barrier is re-run until the
@@ -20,8 +21,13 @@ the same as before, apart from one tracker file under `tmp/`.
 |---|---|---|
 | `PIPELINE_WAVE_STALL_SECS` | `900` | No-progress window for a retry-eligible wave. Escalate-only waves use twice this (`1800`). `0` (or negative) disables the guard and restores the unbounded wait. |
 | `PIPELINE_WAVE_RETRY_CAP` | `2` | Re-dispatch budget per (pipeline phase, id) before a stuck id is escalated. `0` escalates on the first stall. |
+| Block length (derived, not a variable of ours) | `90` | `--max-wait` of one poll: Claude Code's `BASH_DEFAULT_TIMEOUT_MS` in seconds minus a 30-second margin, capped by `BASH_MAX_TIMEOUT_MS` minus the same margin when that is set and smaller, never below 90. Unset, malformed or non-positive `BASH_DEFAULT_TIMEOUT_MS` gives 90. It assumes the barrier is called with the default Bash budget, as the skill's command line implies. |
 
-Both are read on every call, so they can be changed mid-run. Counts and the
+Both variables are read on every call, so they can be changed mid-run; the
+block length is computed once per call from the environment Claude Code
+passes to the Bash call. A longer block only delays stall detection by at most one poll length, because the
+progress count is re-checked after each poll returns; the window and the
+retry cap do not change with it. Counts and the
 tracker live in `tmp/pipeline-stall-retries.yaml` and
 `tmp/pipeline-wave-progress.yaml`; `python3 scripts/state.py clean` wipes
 them with the rest of `tmp/`.
@@ -76,7 +82,8 @@ for the batch's ids.
 
 Progress is the number of (poll phase, id) slots of the wave that are no
 longer pending (completed or error). The count is recorded before the poll
-and re-checked when the 90-second poll returns; the deadline resets whenever
+and re-checked when the poll returns (after at most the derived block
+length, 90 seconds when no Bash budget is set); the deadline resets whenever
 the count grows, never on a poll that merely returned. The tracker is keyed
 by a signature of the wave (phase + sorted ids), so a new wave starts a fresh
 window, and it is deleted when the wave completes, when a stall is handled,

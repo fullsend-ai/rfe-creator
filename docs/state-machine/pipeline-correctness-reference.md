@@ -1325,9 +1325,11 @@ phase; it makes that situation rare.
 
 A wave is pending from the moment the orchestrator launches its agents until
 `wait-for-wave` exits 0. The barrier is one bounded poll
-(`check_review_progress.py --wait --max-wait 90`; AISDLC-453 item 2 is to derive the
-length from the Bash budget the job grants instead of the 90 seconds), so a long wave
-hands the model a decision point at least every 90 seconds, and after an auto-compaction the model
+(`check_review_progress.py --wait --max-wait <n>`; AISDLC-453 item 2 derives `<n>` from
+the Bash budget the job grants: `BASH_DEFAULT_TIMEOUT_MS` minus a 30-second margin, capped
+by `BASH_MAX_TIMEOUT_MS`, floor 90 seconds, `docs/wave-stall-guard.md`), so a long wave
+hands the model a decision point at least once per block length (every 90 seconds when no
+budget is set), and after an auto-compaction the model
 decides from a summary of what it did rather than from the tool results. Production runs
 before 2026-10-27 showed what it decides on its own: a second scorer launched by hand for
 an id the summary called "already completed" (2026-10-02), the review and staging
