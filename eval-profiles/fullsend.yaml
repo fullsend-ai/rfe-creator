@@ -1,6 +1,7 @@
 # The production execution path: the skill runs through `fullsend run rfe-creator-eval`
 # (.fullsend/rfe-creator/rfe-creator-eval.yaml) in an OpenShell sandbox instead of a local
-# `claude -p`. Needs agent-eval-harness >= 1.59.0 (the fullsend runner and execution.symlinks).
+# `claude -p`. Needs agent-eval-harness >= 1.61.0 (the fullsend runner, execution.symlinks
+# and the fullsend run provenance in run_result.json).
 #
 #   /eval-run --config eval-profiles/fullsend.yaml
 #
