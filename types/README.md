@@ -499,7 +499,7 @@ parent_key - ...`, never fatal) and left in Jira:
   update), and inherited by split children from Jira directly (`split_submit.discover_state`
   reads the parent's `fields.parent`). A same-family parent of a type whose dimensions do not
   read `parent_key` is still left in Jira with the `Note:`; so is a parent outside the
-  prefixes (the Outcome of the project Initiatives lived in before, `RHAISTRAT`, is the live
+  prefixes (the Outcome of the project Initiatives lived in before, `RHOAIENG`, is the live
   example).
 - **A parent outside every prefix (`FOO-1`), or one carrying a prefix but failing the grammar
   (`RHAISTRAT-x`).** Not written; the schema would refuse the latter and fail the whole fetch.

@@ -430,11 +430,7 @@ def main():
             bool(parent_key)
             and desc.owns(parent_key)
             and find_task_file_including_archived(
-                os.path.dirname(tasks_dir),
-                parent_key,
-                os.path.basename(tasks_dir),
-                desc.write_prefix,
-                desc.local_prefix,
+                artifacts_dir, parent_key, config["tasks_dir"], desc=desc
             )
             is not None
         )
