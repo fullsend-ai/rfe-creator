@@ -1246,6 +1246,8 @@ def main():
         if pk:
             _parent_of[data[id_field]] = pk
 
+    _torn_roots_warned = set()
+
     def _has_jira_ancestor(item_id):
         """True if ``item_id`` belongs to a split tree rooted in Jira — the trees Phase 1
         submits, so Phase 2 must leave them alone.
@@ -1274,7 +1276,21 @@ def main():
         while pk and pk not in seen:
             parent_data = tasks_by_id.get(pk)
             if parent_data is None and hierarchy_prefixes and pk.startswith(hierarchy_prefixes):
-                return False
+                torn = os.path.isfile(
+                    os.path.join(args.artifacts_dir, cfg["tasks_dir"], f"{pk}.md")
+                )
+                if not torn:
+                    return False
+                # The file is here but scan_tasks could not read it: a Jira split root torn
+                # mid-write, not an Outcome. Fail closed, as before the move: the key-form rule
+                # below keeps the descendants out of Phase 2, and the reason is said once.
+                if pk not in _torn_roots_warned:
+                    _torn_roots_warned.add(pk)
+                    print(
+                        f"Warning: {pk}: task file present but unreadable; its split descendants"
+                        f" stay out of Phase 2 until it is fixed",
+                        file=sys.stderr,
+                    )
             if parent_data is not None and parent_data.get("status") == "Archived":
                 through_split_parent = True
             if through_split_parent and _existing_key(pk):

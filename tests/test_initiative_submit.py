@@ -636,3 +636,33 @@ class TestLocalSplitRootUnderAnOutcome:
         for item in ("INIT-002", "INIT-003", "INIT-004"):
             assert item in stdout, item
         assert stdout.count("Would create") == 3
+
+
+class TestTornJiraSplitRoot:
+    """A Jira split root whose task file is present but unreadable (torn mid-write) is not an
+    Outcome: the ancestor walk fails closed as before the move, its descendants stay out of
+    Phase 2 (Phase 1 cannot see the root either), and the reason is said once on stderr."""
+
+    def test_descendants_stay_out_of_phase_2(self, art_dir):
+        _write(f"{art_dir}/initiatives/RHAISTRAT-100.md", "---\ninitiative_id: RHAIS")
+        _write(
+            f"{art_dir}/initiatives/INIT-001.md",
+            TASK_FM.format(initiative_id="INIT-001").replace(
+                "status: Ready", "status: Archived\nparent_key: RHAISTRAT-100"
+            ),
+        )
+        _write(
+            f"{art_dir}/initiatives/INIT-002.md",
+            TASK_FM.format(initiative_id="INIT-002").replace(
+                "status: Ready", "status: Ready\nparent_key: INIT-001"
+            ),
+        )
+        _write(f"{art_dir}/initiative-reviews/INIT-002-review.md", _default_review("INIT-002"))
+        _write(f"{art_dir}/initiatives/INIT-004.md", TASK_FM.format(initiative_id="INIT-004"))
+        _write(f"{art_dir}/initiative-reviews/INIT-004-review.md", _default_review("INIT-004"))
+
+        stdout, stderr, rc = _run_submit(art_dir)
+        assert rc == 0, stderr
+        assert stdout.count("Would create") == 1 and "INIT-004" in stdout
+        assert "RHAISTRAT-100: task file present but unreadable" in stderr
+        assert stderr.count("task file present but unreadable") == 1
