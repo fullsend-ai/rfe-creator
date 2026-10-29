@@ -5843,3 +5843,13 @@ class TestConditionWorkspaceRule:
     def test_rfe_has_no_such_condition(self, tmp_dir):
         self._task("artifacts/rfe-tasks/RFE-001.md", parent_key="RHAISTRAT-50")
         assert ps._has_rhaistrat_parent("RFE-001", {"type": "rfe"}) is False
+
+    def test_the_rule_is_for_parent_key_only(self, tmp_dir):
+        """A condition on another field is the plain prefix test, whatever the value names."""
+        self._task("artifacts/initiatives/INIT-001.md", theme="RHAISTRAT-100")
+        self._task("artifacts/initiatives/RHAISTRAT-100.md", status="Archived")
+        cond = {"frontmatter_field": "theme", "prefix": "RHAISTRAT-"}
+        assert ps._check_condition(cond, "INIT-001", {"type": "initiative"}) is True
+        cond = {"frontmatter_field": "parent_key", "prefix": "RHAISTRAT-"}
+        self._task("artifacts/initiatives/INIT-002.md", parent_key="RHAISTRAT-100")
+        assert ps._check_condition(cond, "INIT-002", {"type": "initiative"}) is False

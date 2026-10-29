@@ -418,11 +418,14 @@ def _check_condition(condition, rfe_id, state):
         )
         if not (isinstance(value, str) and value.startswith(condition["prefix"])):
             return False
-        # The workspace rule: a value that names a task of this workspace is a split parent
-        # (the split skill writes the parent's id into each child's parent_key), not the
-        # hierarchy link the condition asks about. Since Initiatives live in RHAISTRAT
-        # (2026-10-28) a split parent and an Outcome share the key family, so the prefix alone
-        # cannot tell them apart; the skip stub is written for such an id as for any other.
+        if condition["frontmatter_field"] != "parent_key":
+            return True
+        # The workspace rule, for parent_key only (the one field that can also mean "split
+        # from"): a value that names a task of this workspace is a split parent (the split
+        # skill writes the parent's id into each child's parent_key), not the hierarchy link
+        # the condition asks about. Since Initiatives live in RHAISTRAT (2026-10-28) a split
+        # parent and an Outcome share the key family, so the prefix alone cannot tell them
+        # apart; the skip stub is written for such an id as for any other.
         return not os.path.isfile(os.path.join(t["tasks_dir"], f"{value}.md"))
     if "context_exists" in condition:
         return os.path.exists(condition["context_exists"])
