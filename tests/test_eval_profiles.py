@@ -237,10 +237,28 @@ def test_fullsend_profile_selects_the_eval_child_agent_and_stages_types():
     sources = [a["source"] for a in agents if "source" in a]
     assert "rfe-creator/rfe-creator-eval.yaml" in sources, sources
     child = _load(fullsend_dir / "rfe-creator" / "rfe-creator-eval.yaml")
-    # fullsend must finish (every iteration, then the post-script's copy) inside the eval's
-    # timeout, or the harness kills it before the artifacts reach the workspace.
-    budget = child["validation_loop"]["max_iterations"] * child["timeout_minutes"] * 60
-    assert cfg["execution"]["timeout"] > budget, (cfg["execution"]["timeout"], budget)
+    production = _load(fullsend_dir / "rfe-creator" / child["base"])
+    # fullsend must finish inside the eval's timeout, or the harness kills it before the
+    # post-script copies the artifacts into the workspace. The child inherits the production
+    # validation loop (two iterations, feedback appended); timeout_minutes bounds each one.
+    # What the eval guarantees is that the first iteration fits, with the sandbox start, the
+    # pre-script and the post-script around it. The second iteration starts only after a
+    # finished first iteration whose output failed validation and gets what is left of the
+    # eval's budget: enough for the case the retry exists for (a pipeline that reached DONE
+    # and a missing result file, Dispatch rule 3 of the prompt), not for resuming a pipeline
+    # the first iteration left unfinished (rule 2). A retry the harness cuts short loses
+    # nothing a single iteration would have kept: fullsend skips the post-script after a
+    # failed validation either way. Two full iterations are out of budget by design (5h20
+    # with the overhead, longer than the CI job); the last assertion keeps that explicit.
+    loop = {**production["validation_loop"], **child.get("validation_loop", {})}
+    assert loop["max_iterations"] == 2 and loop["feedback_mode"] == "append", loop
+    first = child["timeout_minutes"] * 60
+    overhead = 20 * 60
+    assert cfg["execution"]["timeout"] >= first + overhead, (cfg["execution"]["timeout"], first)
+    assert loop["max_iterations"] * first > cfg["execution"]["timeout"], (
+        "a second full-length iteration now fits execution.timeout: revisit the comment "
+        "above and the README before relying on it"
+    )
     # The fullsend runner copies scripts/ for real, so type_registry.py needs types/ beside it.
     assert "types" in cfg["execution"]["symlinks"] and (REPO / "types").is_dir()
     # The runner rejects tool interceptors at config load; the base declares two.

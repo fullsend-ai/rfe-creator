@@ -82,12 +82,26 @@ pre-script and post-script. It overrides only:
   host needs no Jira credentials;
 - the `jira` provider (`jira-provider-eval.yaml`, literal placeholder credential) and the
   `jira` OpenShell profile (`jira-profile-eval.yaml`, no endpoints: no Atlassian egress);
-- `timeout_minutes: 170`, below the eval's 10800 s `execution.timeout`;
-- `validation_loop.max_iterations: 1` (the rest of the loop is inherited, as fullsend merges
-  `validation_loop` field by field). `timeout_minutes` is a per-iteration budget, so the
-  inherited `max_iterations: 2` could start a second 170-minute iteration after a late DONE-gate
-  failure, exceed `execution.timeout`, and get fullsend killed before the post-script copies the
-  artifacts back.
+- `timeout_minutes: 150`: one iteration plus the sandbox start, the pre-script, a
+  result-file retry and the post-script fit the eval's 10800 s `execution.timeout`
+  (`tests/test_eval_profiles.py` pins the sum; the full 26-case batch took 105-110 minutes
+  under claude-code).
+
+The validation loop is inherited whole (`max_iterations: 2`, `feedback_mode: append`). The
+first fullsend eval run that completed the pipeline ended its turn on the skill's own summary
+without writing `agent-result.json` (rfe-creator-eval job 17541721893, `FAIL:
+output/agent-result.json not found`); with a single iteration fullsend skips the post-script
+and the eval collects nothing. On the retry, Dispatch rule 3 of the prompt sees the DONE
+pipeline state together with fullsend's validation feedback, finishes whatever the speedrun
+still owes after its auto-fix phase (the speedrun records its phase in
+`tmp/speedrun-config.yaml`; DONE is the auto-fix pipeline's end, Phase 3 and 4 follow) and
+writes the result file, without starting the task over (`/rfe-speedrun` would otherwise reset
+`tmp/` and redo the batch). fullsend starts a second iteration only when the agent finished and
+its output failed validation, never after a timeout, so a first iteration that ran out of time
+is not followed by a second one. The second iteration gets what is left of the eval's 10800 s:
+enough to write the result file after a completed pipeline, not to resume one the first
+iteration left unfinished. A retry the harness cuts short loses nothing a single iteration
+would have kept, since fullsend skips the post-script after a failed validation either way.
 
 The model comes from `fullsend run --model`. `tests/test_fullsend_eval_harness.py` pins the
 child to exactly these overrides. Run it locally, with no `JIRA_*` variables on the host, from

@@ -46,7 +46,13 @@ Clean temp state and persist parsed flags. `batch_size` MUST always be a concret
 python3 scripts/state.py clean
 python3 scripts/prep_assess.py --clean-all
 python3 scripts/state.py init tmp/{STATE_PREFIX}speedrun-config.yaml type={TYPE} headless=<true/false> announce_complete=<true/false> dry_run=<true/false> batch_size=<N or 5> input_file=<path or null>
+python3 scripts/state.py set tmp/{STATE_PREFIX}speedrun-config.yaml phase=create
 ```
+
+`phase` records how far the speedrun got (`create`, `autofix`, `submit`, `summary`, `done`); each
+phase below updates it. The auto-fix pipeline's own `tmp/pipeline-state.yaml` reaching DONE ends
+Phase 2 only, so a fullsend validation retry reads this key to resume the speedrun where it
+stopped instead of starting over (`.fullsend/rfe-creator/prompt.md`, Dispatch rule 3).
 
 Determine pipeline mode:
 - **Mode A (Batch YAML)**: `--input` flag present → batch create + auto-fix + submit
@@ -156,6 +162,12 @@ python3 scripts/state.py read tmp/{STATE_PREFIX}speedrun-config.yaml
 python3 scripts/state.py read-ids tmp/{STATE_PREFIX}speedrun-all-ids.txt
 ```
 
+Record the phase:
+
+```bash
+python3 scripts/state.py set tmp/{STATE_PREFIX}speedrun-config.yaml phase=autofix
+```
+
 Invoke auto-fix using the **Skill** tool (NOT Agent — Agent runs in background and causes the session to terminate). Build the args from the config file and forward the resolved type explicitly — a bracketed flag is included only when the config says so:
 
 ```
@@ -181,6 +193,12 @@ Skill(skill: "rfe-auto-fix", args: "{TYPE_FLAG} [--headless] --batch-size <batch
 ```
 
 Repeat the verify+retry cycle until all items have reviews or 3 retries have been exhausted.
+
+Then record that Phase 2 is over:
+
+```bash
+python3 scripts/state.py set tmp/{STATE_PREFIX}speedrun-config.yaml phase=submit
+```
 
 ## Phase 3: Submit
 
@@ -214,6 +232,12 @@ Skill(skill: "rfe-submit", args: "{TYPE_FLAG} [--dry-run] [--headless] <passing_
 
 Pass `--dry-run` only when the config's `dry_run` is true and `--headless` only when `headless` is true — a normal speedrun writes its ready items to Jira. If not headless, `/rfe-submit` will show a confirmation table before writing to Jira — this is the one mandatory interaction point.
 
+Record that Phase 3 is over (also when there was nothing to submit):
+
+```bash
+python3 scripts/state.py set tmp/{STATE_PREFIX}speedrun-config.yaml phase=summary
+```
+
 ## Phase 4: Summary
 
 Re-read flags:
@@ -232,6 +256,12 @@ Generate machine-readable summary:
 
 ```bash
 python3 scripts/batch_summary.py {TYPE_FLAG} --ids-file tmp/{STATE_PREFIX}speedrun-all-ids.txt
+```
+
+Record completion:
+
+```bash
+python3 scripts/state.py set tmp/{STATE_PREFIX}speedrun-config.yaml phase=done
 ```
 
 If headless, output the counts line and stop. If interactive, output:

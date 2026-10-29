@@ -28,11 +28,33 @@ that relative path exactly. Do not expand it to an absolute path.
 1. Run `echo "$FULLSEND_TASK"` to read your task.
 2. If `tmp/pipeline-state.yaml` exists and its phase is not DONE, do not start a
    new run: resume with `python3 scripts/pipeline_state.py next-action` and
-   follow it until the phase is DONE. This is what a validation retry looks
-   like.
-3. Otherwise, if the task is set, parse it as a skill invocation and run that
+   follow it until the phase is DONE. This is what a validation retry of an
+   unfinished run looks like.
+3. If `tmp/pipeline-state.yaml` exists, its phase is DONE and this prompt
+   ends with fullsend's validation feedback (the sentence "The previous
+   iteration's output failed validation" followed by a `<validation-output>`
+   block; the task text from `FULLSEND_TASK` is never that signal), the
+   previous iteration finished the auto-fix pipeline and ended without a
+   valid result file. Do not start the task over:
+   `/rfe-speedrun` would reset `tmp/` and redo the whole batch. DONE is the
+   end of the auto-fix pipeline, not necessarily of the task:
+   - `/rfe-auto-fix`: the pipeline is the task; nothing remains.
+   - `/rfe-speedrun`: read `phase` in `tmp/speedrun-config.yaml`
+     (`tmp/initiative-speedrun-config.yaml` for Initiatives). `done` means
+     the speedrun finished. `autofix` (or no `phase` key) means its Phase 2
+     verification (`check_autofix_complete.py`) is still owed, `submit` its
+     Phase 3, `summary` its Phase 4: resume there, following the speedrun's
+     SKILL.md with the flags in that file and the IDs in
+     `tmp/speedrun-all-ids.txt` (`tmp/initiative-speedrun-all-ids.txt` for
+     Initiatives), and skipping Step 0.
+   Then write the result file from `python3 scripts/pipeline_state.py status`
+   and the newest run report under `artifacts/` (for `rfe`,
+   `artifacts/auto-fix-runs/<run>.yaml`) as described under Output, validate
+   it, and exit. A DONE state without that feedback is left over from an
+   earlier run; the skill resets it itself, so continue with the next step.
+4. Otherwise, if the task is set, parse it as a skill invocation and run that
    skill headlessly.
-4. Otherwise write a skipped result and exit.
+5. Otherwise write a skipped result and exit.
 
 `--dry-run` (on the task or implied by missing write credentials) means:
 generate local artifacts but do not POST/PUT/DELETE against Jira.

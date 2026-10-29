@@ -26,17 +26,26 @@ base: rfe-creator.yaml
 # frontmatter; a test keeps the bodies identical.
 agent: rfe-creator/prompt-eval.md
 
-# Below the eval's execution.timeout (10800 s); the full 26-case batch took
-# 105-110 minutes under claude-code.
-timeout_minutes: 170
+# Per-iteration budget. The full 26-case batch took 105-110 minutes under
+# claude-code; 150 leaves the eval's 10800 s execution.timeout room for the
+# sandbox start, the pre-script, a result-file retry and the post-script
+# (tests/test_eval_profiles.py pins the sum).
+timeout_minutes: 150
 
-# timeout_minutes is a per-iteration budget. With the inherited max_iterations: 2,
-# a DONE-gate failure late in iteration 1 would start a second 170-minute
-# iteration, and 2 x 170 min exceeds the eval's 10800 s execution.timeout: the
-# harness would kill fullsend before the post-script copies the artifacts back.
-# validation_loop merges field by field, so this overrides only the count.
-validation_loop:
-  max_iterations: 1
+# validation_loop is inherited (max_iterations: 2, feedback append). The first
+# fullsend eval run that completed the pipeline ended its turn on the skill's
+# own summary without writing agent-result.json (rfe-creator-eval job
+# 17541721893, "FAIL: output/agent-result.json not found"); with one iteration
+# fullsend skips the post-script and every artifact is lost. On the retry the
+# prompt's Dispatch rule 3 sees the DONE pipeline state plus fullsend's
+# validation feedback, finishes what the speedrun still owes after auto-fix (it
+# records its phase in tmp/speedrun-config.yaml) and writes the result file,
+# without starting the task over. fullsend starts a second iteration only when
+# the agent finished and its output failed validation, never after a timeout, so
+# a first iteration that ran out of time is not followed by a second one. The
+# retry gets what is left of the eval's execution.timeout: enough to write the
+# result file, not to resume an unfinished pipeline; cut short, it loses nothing
+# a single iteration would have kept (no post-script after a failed validation).
 
 env:
   sandbox:

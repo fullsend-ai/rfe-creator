@@ -13,6 +13,7 @@ the composed eval harness differs from the production file in exactly the keys t
 so any other drift (a model, an image, a gate) fails CI.
 """
 
+import re
 from pathlib import Path
 
 import yaml
@@ -31,7 +32,6 @@ EVAL_JIRA_TOKEN = "eval-no-jira"
 EXPECTED_DIFF = {
     "agent",
     "timeout_minutes",
-    "validation_loop.max_iterations",
     "env.sandbox.JIRA_SERVER",
     "env.sandbox.JIRA_USER",
     "env.sandbox.CLAUDE_CODE_SUBAGENT_MODEL",
@@ -112,7 +112,6 @@ def test_eval_sets_only_the_listed_keys():
         "base",
         "agent",
         "timeout_minutes",
-        "validation_loop",
         "env",
         "openshell",
         "providers",
@@ -149,9 +148,7 @@ def test_composed_lists_swap_only_the_jira_entries():
 
 def test_eval_values():
     child = _load(EVAL)
-    assert child["timeout_minutes"] == 170
-    # timeout_minutes is per iteration: one iteration keeps the run inside execution.timeout.
-    assert child["validation_loop"] == {"max_iterations": 1}
+    assert child["timeout_minutes"] == 150
     assert child["env"]["sandbox"] == {
         "JIRA_SERVER": EVAL_JIRA_SERVER,
         "JIRA_USER": EVAL_JIRA_USER,
@@ -163,6 +160,20 @@ def test_eval_values():
         "JIRA_USER": EVAL_JIRA_USER,
         "JIRA_TOKEN": EVAL_JIRA_TOKEN,
     }
+
+
+def test_eval_inherits_the_validation_loop_with_its_second_iteration():
+    """An agent that finishes the pipeline but ends its turn without agent-result.json
+    (job 17541721893) is recovered only by the second iteration: it resumes from the DONE
+    pipeline state and writes the file. With max_iterations 1 fullsend skips the post-script
+    and the eval collects nothing. fullsend starts a second iteration only after a finished
+    agent whose output failed validation, never after a timeout."""
+    base = _load(PRODUCTION)
+    composed = _compose(base, _load(EVAL))
+    assert "validation_loop" not in _load(EVAL)
+    assert composed["validation_loop"] == base["validation_loop"]
+    assert composed["validation_loop"]["max_iterations"] == 2
+    assert composed["validation_loop"]["feedback_mode"] == "append"
 
 
 def test_eval_provider_replaces_jira_provider_with_literal_credential():
@@ -234,6 +245,71 @@ def test_eval_prompt_is_the_production_prompt_under_the_eval_name():
     assert eval_fm["name"] == EVAL.stem == "rfe-creator-eval"
     assert set(eval_fm) == set(prod_fm) == {"name", "description"}
     assert eval_body == prod_body, "prompt-eval.md body drifted from prompt.md: copy it over"
+
+
+def test_prompt_retry_after_a_completed_pipeline_resumes_instead_of_restarting():
+    """The second validation iteration meets a DONE pipeline state. Without a rule for it
+    the prompt falls through to running FULLSEND_TASK again, and /rfe-speedrun starts by
+    resetting tmp/ and redoing the batch (review of #273). DONE ends the auto-fix pipeline,
+    not the speedrun, whose Phase 3 and 4 follow, so the rule resumes the speedrun from the
+    phase it recorded and only then writes the result file. It is keyed on fullsend's
+    feedback preamble, so a stale DONE state on a first iteration is still reset by the
+    skill."""
+    for name in ("prompt.md", "prompt-eval.md"):
+        _, body = _prompt(HARNESS_DIR / name)
+        dispatch = body[body.index("## Dispatch") : body.index("## Available skills")]
+        dispatch = " ".join(dispatch.split())  # the prose is hard-wrapped
+        assert "its phase is DONE and this prompt" in dispatch, name
+        assert "The previous iteration's output failed validation" in dispatch, name
+        assert "`<validation-output>` block" in dispatch, name
+        assert "`FULLSEND_TASK` is never that signal" in dispatch, name
+        assert "Do not start the task over" in dispatch, name
+        assert (
+            "DONE is the end of the auto-fix pipeline, not necessarily of the task" in dispatch
+        ), name
+        assert "`done` means the speedrun finished" in dispatch, name
+        for phase, remains in (
+            ("autofix", "Phase 2"),
+            ("submit", "Phase 3"),
+            ("summary", "Phase 4"),
+        ):
+            assert f"`{phase}`" in dispatch and remains in dispatch, (name, phase)
+        assert "skipping Step 0" in dispatch, name
+        # Both state files are per type (pipeline.state_prefix): the Initiative paths are
+        # named next to the rfe ones, for the config and for the ID list alike.
+        for stem in ("speedrun-config.yaml", "speedrun-all-ids.txt"):
+            assert f"`tmp/{stem}`" in dispatch, (name, stem)
+            assert f"`tmp/initiative-{stem}`" in dispatch, (name, stem)
+        assert "A DONE state without that feedback" in dispatch, name
+
+
+def test_speedrun_records_the_phase_the_retry_rule_resumes_from():
+    """The prompt's rule reads `phase` in the speedrun config; the generic speedrun body
+    must write it at every boundary, in order, with the values the rule names."""
+    skill = (REPO / ".claude" / "skills" / "rfe-speedrun" / "SKILL.md").read_text()
+    # Its own command after `state.py init`, so the legacy init invocation stays byte for
+    # byte what tests/test_typed_prompts.py expects of the generic body.
+    marks = re.findall(
+        r"state\.py set tmp/\{STATE_PREFIX\}speedrun-config\.yaml phase=(\w+)", skill
+    )
+    assert marks == ["create", "autofix", "submit", "summary", "done"], marks
+    # The markers sit where the prompt says they do: create right after init, autofix before
+    # the auto-fix Skill call, submit after the verify+retry cycle, summary before Phase 4,
+    # done after the summary.
+    order = [
+        skill.index("state.py init tmp/{STATE_PREFIX}speedrun-config.yaml"),
+        skill.index("phase=create"),
+        skill.index("phase=autofix"),
+        skill.index('Skill(skill: "rfe-auto-fix"'),
+        skill.index("3 retries have been exhausted"),
+        skill.index("phase=submit"),
+        skill.index("## Phase 3: Submit"),
+        skill.index("phase=summary"),
+        skill.index("## Phase 4: Summary"),
+        skill.index("batch_summary.py"),
+        skill.index("phase=done"),
+    ]
+    assert order == sorted(order), order
 
 
 def test_config_registers_eval_harness():
