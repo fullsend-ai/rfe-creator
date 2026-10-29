@@ -1169,7 +1169,8 @@ declared once for every type and never passed by the RFE production job. Phase 1
 runs `split_submit.py` for every archived, Jira-keyed parent that has children whatever
 `--auto-approve` says (that switch only decides whether the *children* are approved at
 creation), so the first live Initiative run whose review scored Right-sized 0/2 would mint
-child Initiatives in RHOAIENG and close the parent as Obsolete before the owners had seen a
+child Initiatives in the Initiative project (RHAISTRAT since 2026-10-28) and close the parent as
+Obsolete before the owners had seen a
 single result (AISDLC-206, decision D3). Under `--hold-splits` the recommendation is
 recorded, not executed. `split_submit.py` is not spawned. Two parents are not held: one
 whose review carries `split_submit_failed:` is a partial split an earlier run quarantined

@@ -1812,6 +1812,14 @@ class TestPipelineTypes:
         write(Path(ctx.dirs["tasks"]) / "B.md", fm({cond["frontmatter_field"]: f"{ctx.lp}1"}))
         assert pipeline_state._has_rhaistrat_parent("A", {"type": ctx.t}) is True
         assert pipeline_state._has_rhaistrat_parent("B", {"type": ctx.t}) is False
+        # the workspace rule (Initiatives in RHAISTRAT, 2026-10-28): a parent of the condition's
+        # prefix that has a task here is a split parent, not an Outcome: not met
+        write(
+            Path(ctx.dirs["tasks"]) / "C.md",
+            fm({cond["frontmatter_field"]: f"{cond['prefix']}100"}),
+        )
+        write(Path(ctx.dirs["tasks"]) / f"{cond['prefix']}100.md", fm({"status": "Archived"}))
+        assert pipeline_state._has_rhaistrat_parent("C", {"type": ctx.t}) is False
         assert pipeline_state._has_rhaistrat_parent("A", {"type": "rfe"}) is False
         pipeline_state._write_poll_stub(f"{ctx.pp}alignment", "A")
         stub_path = check_review_progress.PHASE_CHECKS[f"{ctx.pp}alignment"]("A")

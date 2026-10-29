@@ -1258,13 +1258,23 @@ def main():
         a split: a batch entry's RHAISTRAT Outcome above a new Initiative, say, is a hierarchy
         link the create step forwards as Jira's ``parent``. Before this rule such a task was in
         no plan at all — not a split parent for Phase 1, excluded from Phase 2 — and a batch
-        run ended green without ever creating it.
+        run ended green without ever creating it. The same Outcome above a LOCAL split root
+        (a draft split before submit) ends the walk the same way: its children stay in Phase 2.
         """
+        # The prefixes the type's dimensions read ``parent_key`` with as a hierarchy link (the
+        # Initiative alignment condition's ``RHAISTRAT-``). Since Initiatives live in RHAISTRAT
+        # (2026-10-28) that is the type's own key family, so a key of this shape with no task
+        # here is the Outcome above a local split root, never the Jira root of a split tree:
+        # the walk stops and the descendants stay eligible for Phase 2. A type without such a
+        # condition (rfe) keeps the key-form rule for a task-less ancestor.
+        hierarchy_prefixes = tuple(desc.condition_prefixes("parent_key"))
         seen = set()
         pk = _parent_of.get(item_id)
         through_split_parent = False
         while pk and pk not in seen:
             parent_data = tasks_by_id.get(pk)
+            if parent_data is None and hierarchy_prefixes and pk.startswith(hierarchy_prefixes):
+                return False
             if parent_data is not None and parent_data.get("status") == "Archived":
                 through_split_parent = True
             if through_split_parent and _existing_key(pk):

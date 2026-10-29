@@ -50,9 +50,12 @@ def _type_config(desc):
         # <type>-task, sorted by identity.id_field); called as scan_tasks(artifacts_dir).
         "scan_tasks": partial(scan_tasks, desc=desc),
         "id_field": desc.id_field,
-        # parent_key values that mean "split from"; see split_children_map. The local
-        # prefix plus the tracker key prefixes — NOT conventions.parent_key_patterns, which
-        # admits the RHAISTRAT strategy rollup this predicate has to exclude.
+        # parent_key values that MAY mean "split from"; see split_children_map. The local
+        # prefix plus the tracker key prefixes — NOT conventions.parent_key_patterns — narrow
+        # a parent to the type's own key family; since Initiatives live in RHAISTRAT
+        # (2026-10-28) the Outcome rollup is in that family too, and only
+        # split_children_map's workspace check (the parent has a task here) tells a split
+        # parent from a hierarchy link. Do not simplify that function to the prefix test.
         "child_parent_prefixes": (desc.local_prefix, *desc.key_prefixes),
         "tracker_prefix": desc.write_prefix,
         # The tracker key prefixes as a union (write prefix first, then read prefixes): the

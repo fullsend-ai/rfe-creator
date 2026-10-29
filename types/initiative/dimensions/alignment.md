@@ -18,6 +18,8 @@ Parse the JSON output. Extract `parent_key`.
 
 If `parent_key` is absent, null, or does not match `RHAISTRAT-*`:
 
+The same applies when `parent_key` names a task file of this workspace (`artifacts/initiatives/{PARENT_KEY}.md` exists): that parent is a split parent, an Initiative, not an Outcome.
+
 Write `artifacts/initiative-reviews/{ID}-alignment.md`:
 
 ```

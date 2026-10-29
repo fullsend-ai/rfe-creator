@@ -605,3 +605,34 @@ class TestTypeConfigProjection:
         assert cfg["alignment_labels"] == desc.get("conventions.labels.alignment")
         assert cfg["alignment_labels"] is not desc.get("conventions.labels.alignment")
         assert cfg["feasibility_labels"] is not desc.get("conventions.labels.feasibility")
+
+
+class TestLocalSplitRootUnderAnOutcome:
+    """Since Initiatives live in RHAISTRAT (2026-10-28) an Outcome key is in the type's own
+    family. A local draft split before submit under an Outcome leaves an archived local root
+    whose parent_key names a key with no task here: a hierarchy link, not the Jira root of a
+    split tree, so its children stay in Phase 2 and are created, in a mixed batch too."""
+
+    def test_children_are_created(self, art_dir):
+        _write(
+            f"{art_dir}/initiatives/INIT-001.md",
+            TASK_FM.format(initiative_id="INIT-001").replace(
+                "status: Ready", "status: Archived\nparent_key: RHAISTRAT-50"
+            ),
+        )
+        for child in ("INIT-002", "INIT-003"):
+            _write(
+                f"{art_dir}/initiatives/{child}.md",
+                TASK_FM.format(initiative_id=child).replace(
+                    "status: Ready", "status: Ready\nparent_key: INIT-001"
+                ),
+            )
+            _write(f"{art_dir}/initiative-reviews/{child}-review.md", _default_review(child))
+        _write(f"{art_dir}/initiatives/INIT-004.md", TASK_FM.format(initiative_id="INIT-004"))
+        _write(f"{art_dir}/initiative-reviews/INIT-004-review.md", _default_review("INIT-004"))
+
+        stdout, stderr, rc = _run_submit(art_dir)
+        assert rc == 0, stderr
+        for item in ("INIT-002", "INIT-003", "INIT-004"):
+            assert item in stdout, item
+        assert stdout.count("Would create") == 3

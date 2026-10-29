@@ -494,7 +494,10 @@ parent_key - ...`, never fatal) and left in Jira:
   `parent_key` as "split from" only when the parent has a task here (a split parent is always
   here, archived by the split, or torn mid-write; an Outcome never is), and `submit.py` counts
   a chain as a split tree only when it passes through an archived task in the workspace
-  (`_has_jira_ancestor`). A Jira parent with no task here is a hierarchy link: forwarded as
+  (`_has_jira_ancestor`; a task-less key of a hierarchy prefix ends that walk, so the children
+  of a locally split draft under an Outcome stay in Phase 2), and the alignment condition is not
+  met by a `parent_key` that names a task here (a split parent), the skip stub says so. A Jira
+  parent with no task here is a hierarchy link: forwarded as
   Jira's `parent` on create, ignored on update (`submit.py` never writes `parent` on an
   update), and inherited by split children from Jira directly (`split_submit.discover_state`
   reads the parent's `fields.parent`). A same-family parent of a type whose dimensions do not

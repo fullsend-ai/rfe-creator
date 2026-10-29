@@ -5818,3 +5818,28 @@ class TestAutoFixSkillIdleProse:
         assert "The resume check must have run" in step4
         # The instruction precedes the start commands it qualifies.
         assert step4.index("Zero process IDs") < step4.index("set total_batches=<M>")
+
+
+class TestConditionWorkspaceRule:
+    """Since Initiatives live in RHAISTRAT (2026-10-28) a split parent and an Outcome share the
+    key family the alignment condition reads. A parent_key that names a task of this workspace
+    is a split parent: the condition is not met and the skip stub is written, exactly as before
+    the move, when such children carried a key of another family."""
+
+    def _task(self, rel, **fm):
+        os.makedirs(os.path.dirname(rel), exist_ok=True)
+        with open(rel, "w") as f:
+            f.write("---\n" + "".join(f"{k}: {v}\n" for k, v in fm.items()) + "---\n\nBody.\n")
+
+    def test_an_outcome_parent_arms_the_condition(self, tmp_dir):
+        self._task("artifacts/initiatives/RHAISTRAT-8.md", parent_key="RHAISTRAT-50")
+        assert ps._has_rhaistrat_parent("RHAISTRAT-8", {"type": "initiative"}) is True
+
+    def test_a_split_parent_does_not(self, tmp_dir):
+        self._task("artifacts/initiatives/INIT-001.md", parent_key="RHAISTRAT-100")
+        self._task("artifacts/initiatives/RHAISTRAT-100.md", status="Archived")
+        assert ps._has_rhaistrat_parent("INIT-001", {"type": "initiative"}) is False
+
+    def test_rfe_has_no_such_condition(self, tmp_dir):
+        self._task("artifacts/rfe-tasks/RFE-001.md", parent_key="RHAISTRAT-50")
+        assert ps._has_rhaistrat_parent("RFE-001", {"type": "rfe"}) is False
