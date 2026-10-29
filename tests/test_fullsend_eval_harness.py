@@ -261,8 +261,12 @@ def test_prompt_retry_after_a_completed_pipeline_resumes_instead_of_restarting()
         dispatch = " ".join(dispatch.split())  # the prose is hard-wrapped
         assert "its phase is DONE and this prompt" in dispatch, name
         assert "The previous iteration's output failed validation" in dispatch, name
+        assert "`<validation-output>` block" in dispatch, name
+        assert "`FULLSEND_TASK` is never that signal" in dispatch, name
         assert "Do not start the task over" in dispatch, name
-        assert "DONE is the end of the auto-fix pipeline, not necessarily of the task" in dispatch
+        assert "DONE is the end of the auto-fix pipeline, not necessarily of the task" in dispatch, (
+            name
+        )
         assert "`done` means the speedrun finished" in dispatch, name
         for phase, remains in (
             ("autofix", "Phase 2"),

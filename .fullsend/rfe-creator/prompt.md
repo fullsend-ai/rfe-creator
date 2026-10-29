@@ -29,9 +29,11 @@ that relative path exactly. Do not expand it to an absolute path.
    follow it until the phase is DONE. This is what a validation retry of an
    unfinished run looks like.
 3. If `tmp/pipeline-state.yaml` exists, its phase is DONE and this prompt
-   carries fullsend's validation feedback ("The previous iteration's output
-   failed validation"), the previous iteration finished the auto-fix pipeline
-   and ended without a valid result file. Do not start the task over:
+   ends with fullsend's validation feedback (the sentence "The previous
+   iteration's output failed validation" followed by a `<validation-output>`
+   block; the task text from `FULLSEND_TASK` is never that signal), the
+   previous iteration finished the auto-fix pipeline and ended without a
+   valid result file. Do not start the task over:
    `/rfe-speedrun` would reset `tmp/` and redo the whole batch. DONE is the
    end of the auto-fix pipeline, not necessarily of the task:
    - `/rfe-auto-fix`: the pipeline is the task; nothing remains.

@@ -38,14 +38,14 @@ timeout_minutes: 150
 # 17541721893, "FAIL: output/agent-result.json not found"); with one iteration
 # fullsend skips the post-script and every artifact is lost. On the retry the
 # prompt's Dispatch rule 3 sees the DONE pipeline state plus fullsend's
-# validation feedback, finishes what the speedrun still owes after auto-fix
-# (it records its phase in tmp/speedrun-config.yaml) and writes the result
-# file, without starting the task over. fullsend starts a second iteration only when the agent finished and
-# its output failed validation, never after a timeout, so a first iteration
-# that ran out of time is not followed by a second one. The retry gets what
-# is left of the eval's execution.timeout: enough to write the result file,
-# not to resume an unfinished pipeline; cut short, it loses nothing a single
-# iteration would have kept (no post-script after a failed validation).
+# validation feedback, finishes what the speedrun still owes after auto-fix (it
+# records its phase in tmp/speedrun-config.yaml) and writes the result file,
+# without starting the task over. fullsend starts a second iteration only when
+# the agent finished and its output failed validation, never after a timeout, so
+# a first iteration that ran out of time is not followed by a second one. The
+# retry gets what is left of the eval's execution.timeout: enough to write the
+# result file, not to resume an unfinished pipeline; cut short, it loses nothing
+# a single iteration would have kept (no post-script after a failed validation).
 
 env:
   sandbox:
