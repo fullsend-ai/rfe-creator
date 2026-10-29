@@ -257,7 +257,7 @@ and models are the base's, and the judges still run on the host.
 
 ### Prerequisites
 
-- agent-eval-harness ≥ 1.59.0 (the `fullsend` runner and `execution.symlinks`).
+- agent-eval-harness ≥ 1.61.0 (the `fullsend` runner, `execution.symlinks`, and the fullsend run provenance in `run_result.json`).
 - fullsend ≥ 0.48 on `PATH`, and a running OpenShell gateway with podman (see the
   [fullsend docs](https://fullsend.sh/docs/guides/user/running-agents-locally)).
 - The Vertex variables on the host: `ANTHROPIC_VERTEX_PROJECT_ID`, `GOOGLE_CLOUD_PROJECT`,
@@ -305,11 +305,43 @@ inherit the environment, and the pre-script would skip the host-side bootstrap.
 
 The initiative eval (`eval-initiative.yaml`) has no fullsend profile yet.
 
+### Baseline comparison, 2026-10-29
+
+One full run per arm on the same day, from `main` (f59c47e), the 26-case dataset,
+`claude-opus-4-6` as skill, subagent and judge, agent-eval-harness v1.61.0, on the shared
+GitLab runners (rfe-creator-eval pipelines 3003558484 and 3003507039; AISDLC-426).
+
+| Metric | claude-code (`eval.yaml`) | fullsend (`eval-profiles/fullsend.yaml`) | Δ |
+|---|---|---|---|
+| thresholds | PASS, 0 regressions | PASS, 0 regressions | |
+| 8 deterministic judges | 100 % each | 100 % each | 0 |
+| `revision_coverage` | 96.2 % | 96.2 % | 0 |
+| `rfe_quality` mean (sd) | 4.385 (0.62) | 4.462 (0.50) | +0.08 |
+| `revision_quality` mean (sd) | 4.808 (0.39) | 4.731 (0.44) | −0.08 |
+| per-case LLM judgments | | 10 of 52 differ, each by one point, 5 up and 5 down (`rfe_quality` 3 up, 1 down; `revision_quality` 2 up, 4 down) | |
+| skill cost | $74.31 | $80.57 | +8.4 % |
+| agent wall time | 106 min | 121 min | +14 % |
+| output tokens | 760 k | 821 k | +8 % |
+| tool calls / subagent launches | 1876 / 139 | 1998 / 146 | +6.5 % / +5 % |
+| permission denials, hook blocks | 0 | 0 | |
+| Claude Code build | 2.1.263 (agentic-ci image) | 2.1.260 (fullsend-sandbox image) | |
+
+No systematic quality difference: the deterministic judges agree exactly and the LLM means
+move by less than one per-case point in opposite directions. The cost and time premium comes
+from the agent doing slightly more work under fullsend's PreToolUse/PostToolUse hooks (about
+2000 tool calls) plus about a minute of fixed overhead (sandbox creation 16 s, pre-script,
+upload, download, output sanitisation). Two readings that do not carry across runners:
+`num_turns` (the fullsend runner counts main-agent turns plus transcript turns, 433 against
+1365 here) and therefore `cost_per_turn`; and the judge cost, reported unpriced on both arms
+(Anthropic SDK path, tokens only). The fullsend run completed in one iteration; the
+validation retry (Dispatch rule 3 of `.fullsend/rfe-creator/prompt.md`) was not needed.
+
 ---
 
 # Evaluation — rfe-speedrun --type initiative
 
 Automated evaluation of the `rfe-speedrun --type initiative` pipeline using the [agent-eval-harness](https://github.com/fullsend-ai/agent-eval-harness).
+
 
 ## Quick Start
 
