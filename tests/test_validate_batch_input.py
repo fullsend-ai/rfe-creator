@@ -31,9 +31,7 @@ from validate_batch_input import validate_entries  # noqa: E402
 REG = type_registry.load(extra_roots=[], env={})
 PROTOCOL_PREFIXES = ("ERROR_COUNT=", "WARNING_COUNT=", "ERROR: ", "WARNING: ", "VALID=")
 CLEAN_STDOUT = "ERROR_COUNT=0\nWARNING_COUNT=0\nVALID=true\n"
-INIT_PARENT_ERROR = (
-    "entry 0: 'parent_key' must match one of RHAISTRAT-\\d+, RHOAIENG-\\d+, INIT-\\d+"
-)
+INIT_PARENT_ERROR = "entry 0: 'parent_key' must match one of RHAISTRAT-\\d+, INIT-\\d+"
 
 LIST_FORM = "- prompt: Improve onboarding\n  parent_key: RHAISTRAT-100\n"
 MAPPING_FORM = (
@@ -118,7 +116,7 @@ class TestRegistryDerivedConstants:
                 "conventions.parent_key_patterns"
             )
         assert validate_batch_input.PARENT_KEY_PATTERN["initiative"] == (
-            r"^(RHAISTRAT-\d+|RHOAIENG-\d+|INIT-\d+)$"
+            r"^(RHAISTRAT-\d+|INIT-\d+)$"
         )
         assert re.match(validate_batch_input.PARENT_KEY_PATTERN["initiative"], "INIT-001")
 
@@ -304,7 +302,7 @@ class TestInitiativeValidation:
 
     def test_parent_key_rhoaieng_accepted(self):
         errors, warnings = validate_entries(
-            [{"prompt": "x", "parent_key": "RHOAIENG-5000"}],
+            [{"prompt": "x", "parent_key": "RHAISTRAT-5000"}],
             entry_type="initiative",
         )
         assert errors == []
@@ -721,7 +719,7 @@ class TestLegacyListNeutrality:
             ("- just a string\n- prompt: ok\n", [], {"CI": "true"}, [(0, "str")]),
             ("- just a string\n- prompt: ok\n", [], {"RFE_CREATOR_HEADLESS": "1"}, [(0, "str")]),
             ("- just a string\n- prompt: ok\n", [], {}, [(0, "str")]),
-            ("- RHOAIENG-123\n- prompt: ok\n", ["--type", "rfe"], {"CI": "true"}, [(0, "str")]),
+            ("- RHAISTRAT-123\n- prompt: ok\n", ["--type", "rfe"], {"CI": "true"}, [(0, "str")]),
             ("- RHAIRFE-123\n- prompt: ok\n", [], {}, [(0, "str")]),
             ("- alpha\n- beta\n", [], {"CI": "true"}, [(0, "str"), (1, "str")]),
             ("- prompt: ok\n- 42\n", [], {"CI": "true"}, [(1, "int")]),

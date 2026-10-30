@@ -252,7 +252,7 @@ class TestSkipLogic:
         carries the wave-stall marker so Phase 1 skips it without a Jira call. Before the
         batch-created-Initiative fix this test omitted the parent task and still expected the
         exclusion — which is exactly the shape that silently dropped a new Initiative under an
-        RHOAIENG Outcome. A standalone RFE keeps Phase 2 busy.
+        RHAISTRAT Outcome. A standalone RFE keeps Phase 2 busy.
         """
         _write(
             f"{art_dir}/rfe-tasks/RHAIRFE-1234.md",
@@ -2344,7 +2344,7 @@ def _run_submit_env(artifacts_dir, env_extra, extra_flags=None):
 
 KONFLUX = {"RFE_CREATOR_BINDING_RFE_PROJECT": "KONFLUX"}
 INITIATIVE_PAIR = {
-    "RFE_CREATOR_BINDING_RFE_PROJECT": "RHOAIENG",
+    "RFE_CREATOR_BINDING_RFE_PROJECT": "RHAISTRAT",
     "RFE_CREATOR_BINDING_RFE_ISSUE_TYPE": "Initiative",
 }
 
@@ -2376,12 +2376,12 @@ class TestIsExistingRule:
     def test_tracker_ref_owned_by_another_type_is_a_hard_error(self):
         import submit as submit_mod
 
-        data = {"rfe_id": "RHAIRFE-1", "type": "rfe", "tracker_ref": "RHOAIENG-7"}
+        data = {"rfe_id": "RHAIRFE-1", "type": "rfe", "tracker_ref": "RHAISTRAT-7"}
         with pytest.raises(submit_mod.TrackerRefError) as exc:
             self._existing(data)
         message = str(exc.value)
         assert message == (
-            "RHAIRFE-1 carries tracker_ref 'RHOAIENG-7', a key type initiative owns, not the "
+            "RHAIRFE-1 carries tracker_ref 'RHAISTRAT-7', a key type initiative owns, not the "
             "resolved type rfe (key prefixes: RHAIRFE-); an artifact bound to another type is "
             "never updated or created here — fix the artifact before re-running; nothing submitted"
         )
@@ -2401,7 +2401,7 @@ class TestIsExistingRule:
     def test_no_tracker_ref_key_at_all_is_the_pre_migration_shape(self):
         assert self._existing({"rfe_id": "RHAIRFE-1"}) is True
         assert self._existing({"rfe_id": "RFE-001"}) is False
-        assert self._existing({"rfe_id": "RHOAIENG-1"}) is False  # not this type's key
+        assert self._existing({"rfe_id": "RHAISTRAT-1"}) is False  # not this type's key
 
     def test_the_fallback_is_the_effective_union_under_a_project_override(self):
         binding = _rfe_binding(KONFLUX)
@@ -2418,7 +2418,7 @@ class TestIsExistingRule:
         binding = _rfe_binding(KONFLUX)
         assert submit_mod._owned_key("KONFLUX-12", binding)
         assert submit_mod._owned_key("RHAIRFE-12", binding)
-        assert not submit_mod._owned_key("RHOAIENG-12", binding)
+        assert not submit_mod._owned_key("RHAISTRAT-12", binding)
         assert not submit_mod._owned_key("", binding)
         assert not submit_mod._owned_key(None, binding)
 
@@ -2600,7 +2600,7 @@ class TestResolveLineAndOwnership:
         assert rc == 1
         assert stdout == ""
         assert stderr.startswith(
-            "Error: rfe: effective binding ('jira', 'RHOAIENG', 'Initiative') (source: env) is "
+            "Error: rfe: effective binding ('jira', 'RHAISTRAT', 'Initiative') (source: env) is "
             "the binding registered for type 'initiative'; a tracker binding must be owned by "
             "exactly one type"
         )
@@ -2638,7 +2638,7 @@ class TestForeignTrackerRefIsAHardError:
         _write(
             f"{art_dir}/rfe-tasks/RHAIRFE-1234.md",
             "---\nrfe_id: RHAIRFE-1234\ntitle: Test RFE\npriority: Major\nstatus: Ready\n"
-            "type: rfe\ntracker_ref: RHOAIENG-7\n---\n\nBody.\n",
+            "type: rfe\ntracker_ref: RHAISTRAT-7\n---\n\nBody.\n",
         )
         _write(
             f"{art_dir}/rfe-reviews/RHAIRFE-1234-review.md",
@@ -2653,7 +2653,7 @@ class TestForeignTrackerRefIsAHardError:
         assert rc == 1
         assert stdout == ""
         assert stderr == (
-            "Error: RHAIRFE-1234 carries tracker_ref 'RHOAIENG-7', a key type initiative owns, "
+            "Error: RHAIRFE-1234 carries tracker_ref 'RHAISTRAT-7', a key type initiative owns, "
             "not the resolved type rfe (key prefixes: RHAIRFE-); an artifact bound to another "
             "type is never updated or created here — fix the artifact before re-running; "
             "nothing submitted\n"
@@ -2665,7 +2665,7 @@ class TestForeignTrackerRefIsAHardError:
         _write(
             f"{art_dir}/rfe-tasks/RHAIRFE-1234.md",
             "---\nrfe_id: RHAIRFE-1234\ntitle: Test RFE\npriority: Major\nstatus: Submitted\n"
-            "type: rfe\ntracker_ref: RHOAIENG-7\n---\n\nBody.\n",
+            "type: rfe\ntracker_ref: RHAISTRAT-7\n---\n\nBody.\n",
         )
         _write(f"{art_dir}/rfe-tasks/RFE-001.md", TASK_FM.format(rfe_id="RFE-001"))
         _write(
@@ -2675,7 +2675,7 @@ class TestForeignTrackerRefIsAHardError:
         stdout, stderr, rc = _run_submit(art_dir)
         assert rc == 1
         assert stdout == ""
-        assert stderr.startswith("Error: RHAIRFE-1234 carries tracker_ref 'RHOAIENG-7'")
+        assert stderr.startswith("Error: RHAIRFE-1234 carries tracker_ref 'RHAISTRAT-7'")
 
     def test_an_owned_tracker_ref_is_an_update_as_before(self, art_dir):
         _write(

@@ -471,7 +471,7 @@ def _shared_layout(tmp_path, initiative_latest=True):
     sub = os.path.join(root, _INIT_SUBDIR)
     for name, value in (("20260402-130000", "init-old"), ("20260404-130000", "init-new")):
         _write_snapshot(
-            os.path.join(sub, name), f"{_INIT_PREFIX}{name}.yaml", {"RHOAIENG-1": value}
+            os.path.join(sub, name), f"{_INIT_PREFIX}{name}.yaml", {"RHAISTRAT-1": value}
         )
     if initiative_latest:
         os.symlink("20260402-130000", os.path.join(sub, "latest"))
@@ -613,12 +613,12 @@ class TestLoadSnapshotFromDir:
     # ── the shared layout (AISDLC-202): root = rfe, <results_subdir>/ = initiative ──
 
     def test_subtree_read_follows_its_own_latest(self, tmp_path, capsys):
-        """--data-dir <clone>/initiative-rhoaieng with the initiative prefix follows its `latest`
+        """--data-dir <clone>/initiative-rhaistrat with the initiative prefix follows its `latest`
         (the older run), not the newest directory, in a tree that also holds rfe runs."""
         _root, sub = _shared_layout(tmp_path)
         data = load_snapshot_from_dir(sub, prefix=_INIT_PREFIX)
         assert data is not None
-        assert data["issues"] == {"RHOAIENG-1": "init-old"}
+        assert data["issues"] == {"RHAISTRAT-1": "init-old"}
         assert "Data repo latest: 20260402-130000" in capsys.readouterr().err
 
     def test_root_read_ignores_the_subtree(self, tmp_path, capsys):
@@ -643,7 +643,7 @@ class TestLoadSnapshotFromDir:
         _root, sub = _shared_layout(tmp_path, initiative_latest=False)
         data = load_snapshot_from_dir(sub, prefix=_INIT_PREFIX)
         assert data is not None
-        assert data["issues"] == {"RHOAIENG-1": "init-new"}
+        assert data["issues"] == {"RHAISTRAT-1": "init-new"}
         assert "no 'latest' symlink" in capsys.readouterr().err
 
     def test_empty_subtree_is_not_a_missing_path(self, tmp_path, capsys):
@@ -1066,13 +1066,13 @@ class TestCmdFetchInitiativeType:
         return captured_jql, ids_file, snap_dir
 
     def test_initiative_uses_initiative_ignore_label(self, tmp_path, monkeypatch):
-        current = {"RHOAIENG-1": {"content_hash": "aaa", "labels": []}}
+        current = {"RHAISTRAT-1": {"content_hash": "aaa", "labels": []}}
         captured, _, _ = self._run_fetch(tmp_path, current, monkeypatch)
         assert "initiative-ignore" in captured["jql"]
         assert "rfe-creator-ignore" not in captured["jql"]
 
     def test_initiative_writes_initiative_snapshot_file(self, tmp_path, monkeypatch):
-        current = {"RHOAIENG-1": {"content_hash": "aaa", "labels": []}}
+        current = {"RHAISTRAT-1": {"content_hash": "aaa", "labels": []}}
         _, _, snap_dir = self._run_fetch(tmp_path, current, monkeypatch)
         snap_files = os.listdir(snap_dir)
         initiative_snaps = [f for f in snap_files if f.startswith("initiative-snapshot-")]
@@ -1237,8 +1237,8 @@ class TestJqlBindingCheck:
                 {"project": ["RHAIRFE"], "issuetype": ["Feature Request"]},
             ),
             (
-                "project = RHOAIENG AND issuetype = Initiative",
-                {"project": ["RHOAIENG"], "issuetype": ["Initiative"]},
+                "project = RHAISTRAT AND issuetype = Initiative",
+                {"project": ["RHAISTRAT"], "issuetype": ["Initiative"]},
             ),
             (
                 "PROJECT=RHAIRFE and IssueType = Epic",
@@ -1246,13 +1246,13 @@ class TestJqlBindingCheck:
             ),
             ("(project = RHAIRFE) AND labels = foo", {"project": ["RHAIRFE"], "issuetype": []}),
             (
-                "project = RHAIRFE OR project = RHOAIENG",
-                {"project": ["RHAIRFE", "RHOAIENG"], "issuetype": []},
+                "project = RHAIRFE OR project = RHAISTRAT",
+                {"project": ["RHAIRFE", "RHAISTRAT"], "issuetype": []},
             ),
             # Memberships: every member is a positive assertion, quotes stripped, in order.
             (
-                "project in (RHAIRFE, RHOAIENG) AND issuetype in ('Feature Request', Epic)",
-                {"project": ["RHAIRFE", "RHOAIENG"], "issuetype": ["Feature Request", "Epic"]},
+                "project in (RHAIRFE, RHAISTRAT) AND issuetype in ('Feature Request', Epic)",
+                {"project": ["RHAIRFE", "RHAISTRAT"], "issuetype": ["Feature Request", "Epic"]},
             ),
             ('issuetype in ("Feature Request")', {"project": [], "issuetype": ["Feature Request"]}),
             ("project IN(RHAIRFE)", {"project": ["RHAIRFE"], "issuetype": []}),
@@ -1263,8 +1263,8 @@ class TestJqlBindingCheck:
             ),
             # Negations assert nothing: `not in`, `!=`, `NOT <clause>` and `NOT ( ... )` groups
             # (balanced, nested, quoted parentheses respected).
-            ("project not in (RHOAIENG)", {"project": [], "issuetype": []}),
-            ("project != RHOAIENG AND issuetype != Epic", {"project": [], "issuetype": []}),
+            ("project not in (RHAISTRAT)", {"project": [], "issuetype": []}),
+            ("project != RHAISTRAT AND issuetype != Epic", {"project": [], "issuetype": []}),
             (
                 "project = RHAIRFE AND NOT issuetype = Epic",
                 {"project": ["RHAIRFE"], "issuetype": []},
@@ -1278,19 +1278,19 @@ class TestJqlBindingCheck:
                 {"project": ["RHAIRFE"], "issuetype": []},
             ),
             (
-                "NOT (project = RHOAIENG AND (type = Epic OR type in (Bug, Task))) AND "
+                "NOT (project = RHAISTRAT AND (type = Epic OR type in (Bug, Task))) AND "
                 "project = RHAIRFE",
                 {"project": ["RHAIRFE"], "issuetype": []},
             ),
             (
-                'NOT (summary ~ "a ) b" AND project = RHOAIENG) AND project = RHAIRFE',
+                'NOT (summary ~ "a ) b" AND project = RHAISTRAT) AND project = RHAIRFE',
                 {"project": ["RHAIRFE"], "issuetype": []},
             ),
-            ("NOT (project = RHOAIENG AND type = Epic", {"project": [], "issuetype": []}),
+            ("NOT (project = RHAISTRAT AND type = Epic", {"project": [], "issuetype": []}),
             # `type` is Jira's documented alias of `issuetype` and is listed under it.
             (
-                "project = RHOAIENG AND type = Epic",
-                {"project": ["RHOAIENG"], "issuetype": ["Epic"]},
+                "project = RHAISTRAT AND type = Epic",
+                {"project": ["RHAISTRAT"], "issuetype": ["Epic"]},
             ),
             ("TYPE = 'Feature Request'", {"project": [], "issuetype": ["Feature Request"]}),
             ("myproject = X AND type = Epic", {"project": [], "issuetype": ["Epic"]}),
@@ -1320,14 +1320,14 @@ class TestJqlBindingCheck:
             is None
         )
         assert jql_binding_conflict("project = RHAIRFE", self.RFE, "rfe") is None
-        assert jql_binding_conflict("project = RHOAIENG", self.INITIATIVE, "initiative") is None
+        assert jql_binding_conflict("project = RHAISTRAT", self.INITIATIVE, "initiative") is None
 
     @pytest.mark.parametrize(
         "jql, message",
         [
             (
-                "project = RHOAIENG",
-                "ERROR: --jql names project RHOAIENG but the rfe binding is RHAIRFE",
+                "project = RHAISTRAT",
+                "ERROR: --jql names project RHAISTRAT but the rfe binding is RHAIRFE",
             ),
             (
                 "project = RHAIRFE AND issuetype = Initiative",
@@ -1338,23 +1338,23 @@ class TestJqlBindingCheck:
                 "ERROR: --jql names issuetype Epic but the rfe binding is Feature Request",
             ),
             (
-                "project = RHAIRFE OR project = RHOAIENG",
-                "ERROR: --jql names project RHOAIENG but the rfe binding is RHAIRFE",
+                "project = RHAIRFE OR project = RHAISTRAT",
+                "ERROR: --jql names project RHAISTRAT but the rfe binding is RHAIRFE",
             ),
             (
-                "project = RHOAIENG AND issuetype = Initiative",
+                "project = RHAISTRAT AND issuetype = Initiative",
                 # both conflict: project is reported first
-                "ERROR: --jql names project RHOAIENG but the rfe binding is RHAIRFE",
+                "ERROR: --jql names project RHAISTRAT but the rfe binding is RHAIRFE",
             ),
             # Memberships: a member other than the binding is the same conflict, whether it is
             # the only member or one of several (the first offending member is reported).
             (
-                "project in (RHOAIENG)",
-                "ERROR: --jql names project RHOAIENG but the rfe binding is RHAIRFE",
+                "project in (RHAISTRAT)",
+                "ERROR: --jql names project RHAISTRAT but the rfe binding is RHAIRFE",
             ),
             (
-                "project in (RHAIRFE, RHOAIENG)",
-                "ERROR: --jql names project RHOAIENG but the rfe binding is RHAIRFE",
+                "project in (RHAIRFE, RHAISTRAT)",
+                "ERROR: --jql names project RHAISTRAT but the rfe binding is RHAIRFE",
             ),
             (
                 "project = RHAIRFE AND issuetype in (Initiative, Epic)",
@@ -1372,12 +1372,12 @@ class TestJqlBindingCheck:
     @pytest.mark.parametrize(
         "jql",
         [
-            'summary ~ "not (a" AND project = RHOAIENG',
-            "summary ~ 'NOT (x' AND project = RHOAIENG",
+            'summary ~ "not (a" AND project = RHAISTRAT',
+            "summary ~ 'NOT (x' AND project = RHAISTRAT",
             'text ~ "foo not (bar) baz" AND issuetype = Epic',
             # escaped quotes inside the literal must not close it early (Jira text search
             # supports them): the conflicting clause after the literal must still be read
-            'summary ~ "\\"not (a\\"" AND project = RHOAIENG',
+            'summary ~ "\\"not (a\\"" AND project = RHAISTRAT',
             'NOT (summary ~ "a\\") b") AND issuetype = Epic',
         ],
     )
@@ -1391,11 +1391,11 @@ class TestJqlBindingCheck:
         [
             'issuetype in ("Feature Request")',
             "project in (RHAIRFE) AND issuetype in ('Feature Request')",
-            "project not in (RHOAIENG)",
+            "project not in (RHAISTRAT)",
             "project = RHAIRFE AND NOT issuetype = Epic",
             "project = RHAIRFE AND NOT (issuetype = Epic)",
             "project = RHAIRFE AND issuetype not in (Epic, Initiative)",
-            "NOT (project = RHOAIENG AND issuetype = Initiative) AND project = RHAIRFE",
+            "NOT (project = RHAISTRAT AND issuetype = Initiative) AND project = RHAIRFE",
             # The member skip rules are the equality ones: ids and project names go to Jira.
             'project in (10001, "Red Hat AI RFE project") AND issuetype in (10700)',
         ],
@@ -1405,23 +1405,23 @@ class TestJqlBindingCheck:
 
     def test_conflicts_under_initiative(self):
         assert jql_binding_conflict("project = RHAIRFE", self.INITIATIVE, "initiative") == (
-            "ERROR: --jql names project RHAIRFE but the initiative binding is RHOAIENG"
+            "ERROR: --jql names project RHAIRFE but the initiative binding is RHAISTRAT"
         )
         assert jql_binding_conflict(
-            "project = RHOAIENG AND issuetype = 'Feature Request'", self.INITIATIVE, "initiative"
+            "project = RHAISTRAT AND issuetype = 'Feature Request'", self.INITIATIVE, "initiative"
         ) == (
             "ERROR: --jql names issuetype Feature Request but the initiative binding is Initiative"
         )
         # The `type` alias is the same clause, reported as issuetype.
         assert (
             jql_binding_conflict(
-                "project = RHOAIENG AND type = Epic", self.INITIATIVE, "initiative"
+                "project = RHAISTRAT AND type = Epic", self.INITIATIVE, "initiative"
             )
             == "ERROR: --jql names issuetype Epic but the initiative binding is Initiative"
         )
         assert (
             jql_binding_conflict(
-                "project = RHOAIENG AND type = Initiative", self.INITIATIVE, "initiative"
+                "project = RHAISTRAT AND type = Initiative", self.INITIATIVE, "initiative"
             )
             is None
         )
@@ -1441,8 +1441,8 @@ class TestJqlBindingCheck:
         )
         assert jql_binding_conflict('project = "RHAI RFEs"', self.RFE, "rfe") is None
         assert jql_binding_conflict("project = 10001", self.RFE, "rfe") is None
-        assert jql_binding_conflict("project = RHOAIENG", self.RFE, "rfe") == (
-            "ERROR: --jql names project RHOAIENG but the rfe binding is RHAIRFE"
+        assert jql_binding_conflict("project = RHAISTRAT", self.RFE, "rfe") == (
+            "ERROR: --jql names project RHAISTRAT but the rfe binding is RHAIRFE"
         )
         assert jql_binding_conflict("project = rhoaieng", self.RFE, "rfe") == (
             "ERROR: --jql names project rhoaieng but the rfe binding is RHAIRFE"
@@ -1458,10 +1458,10 @@ class TestJqlBindingCheck:
         # `in (...)` is a positive assertion like `=`; `!=`, `not in`, `~` and a `NOT`-negated
         # clause assert nothing the binding could contradict.
         assert jql_binding_conflict(
-            "project in (RHOAIENG) AND issuetype in (Initiative, Epic)", self.RFE, "rfe"
-        ) == ("ERROR: --jql names project RHOAIENG but the rfe binding is RHAIRFE")
+            "project in (RHAISTRAT) AND issuetype in (Initiative, Epic)", self.RFE, "rfe"
+        ) == ("ERROR: --jql names project RHAISTRAT but the rfe binding is RHAIRFE")
         assert jql_binding_conflict(
-            "project in (RHOAIENG) AND issuetype in (Epic)", self.INITIATIVE, "initiative"
+            "project in (RHAISTRAT) AND issuetype in (Epic)", self.INITIATIVE, "initiative"
         ) == ("ERROR: --jql names issuetype Epic but the initiative binding is Initiative")
         assert jql_binding_conflict("project != RHAIRFE AND issuetype ~ x", self.RFE, "rfe") is None
         assert (
@@ -1516,12 +1516,12 @@ class TestJqlBindingCheck:
         [
             (
                 "rfe",
-                "project = RHOAIENG",
-                "ERROR: --jql names project RHOAIENG but the rfe binding is RHAIRFE",
+                "project = RHAISTRAT",
+                "ERROR: --jql names project RHAISTRAT but the rfe binding is RHAIRFE",
             ),
             (
                 "initiative",
-                'project = RHOAIENG AND issuetype = "Feature Request"',
+                'project = RHAISTRAT AND issuetype = "Feature Request"',
                 "ERROR: --jql names issuetype Feature Request but the initiative binding is "
                 "Initiative",
             ),
@@ -1589,7 +1589,7 @@ class TestJqlBindingCheck:
                 sys.executable,
                 SCRIPT,
                 "fetch",
-                "project = RHOAIENG AND issuetype = Initiative",
+                "project = RHAISTRAT AND issuetype = Initiative",
                 "--ids-file",
                 str(tmp_path / "ids.txt"),
                 "--changed-file",
@@ -1602,7 +1602,7 @@ class TestJqlBindingCheck:
         assert result.returncode == 1
         assert result.stdout == ""
         assert (
-            result.stderr == "ERROR: --jql names project RHOAIENG but the rfe binding is RHAIRFE\n"
+            result.stderr == "ERROR: --jql names project RHAISTRAT but the rfe binding is RHAIRFE\n"
         )
         assert sorted(os.listdir(tmp_path)) == []
 
@@ -1612,7 +1612,7 @@ class TestJqlBindingCheck:
 
         ids_file = str(tmp_path / "all-ids.txt")
         changed_file = str(tmp_path / "changed-ids.txt")
-        write_id_file(ids_file, ["RHOAIENG-1"])
+        write_id_file(ids_file, ["RHAISTRAT-1"])
         cmd_fetch(
             argparse.Namespace(
                 reprocess=True,
@@ -1623,7 +1623,7 @@ class TestJqlBindingCheck:
                 changed_file=changed_file,
             )
         )
-        assert read_id_file(changed_file) == ["RHOAIENG-1"]
+        assert read_id_file(changed_file) == ["RHAISTRAT-1"]
 
 
 class TestHardFilterJqlWrapperIsByteStable:
@@ -1664,8 +1664,8 @@ class TestHardFilterJqlWrapperIsByteStable:
         )
 
     def test_initiative(self, tmp_path, monkeypatch):
-        assert self._captured_jql(tmp_path, monkeypatch, "initiative", "project = RHOAIENG") == (
-            "(project = RHOAIENG) AND statusCategory != Done "
+        assert self._captured_jql(tmp_path, monkeypatch, "initiative", "project = RHAISTRAT") == (
+            "(project = RHAISTRAT) AND statusCategory != Done "
             "AND (labels not in (initiative-ignore, initiative-split-quarantine) "
             "OR labels is EMPTY)"
         )

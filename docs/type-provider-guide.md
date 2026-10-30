@@ -153,7 +153,7 @@ Rules that are easy to trip:
   what it did before.
 - **A type picks its results subtree.** `snapshot.results_subdir` names the type's subtree of
   the shared results repository (`<subdir>/<run>/` and `<subdir>/latest`; `''` is the root,
-  grandfathered for `rfe`). Name it `<type>-<project lowercased>` (`initiative-rhoaieng`): the
+  grandfathered for `rfe`). Name it `<type>-<project lowercased>` (`initiative-rhaistrat`): the
   Jira project is part of the name so that a second deployment of the type against another
   project gets a subtree of its own. Gate 1 requires the field next to `prefix` /
   `report_prefix`, keeps non-empty values unique and refuses the reserved names `latest`,
@@ -316,7 +316,7 @@ overridable, and every other type keeps its own binding.
   variables once, so `frontmatter.py` sees what the script that spawns it sees), and so does the
   `parent_key` grammar (`Descriptor.parent_key_pattern_effective`, applied by the task schema and
   by `validate_batch_input.py`), so the children of a fetched `KONFLUX-N` validate and can be split.
-- An override that selects the pair another registered type owns (`RHOAIENG` / `Initiative` for
+- An override that selects the pair another registered type owns (`RHAISTRAT` / `Initiative` for
   `rfe`) is refused by every entry script before any access, and so are a value that fails the
   grammar (`lower` is not a project key) and the bare `JIRA_PROJECT` / `JIRA_ISSUE_TYPE`
   shorthand: one `Error:` line, non-zero exit.

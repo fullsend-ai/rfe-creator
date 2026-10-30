@@ -139,10 +139,10 @@ GOLDEN_ORIGINAL = DESC_MD.encode()
 # without a Jira parent; a RHAISTRAT parent replaces the trailing `parent_key: null` default by a
 # `parent_key:` line right after the stamp (AISDLC-280, see TestParentField).
 GOLDEN_INITIATIVE_TASK = (
-    b"---\ninitiative_id: RHOAIENG-12345\n"
+    b"---\ninitiative_id: RHAISTRAT-12345\n"
     b"title: Add model registry export to S3-compatible storage\n"
     b"priority: Major\nstatus: Ready\noriginal_labels: null\n"
-    b"type: initiative\ntracker_ref: RHOAIENG-12345\n"
+    b"type: initiative\ntracker_ref: RHAISTRAT-12345\n"
     b"local_id: null\nparent_key: null\n---\n" + DESC_MD.encode()
 )
 GOLDEN_COMMENTS = (
@@ -277,27 +277,27 @@ class TestRfeInvocationIsByteIdentical:
 class TestInitiativeLayout:
     def test_writes_initiative_dirs_id_field_and_no_comments(self, tmp_path, fake_jira):
         artifacts = tmp_path / "artifacts"
-        rc, out = _fetch_all("RHOAIENG-12345", artifacts, type_name="initiative")
+        rc, out = _fetch_all("RHAISTRAT-12345", artifacts, type_name="initiative")
         assert rc == 0
-        task = artifacts / "initiatives" / "RHOAIENG-12345.md"
-        original = artifacts / "initiative-originals" / "RHOAIENG-12345.md"
+        task = artifacts / "initiatives" / "RHAISTRAT-12345.md"
+        original = artifacts / "initiative-originals" / "RHAISTRAT-12345.md"
         assert _tree(artifacts).keys() == {
-            "initiatives/RHOAIENG-12345.md",
-            "initiative-originals/RHOAIENG-12345.md",
+            "initiatives/RHAISTRAT-12345.md",
+            "initiative-originals/RHAISTRAT-12345.md",
         }
         assert out == f"OK: wrote {task}, {original}\n"
         # companions.comments is false for initiative: no companion AND no comment request.
         assert fake_jira["comments"] == []
-        assert fake_jira["issue"] == [("RHOAIENG-12345", INITIATIVE_FETCH_FIELDS)]
+        assert fake_jira["issue"] == [("RHAISTRAT-12345", INITIATIVE_FETCH_FIELDS)]
 
         data, body = read_frontmatter_validated(str(task), "initiative-task")
-        assert data["initiative_id"] == "RHOAIENG-12345"
+        assert data["initiative_id"] == "RHAISTRAT-12345"
         assert "rfe_id" not in data
         assert data["title"] == ISSUE["fields"]["summary"]
         assert data["priority"] == "Major"  # fallback: the issue carries no priority
         assert data["status"] == "Ready"
         assert data["original_labels"] is None  # no labels -> null, as for rfe
-        assert (data["type"], data["tracker_ref"]) == ("initiative", "RHOAIENG-12345")
+        assert (data["type"], data["tracker_ref"]) == ("initiative", "RHAISTRAT-12345")
         assert body == DESC_MD
         assert original.read_bytes() == GOLDEN_ORIGINAL
 
@@ -306,20 +306,20 @@ class TestInitiativeLayout:
         # written by scripts/frontmatter.py exactly as the pre-D10 initiative fetch agent
         # hand-built them from `--fields ... --markdown` JSON; since PR-3c the agent runs
         # `--fetch-all artifacts --type initiative`, so this writer is the only one.
-        rc, _ = _fetch_all("RHOAIENG-12345", tmp_path, type_name="initiative")
+        rc, _ = _fetch_all("RHAISTRAT-12345", tmp_path, type_name="initiative")
         assert rc == 0
-        assert (tmp_path / "initiatives" / "RHOAIENG-12345.md").read_bytes() == (
+        assert (tmp_path / "initiatives" / "RHAISTRAT-12345.md").read_bytes() == (
             GOLDEN_INITIATIVE_TASK
         )
 
     def test_cli_type_initiative(self, tmp_path, monkeypatch, fake_jira):
         code, out = _main(
-            monkeypatch, "RHOAIENG-12345", "--fetch-all", str(tmp_path), "--type", "initiative"
+            monkeypatch, "RHAISTRAT-12345", "--fetch-all", str(tmp_path), "--type", "initiative"
         )
         assert code == 0
         assert _tree(tmp_path).keys() == {
-            "initiatives/RHOAIENG-12345.md",
-            "initiative-originals/RHOAIENG-12345.md",
+            "initiatives/RHAISTRAT-12345.md",
+            "initiative-originals/RHAISTRAT-12345.md",
         }
         assert out.startswith("OK: wrote ")
         assert "comments" not in out
@@ -453,10 +453,10 @@ class TestPostFetchVerification:
     def test_mismatch_writes_nothing_and_hints_the_owning_type(self, tmp_path, fake_jira, capsys):
         artifacts = tmp_path / "artifacts"
         # The legacy default (rfe) over an Initiative: the pair is owned by exactly one type.
-        rc, out = _fetch_all("RHOAIENG-12345", artifacts)
+        rc, out = _fetch_all("RHAISTRAT-12345", artifacts)
         assert (rc, out) == (1, "")
         assert capsys.readouterr().err == (
-            "Error: RHOAIENG-12345 is (RHOAIENG, Initiative) in Jira but the resolved type rfe "
+            "Error: RHAISTRAT-12345 is (RHAISTRAT, Initiative) in Jira but the resolved type rfe "
             f"binds {RFE_BINDS}; nothing written - re-run with --type initiative\n"
         )
         assert not artifacts.exists()
@@ -467,7 +467,7 @@ class TestPostFetchVerification:
         assert rc == 1
         assert capsys.readouterr().err == (
             "Error: RHAIRFE-1595 is (RHAIRFE, Feature Request) in Jira but the resolved type "
-            "initiative binds (RHOAIENG, Initiative); nothing written - re-run with --type rfe\n"
+            "initiative binds (RHAISTRAT, Initiative); nothing written - re-run with --type rfe\n"
         )
         assert not (tmp_path / "artifacts").exists()
 
@@ -582,7 +582,7 @@ class TestPostFetchVerification:
             "Error: JIRA_PROJECT / JIRA_ISSUE_TYPE shorthand is not honoured by the artifact "
             "layer; set RFE_CREATOR_BINDING_RFE_PROJECT / _ISSUE_TYPE instead\n"
         )
-        monkeypatch.setenv("JIRA_PROJECT", "RHOAIENG")
+        monkeypatch.setenv("JIRA_PROJECT", "RHAISTRAT")
         code, out = _main(monkeypatch, "RHAIRFE-1595", "--fetch-all", str(tmp_path / "a"))
         assert (code, out) == (1, "")
         assert capsys.readouterr().err == line
@@ -594,7 +594,7 @@ class TestPostFetchVerification:
         )
         assert (code, out) == (1, "")
         assert capsys.readouterr().err == (
-            "TYPE RESOLVED: rfe (--type; binding override project=RHOAIENG)\n" + line
+            "TYPE RESOLVED: rfe (--type; binding override project=RHAISTRAT)\n" + line
         )
         assert fake_jira["issue"] == []
         # A direct caller of _fetch_all never reads the shorthand: the typed overlay only, so
@@ -611,10 +611,10 @@ class TestPostFetchVerification:
         # that owns the fetched pair is offered), while an RHAIRFE Feature Request — a
         # pre-override item — is still admitted.
         monkeypatch.setenv("RFE_CREATOR_BINDING_RFE_ISSUE_TYPE", "Epic")
-        rc, _ = _fetch_all("RHOAIENG-12345", tmp_path / "artifacts")
+        rc, _ = _fetch_all("RHAISTRAT-12345", tmp_path / "artifacts")
         assert rc == 1
         assert capsys.readouterr().err == (
-            "Error: RHOAIENG-12345 is (RHOAIENG, Initiative) in Jira but the resolved type rfe "
+            "Error: RHAISTRAT-12345 is (RHAISTRAT, Initiative) in Jira but the resolved type rfe "
             "binds (RHAIRFE, Epic); nothing written - re-run with --type initiative\n"
         )
         assert not (tmp_path / "artifacts").exists()
@@ -630,10 +630,10 @@ class TestPostFetchVerification:
         # into a traceback: the one-line refusal stands, without the hint.
         monkeypatch.setenv("RFE_CREATOR_BINDING_INITIATIVE_PROJECT", "lower")
         artifacts = tmp_path / "artifacts"
-        rc, out = _fetch_all("RHOAIENG-12345", artifacts)
+        rc, out = _fetch_all("RHAISTRAT-12345", artifacts)
         assert (rc, out) == (1, "")
         assert capsys.readouterr().err == (
-            "Error: RHOAIENG-12345 is (RHOAIENG, Initiative) in Jira but the resolved type rfe "
+            "Error: RHAISTRAT-12345 is (RHAISTRAT, Initiative) in Jira but the resolved type rfe "
             f"binds {RFE_BINDS}; nothing written\n"
         )
         assert not artifacts.exists()
@@ -647,13 +647,13 @@ class TestPostFetchVerification:
         # §3.2.1 g: rfe re-bound to the initiative pair would pass the post-fetch check for an
         # Initiative and start the rfe-layout write of it; the ownership assert refuses the
         # override first — no fetch, no directory, exit 1 — and names the type to pass.
-        monkeypatch.setenv("RFE_CREATOR_BINDING_RFE_PROJECT", "RHOAIENG")
+        monkeypatch.setenv("RFE_CREATOR_BINDING_RFE_PROJECT", "RHAISTRAT")
         monkeypatch.setenv("RFE_CREATOR_BINDING_RFE_ISSUE_TYPE", "Initiative")
-        code, out = _main(monkeypatch, "RHOAIENG-12345", "--fetch-all", str(tmp_path / "a"))
+        code, out = _main(monkeypatch, "RHAISTRAT-12345", "--fetch-all", str(tmp_path / "a"))
         assert (code, out) == (1, "")
         err = capsys.readouterr().err
         assert err.startswith(
-            "Error: rfe: effective binding ('jira', 'RHOAIENG', 'Initiative') (source: env) is "
+            "Error: rfe: effective binding ('jira', 'RHAISTRAT', 'Initiative') (source: env) is "
             "the binding registered for type 'initiative'; a tracker binding must be owned by "
             "exactly one type"
         )
@@ -663,12 +663,12 @@ class TestPostFetchVerification:
         assert not (tmp_path / "a").exists()
         # With an explicit --type the D3 line (which names the override) precedes the refusal.
         code, _ = _main(
-            monkeypatch, "RHOAIENG-12345", "--fetch-all", str(tmp_path / "b"), "--type", "rfe"
+            monkeypatch, "RHAISTRAT-12345", "--fetch-all", str(tmp_path / "b"), "--type", "rfe"
         )
         assert code == 1
         err = capsys.readouterr().err
         assert err.startswith(
-            "TYPE RESOLVED: rfe (--type; binding override project=RHOAIENG "
+            "TYPE RESOLVED: rfe (--type; binding override project=RHAISTRAT "
             "issue_type=Initiative)\nError: rfe: effective binding"
         )
         assert fake_jira["issue"] == []
@@ -696,7 +696,7 @@ class TestPostFetchVerification:
         assert capsys.readouterr().err == (
             "TYPE RESOLVED: initiative (--type)\n"
             "Error: RHAIRFE-1595 is (RHAIRFE, Feature Request) in Jira but the resolved type "
-            "initiative binds (RHOAIENG, Initiative); nothing written - re-run with --type rfe\n"
+            "initiative binds (RHAISTRAT, Initiative); nothing written - re-run with --type rfe\n"
         )
         assert _tree(tmp_path) == {}
 
@@ -730,10 +730,10 @@ class TestFrontmatterFailureWritesNothing:
                 FETCH_ALL_FIELDS,
             ),
             (
-                "RHOAIENG-12345",
+                "RHAISTRAT-12345",
                 {"type_name": "initiative"},
-                "initiatives/RHOAIENG-12345.md",
-                "initiative-originals/RHOAIENG-12345.md",
+                "initiatives/RHAISTRAT-12345.md",
+                "initiative-originals/RHAISTRAT-12345.md",
                 INITIATIVE_FETCH_FIELDS,
             ),
         ],
@@ -772,8 +772,8 @@ RHAISTRAT_PARENT = {
     "fields": {"summary": "Outcome", "issuetype": {"name": "Outcome"}},
 }
 GOLDEN_INITIATIVE_TASK_WITH_PARENT = GOLDEN_INITIATIVE_TASK.replace(
-    b"tracker_ref: RHOAIENG-12345\nlocal_id: null\nparent_key: null\n",
-    b"tracker_ref: RHOAIENG-12345\nparent_key: RHAISTRAT-45\nlocal_id: null\n",
+    b"tracker_ref: RHAISTRAT-12345\nlocal_id: null\nparent_key: null\n",
+    b"tracker_ref: RHAISTRAT-12345\nparent_key: RHAISTRAT-45\nlocal_id: null\n",
 )
 assert GOLDEN_INITIATIVE_TASK_WITH_PARENT != GOLDEN_INITIATIVE_TASK
 
@@ -843,13 +843,13 @@ class TestParentField:
     def test_a_rhaistrat_parent_is_written_and_arms_the_alignment_condition(
         self, tmp_path, fake_jira, monkeypatch, capsys
     ):
-        _serve_with_parent(monkeypatch, fake_jira, "RHOAIENG-12345", RHAISTRAT_PARENT)
+        _serve_with_parent(monkeypatch, fake_jira, "RHAISTRAT-12345", RHAISTRAT_PARENT)
         artifacts = tmp_path / "artifacts"
-        rc, out = _fetch_all("RHOAIENG-12345", artifacts, type_name="initiative")
+        rc, out = _fetch_all("RHAISTRAT-12345", artifacts, type_name="initiative")
         assert rc == 0 and out.startswith("OK: wrote ")
         assert capsys.readouterr().err == ""
-        assert fake_jira["issue"] == [("RHOAIENG-12345", INITIATIVE_FETCH_FIELDS)]
-        task = artifacts / "initiatives" / "RHOAIENG-12345.md"
+        assert fake_jira["issue"] == [("RHAISTRAT-12345", INITIATIVE_FETCH_FIELDS)]
+        task = artifacts / "initiatives" / "RHAISTRAT-12345.md"
         # parent_key follows the self-describing pair (D7: appended, never reordered) and the
         # schema default it replaces is gone; nothing else moved.
         assert task.read_bytes() == GOLDEN_INITIATIVE_TASK_WITH_PARENT
@@ -857,47 +857,45 @@ class TestParentField:
         assert data["parent_key"] == "RHAISTRAT-45"
         # The engine's own condition, over the file the fetch wrote: the alignment stage runs.
         monkeypatch.chdir(tmp_path)
-        assert pipeline_state._has_rhaistrat_parent("RHOAIENG-12345", {"type": "initiative"})
-        assert pipeline_state._has_rhaistrat_parent("RHOAIENG-12345", {"type": "rfe"}) is False
+        assert pipeline_state._has_rhaistrat_parent("RHAISTRAT-12345", {"type": "initiative"})
+        assert pipeline_state._has_rhaistrat_parent("RHAISTRAT-12345", {"type": "rfe"}) is False
 
     @pytest.mark.parametrize("parent", [None, "absent"], ids=["null", "absent"])
     def test_no_parent_writes_the_same_bytes_and_the_stub_path_stands(
         self, tmp_path, fake_jira, monkeypatch, capsys, parent
     ):
-        _serve_with_parent(monkeypatch, fake_jira, "RHOAIENG-12345", parent)
+        _serve_with_parent(monkeypatch, fake_jira, "RHAISTRAT-12345", parent)
         artifacts = tmp_path / "artifacts"
-        rc, _ = _fetch_all("RHOAIENG-12345", artifacts, type_name="initiative")
+        rc, _ = _fetch_all("RHAISTRAT-12345", artifacts, type_name="initiative")
         assert rc == 0
         assert capsys.readouterr().err == ""
-        task = artifacts / "initiatives" / "RHOAIENG-12345.md"
+        task = artifacts / "initiatives" / "RHAISTRAT-12345.md"
         assert task.read_bytes() == GOLDEN_INITIATIVE_TASK
         monkeypatch.chdir(tmp_path)
         assert (
-            pipeline_state._has_rhaistrat_parent("RHOAIENG-12345", {"type": "initiative"}) is False
+            pipeline_state._has_rhaistrat_parent("RHAISTRAT-12345", {"type": "initiative"}) is False
         )
 
-    def test_an_outcome_parent_in_the_types_own_project_is_left_in_jira(
+    def test_an_outcome_parent_in_the_types_own_project_is_recorded(
         self, tmp_path, fake_jira, monkeypatch, capsys
     ):
-        # The documented decision: a same-family parent_key means "split from" to submit.py
-        # (_has_jira_ancestor keeps the task out of Phase 2) and to the run report
-        # (child_parent_prefixes), so an RHOAIENG Outcome parent is not recorded — the task is
-        # byte-identical to a parentless one, the condition does not fire, one note says why.
-        parent = {"id": "70002", "key": "RHOAIENG-100", "fields": {"summary": "Outcome"}}
-        _serve_with_parent(monkeypatch, fake_jira, "RHOAIENG-12345", parent)
+        # Since Initiatives live in RHAISTRAT (2026-10-28) an Outcome parent is in the type's own
+        # key family AND carries the alignment condition's prefix: it is recorded, the condition
+        # fires, nothing is noted. The run report tells it from a split parent by the workspace
+        # rule (generate_run_report.split_children_map: a split parent has a task here), and
+        # submit.py by _has_jira_ancestor — never by key family.
+        parent = {"id": "70002", "key": "RHAISTRAT-100", "fields": {"summary": "Outcome"}}
+        _serve_with_parent(monkeypatch, fake_jira, "RHAISTRAT-12345", parent)
         artifacts = tmp_path / "artifacts"
-        rc, out = _fetch_all("RHOAIENG-12345", artifacts, type_name="initiative")
+        rc, out = _fetch_all("RHAISTRAT-12345", artifacts, type_name="initiative")
         assert rc == 0 and out.startswith("OK: wrote ")
-        assert capsys.readouterr().err == (
-            "Note: RHOAIENG-12345: parent RHOAIENG-100 not recorded as parent_key - the "
-            "initiative pipeline reads parent_key with prefix RHAISTRAT- only; the link stays "
-            "in Jira\n"
-        )
-        task = artifacts / "initiatives" / "RHOAIENG-12345.md"
-        assert task.read_bytes() == GOLDEN_INITIATIVE_TASK
+        assert capsys.readouterr().err == ""
+        task = artifacts / "initiatives" / "RHAISTRAT-12345.md"
+        data, _ = read_frontmatter_validated(str(task), "initiative-task")
+        assert data["parent_key"] == "RHAISTRAT-100"
         monkeypatch.chdir(tmp_path)
         assert (
-            pipeline_state._has_rhaistrat_parent("RHOAIENG-12345", {"type": "initiative"}) is False
+            pipeline_state._has_rhaistrat_parent("RHAISTRAT-12345", {"type": "initiative"}) is True
         )
 
     @pytest.mark.parametrize(
@@ -909,24 +907,29 @@ class TestParentField:
                 "parent_key with prefix RHAISTRAT- only; the link stays in Jira",
             ),
             (
+                {"key": "RHOAIENG-100"},  # the project Initiatives lived in before 2026-10-28
+                "parent RHOAIENG-100 not recorded as parent_key - the initiative pipeline reads "
+                "parent_key with prefix RHAISTRAT- only; the link stays in Jira",
+            ),
+            (
                 {"key": "RHAISTRAT-x"},
                 "parent RHAISTRAT-x not recorded as parent_key - it does not match the "
-                r"initiative parent_key grammar ^(RHAISTRAT-\d+|RHOAIENG-\d+|INIT-\d+)$",
+                r"initiative parent_key grammar ^(RHAISTRAT-\d+|INIT-\d+)$",
             ),
             ({"id": "9"}, "parent field carries no key; parent_key not recorded"),
             ("RHAISTRAT-45", "parent field carries no key; parent_key not recorded"),
         ],
-        ids=["foreign-prefix", "bad-grammar", "no-key", "not-an-object"],
+        ids=["foreign-prefix", "former-project", "bad-grammar", "no-key", "not-an-object"],
     )
     def test_a_parent_the_rule_leaves_in_jira_is_noted_never_written(
         self, tmp_path, fake_jira, monkeypatch, capsys, parent, note
     ):
-        _serve_with_parent(monkeypatch, fake_jira, "RHOAIENG-12345", parent)
+        _serve_with_parent(monkeypatch, fake_jira, "RHAISTRAT-12345", parent)
         artifacts = tmp_path / "artifacts"
-        rc, _ = _fetch_all("RHOAIENG-12345", artifacts, type_name="initiative")
+        rc, _ = _fetch_all("RHAISTRAT-12345", artifacts, type_name="initiative")
         assert rc == 0
-        assert capsys.readouterr().err == f"Note: RHOAIENG-12345: {note}\n"
-        task = artifacts / "initiatives" / "RHOAIENG-12345.md"
+        assert capsys.readouterr().err == f"Note: RHAISTRAT-12345: {note}\n"
+        task = artifacts / "initiatives" / "RHAISTRAT-12345.md"
         assert task.read_bytes() == GOLDEN_INITIATIVE_TASK
 
     def test_recorded_parent_key_is_a_pure_function_of_descriptor_and_fields(self):
@@ -1120,25 +1123,29 @@ class TestFetchAllAgainstTheEmulator:
         assert text.endswith("\n\nAcme asked twice.\n\n")
 
     def test_initiative_writes_only_task_and_original(self, tmp_path, jira, env):
-        jira.create("RHOAIENG-1", "Serve models at the edge", "Init body.", issue_type="Initiative")
+        jira.create(
+            "RHAISTRAT-1", "Serve models at the edge", "Init body.", issue_type="Initiative"
+        )
         artifacts = tmp_path / "artifacts"
-        result = self._run(env, "RHOAIENG-1", "--fetch-all", str(artifacts), "--type", "initiative")
+        result = self._run(
+            env, "RHAISTRAT-1", "--fetch-all", str(artifacts), "--type", "initiative"
+        )
         assert result.returncode == 0, result.stderr
-        task = artifacts / "initiatives" / "RHOAIENG-1.md"
-        original = artifacts / "initiative-originals" / "RHOAIENG-1.md"
+        task = artifacts / "initiatives" / "RHAISTRAT-1.md"
+        original = artifacts / "initiative-originals" / "RHAISTRAT-1.md"
         assert result.stdout == f"OK: wrote {task}, {original}\n"
         assert _tree(artifacts).keys() == {
-            "initiatives/RHOAIENG-1.md",
-            "initiative-originals/RHOAIENG-1.md",
+            "initiatives/RHAISTRAT-1.md",
+            "initiative-originals/RHAISTRAT-1.md",
         }
 
         data, body = read_frontmatter_validated(str(task), "initiative-task")
-        assert data["initiative_id"] == "RHOAIENG-1"
+        assert data["initiative_id"] == "RHAISTRAT-1"
         assert data["title"] == "Serve models at the edge"
         assert data["priority"] == "Major"  # the emulator leaves priority unset
         assert data["status"] == "Ready"
         assert data["original_labels"] is None
-        assert (data["type"], data["tracker_ref"]) == ("initiative", "RHOAIENG-1")
+        assert (data["type"], data["tracker_ref"]) == ("initiative", "RHAISTRAT-1")
         assert body == "Init body.\n"
         assert original.read_text(encoding="utf-8") == "Init body.\n"
 
@@ -1147,29 +1154,33 @@ class TestFetchAllAgainstTheEmulator:
     def test_initiative_under_the_rfe_default_is_refused_then_fetched_with_the_hint(
         self, tmp_path, jira, env
     ):
-        jira.create("RHOAIENG-2", "Serve models at the edge", "Init body.", issue_type="Initiative")
+        jira.create(
+            "RHAISTRAT-2", "Serve models at the edge", "Init body.", issue_type="Initiative"
+        )
         artifacts = tmp_path / "artifacts"
-        result = self._run(env, "RHOAIENG-2", "--fetch-all", str(artifacts))
+        result = self._run(env, "RHAISTRAT-2", "--fetch-all", str(artifacts))
         assert result.returncode == 1
         assert result.stdout == ""
         assert result.stderr == (
-            "Error: RHOAIENG-2 is (RHOAIENG, Initiative) in Jira but the resolved type rfe "
+            "Error: RHAISTRAT-2 is (RHAISTRAT, Initiative) in Jira but the resolved type rfe "
             f"binds {RFE_BINDS}; nothing written - re-run with --type initiative\n"
         )
         assert not artifacts.exists()
         # The hint is right: the same key under --type initiative is written (its project
         # matches the initiative binding), after the D3 line.
-        result = self._run(env, "RHOAIENG-2", "--fetch-all", str(artifacts), "--type", "initiative")
+        result = self._run(
+            env, "RHAISTRAT-2", "--fetch-all", str(artifacts), "--type", "initiative"
+        )
         assert result.returncode == 0, result.stderr
         assert result.stderr == "TYPE RESOLVED: initiative (--type)\n"
         assert _tree(artifacts).keys() == {
-            "initiatives/RHOAIENG-2.md",
-            "initiative-originals/RHOAIENG-2.md",
+            "initiatives/RHAISTRAT-2.md",
+            "initiative-originals/RHAISTRAT-2.md",
         }
         data, _ = read_frontmatter_validated(
-            str(artifacts / "initiatives" / "RHOAIENG-2.md"), "initiative-task"
+            str(artifacts / "initiatives" / "RHAISTRAT-2.md"), "initiative-task"
         )
-        assert (data["type"], data["tracker_ref"]) == ("initiative", "RHOAIENG-2")
+        assert (data["type"], data["tracker_ref"]) == ("initiative", "RHAISTRAT-2")
 
     def test_feature_request_under_type_initiative_is_refused_and_the_hint_names_rfe(
         self, tmp_path, jira, env
@@ -1182,7 +1193,7 @@ class TestFetchAllAgainstTheEmulator:
         assert result.stderr == (
             "TYPE RESOLVED: initiative (--type)\n"
             "Error: RHAIRFE-3 is (RHAIRFE, Feature Request) in Jira but the resolved type "
-            "initiative binds (RHOAIENG, Initiative); nothing written - re-run with --type rfe\n"
+            "initiative binds (RHAISTRAT, Initiative); nothing written - re-run with --type rfe\n"
         )
         assert not artifacts.exists()
 
@@ -1268,10 +1279,12 @@ class TestFetchAllAgainstTheEmulator:
             "Error: RFE_CREATOR_BINDING_INITIATIVE_PROJECT='lower': expected an upper-case "
             "tracker project key\n"
         )
-        jira.create("RHOAIENG-2", "Serve models at the edge", "Init body.", issue_type="Initiative")
+        jira.create(
+            "RHAISTRAT-2", "Serve models at the edge", "Init body.", issue_type="Initiative"
+        )
         jira.create("RHAIRFE-3", "Export models", "Body text.")
         artifacts = tmp_path / "artifacts"
-        for key in ("RHOAIENG-2", "RHAIRFE-3"):
+        for key in ("RHAISTRAT-2", "RHAIRFE-3"):
             result = self._run(malformed, key, "--fetch-all", str(artifacts))
             assert (result.returncode, result.stdout, result.stderr) == (1, "", line), key
             assert not artifacts.exists()
@@ -1283,22 +1296,24 @@ class TestFetchAllAgainstTheEmulator:
     ):
         # §3.2.1 g through the CLI: the override is refused before the fetch, so an Initiative
         # can never be written into the rfe layout by re-binding rfe to its pair.
-        jira.create("RHOAIENG-2", "Serve models at the edge", "Init body.", issue_type="Initiative")
+        jira.create(
+            "RHAISTRAT-2", "Serve models at the edge", "Init body.", issue_type="Initiative"
+        )
         artifacts = tmp_path / "artifacts"
         result = self._run(
             {
                 **env,
-                "RFE_CREATOR_BINDING_RFE_PROJECT": "RHOAIENG",
+                "RFE_CREATOR_BINDING_RFE_PROJECT": "RHAISTRAT",
                 "RFE_CREATOR_BINDING_RFE_ISSUE_TYPE": "Initiative",
             },
-            "RHOAIENG-2",
+            "RHAISTRAT-2",
             "--fetch-all",
             str(artifacts),
         )
         assert result.returncode == 1
         assert result.stdout == ""
         assert result.stderr.startswith(
-            "Error: rfe: effective binding ('jira', 'RHOAIENG', 'Initiative') (source: env) is "
+            "Error: rfe: effective binding ('jira', 'RHAISTRAT', 'Initiative') (source: env) is "
             "the binding registered for type 'initiative'; a tracker binding must be owned by "
             "exactly one type"
         )
@@ -1377,53 +1392,53 @@ class TestFetchAllAgainstTheEmulator:
     ):
         jira.create("RHAISTRAT-1", "Outcome", "Outcome body.", issue_type="Outcome")
         jira.create(
-            "RHOAIENG-7",
+            "RHAISTRAT-7",
             "Serve models at the edge",
             "Init body.",
             issue_type="Initiative",
             parent="RHAISTRAT-1",
         )
         artifacts = tmp_path / "artifacts"
-        result = self._run(env, "RHOAIENG-7", "--fetch-all", str(artifacts), "--type", "initiative")
+        result = self._run(
+            env, "RHAISTRAT-7", "--fetch-all", str(artifacts), "--type", "initiative"
+        )
         assert result.returncode == 0, result.stderr
         assert result.stderr == "TYPE RESOLVED: initiative (--type)\n"
-        task = artifacts / "initiatives" / "RHOAIENG-7.md"
+        task = artifacts / "initiatives" / "RHAISTRAT-7.md"
         data, body = read_frontmatter_validated(str(task), "initiative-task")
         assert data["parent_key"] == "RHAISTRAT-1"
-        assert (data["initiative_id"], data["tracker_ref"]) == ("RHOAIENG-7", "RHOAIENG-7")
+        assert (data["initiative_id"], data["tracker_ref"]) == ("RHAISTRAT-7", "RHAISTRAT-7")
         assert body == "Init body.\n"
         keys = list(data)
         assert keys[keys.index("tracker_ref") + 1] == "parent_key"
         # The pipeline's own condition over the fetched file: the alignment stage would run.
         monkeypatch.chdir(tmp_path)
-        assert pipeline_state._has_rhaistrat_parent("RHOAIENG-7", {"type": "initiative"})
+        assert pipeline_state._has_rhaistrat_parent("RHAISTRAT-7", {"type": "initiative"})
 
-    def test_initiative_under_an_outcome_of_its_own_project_keeps_parent_key_null(
+    def test_initiative_under_an_outcome_of_its_own_project_records_parent_key(
         self, tmp_path, jira, env, monkeypatch
     ):
-        jira.create("RHOAIENG-50", "Outcome", "Outcome body.", issue_type="Outcome")
+        jira.create("RHAISTRAT-50", "Outcome", "Outcome body.", issue_type="Outcome")
         jira.create(
-            "RHOAIENG-8",
+            "RHAISTRAT-8",
             "Serve models",
             "Init body.",
             issue_type="Initiative",
-            parent="RHOAIENG-50",
+            parent="RHAISTRAT-50",
         )
         artifacts = tmp_path / "artifacts"
-        result = self._run(env, "RHOAIENG-8", "--fetch-all", str(artifacts), "--type", "initiative")
+        result = self._run(
+            env, "RHAISTRAT-8", "--fetch-all", str(artifacts), "--type", "initiative"
+        )
         assert result.returncode == 0, result.stderr
-        assert result.stderr.splitlines() == [
-            "TYPE RESOLVED: initiative (--type)",
-            "Note: RHOAIENG-8: parent RHOAIENG-50 not recorded as parent_key - the initiative "
-            "pipeline reads parent_key with prefix RHAISTRAT- only; the link stays in Jira",
-        ]
-        task = artifacts / "initiatives" / "RHOAIENG-8.md"
+        assert result.stderr.splitlines() == ["TYPE RESOLVED: initiative (--type)"]
+        task = artifacts / "initiatives" / "RHAISTRAT-8.md"
         data, _ = read_frontmatter_validated(str(task), "initiative-task")
-        assert data["parent_key"] is None
+        assert data["parent_key"] == "RHAISTRAT-50"  # same project since 2026-10-28: recorded
         monkeypatch.chdir(tmp_path)
-        assert pipeline_state._has_rhaistrat_parent("RHOAIENG-8", {"type": "initiative"}) is False
+        assert pipeline_state._has_rhaistrat_parent("RHAISTRAT-8", {"type": "initiative"}) is True
         # ...and the link is still in Jira for what reads it there (split children inherit it).
-        assert jira.get("RHOAIENG-8")["fields"]["parent"]["key"] == "RHOAIENG-50"
+        assert jira.get("RHAISTRAT-8")["fields"]["parent"]["key"] == "RHAISTRAT-50"
 
     def test_rfe_under_a_jira_parent_is_fetched_as_before(self, tmp_path, jira, env):
         jira.create("RHAISTRAT-1", "Outcome", "Outcome body.", issue_type="Outcome")

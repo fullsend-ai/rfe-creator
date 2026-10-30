@@ -275,7 +275,7 @@ class TestLegacyListNeutrality:
         assert result.returncode == 0, result.stderr
         assert result.stdout == "RFE-001\nRFE-002\n"
         assert result.stderr == ""
-        batch.write_text("- RHOAIENG-123\n- prompt: ok\n")
+        batch.write_text("- RHAISTRAT-123\n- prompt: ok\n")
         result = _run(tmp_path, "--from-batch", str(batch), env=env)
         assert result.returncode == 0, result.stderr
         assert result.stdout == "RFE-003\nRFE-004\n"

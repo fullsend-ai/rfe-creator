@@ -6,6 +6,7 @@ revision is followed by a review.
 """
 
 import os
+import re
 import subprocess
 import sys
 import time
@@ -2677,7 +2678,7 @@ class TestLaunchWaveFile:
 
     CASES = [
         ("rfe", "RHAIRFE", 25, "rfe-scorer"),
-        ("initiative", "RHOAIENG", 17, "initiative-scorer"),  # 2 parallel: ceil(50/3) = 17 ids
+        ("initiative", "RHAISTRAT", 17, "initiative-scorer"),  # 2 parallel: ceil(50/3) = 17 ids
     ]
 
     def _wave(self, monkeypatch, pipeline_type, key, n):
@@ -2787,7 +2788,7 @@ class TestLaunchWaveFile:
             out = read_launch("--agent", bad)
             assert out.returncode == 1 and f"agent_count: {2 * n_ids}" in out.stderr
 
-    @pytest.mark.parametrize("pipeline_type,key", [("rfe", "RHAIRFE"), ("initiative", "RHOAIENG")])
+    @pytest.mark.parametrize("pipeline_type,key", [("rfe", "RHAIRFE"), ("initiative", "RHAISTRAT")])
     @pytest.mark.parametrize(
         "phase", ["REVIEW", "REASSESS_REVIEW", "SPLIT_REVIEW", "SPLIT_RE_REVIEW", "ASSESS"]
     )
@@ -2824,7 +2825,7 @@ class TestLaunchWaveFile:
     def test_a_wave_too_big_for_the_listing_is_cut_and_the_rest_follows(self, tmp_dir, monkeypatch):
         import yaml as _yaml
 
-        ids = [f"RHOAIENG-{1000 + i}" for i in range(50)]
+        ids = [f"RHAISTRAT-{1000 + i}" for i in range(50)]
         write_ids("tmp/pipeline-active-ids.txt", ids)
         ps._save_state(make_state(phase="REVIEW", type="initiative", batch=1))
         monkeypatch.setattr(ps, "_run_script", lambda cmd: "")
@@ -2900,20 +2901,27 @@ class TestLaunchWaveFile:
         assert ps._load_state()["wave_ordinal"] == 1
 
     def test_the_total_counts_every_cut_wave(self, tmp_dir, monkeypatch):
-        """An initiative REVIEW batch of 100 ids is cut to the listing budget into three waves:
+        """An initiative REVIEW batch of 100 ids is cut to the listing budget into several waves
+        (how many depends on the key length and the rendered paths, so the count is not pinned):
         the total is exact from the first call, and each wave reads its own number."""
-        ids = [f"RHOAIENG-{1000 + i}" for i in range(100)]
+        ids = [f"RHAISTRAT-{1000 + i}" for i in range(100)]
         write_ids("tmp/pipeline-active-ids.txt", ids)
         ps._save_state(make_state(phase="REVIEW", type="initiative", batch=1, batch_size=100))
         monkeypatch.setattr(ps, "_run_script", lambda cmd: "")
-        seen = []
-        for n in (1, 2, 3):
+        seen, total, n = [], None, 0
+        while True:
+            n += 1
             result = _run_next_action()
             wave = read_ids(ps.WAVE_IDS_FILE)
-            assert result["message"] == f"REVIEW: wave {n}/3 ({len(wave)} IDs)"
+            m = re.fullmatch(r"REVIEW: wave (\d+)/(\d+) \((\d+) IDs\)", result["message"])
+            assert m and int(m.group(1)) == n and int(m.group(3)) == len(wave), result["message"]
+            total = total or int(m.group(2))
+            assert int(m.group(2)) == total, result["message"]
             seen.extend(wave)
             _finish_wave(ps._load_state(), wave)
-        assert seen == ids
+            if n == total:
+                break
+        assert total >= 2 and seen == ids
 
     def test_wave_count_restarts_in_the_next_agent_phase(self, tmp_dir, monkeypatch):
         """The ordinal resets on entering a phase: REVIEW's first wave reads wave 1/..., even
@@ -3393,7 +3401,7 @@ class TestValidateIds:
     """Every id list is interpolated into shell=True commands, so _read_ids validates."""
 
     def test_accepts_every_id_shape_the_pipeline_produces(self):
-        ids = ["RFE-001", "INIT-004", "RHAIRFE-2685", "RHOAIENG-9876", "RHAISTRAT-42"]
+        ids = ["RFE-001", "INIT-004", "RHAIRFE-2685", "RHAISTRAT-9876", "RHAISTRAT-42"]
         assert ps._validate_ids(ids) == ids
 
     @pytest.mark.parametrize(
@@ -4722,18 +4730,18 @@ class TestWaveStall:
     def test_initiative_stub_uses_its_id_field_and_score_fields(
         self, stall_dir, monkeypatch, capsys
     ):
-        self._assess(["RHOAIENG-1002"], pipeline_type="initiative")
+        self._assess(["RHAISTRAT-1002"], pipeline_type="initiative")
         monkeypatch.setenv("PIPELINE_WAVE_RETRY_CAP", "0")
-        clock, pending = _Clock(), {"RHOAIENG-1002"}
+        clock, pending = _Clock(), {"RHAISTRAT-1002"}
         _arm(monkeypatch, clock, pending)
         assert _drive() == 10
         from artifact_utils import read_frontmatter
 
-        data, _ = read_frontmatter("artifacts/initiative-reviews/RHOAIENG-1002-review.md")
-        assert data == _expected_stub("initiative", "RHOAIENG-1002", "assess_stalled")
-        assert data["initiative_id"] == "RHOAIENG-1002"
+        data, _ = read_frontmatter("artifacts/initiative-reviews/RHAISTRAT-1002-review.md")
+        assert data == _expected_stub("initiative", "RHAISTRAT-1002", "assess_stalled")
+        assert data["initiative_id"] == "RHAISTRAT-1002"
         assert "scope" in data["scores"] and "not_a_task" not in data["scores"]
-        assert not os.path.exists("artifacts/rfe-reviews/RHOAIENG-1002-review.md")
+        assert not os.path.exists("artifacts/rfe-reviews/RHAISTRAT-1002-review.md")
         _, lines = _stall_lines(capsys)
         assert lines[0].startswith(
             "wait-for-wave: STALL in ASSESS"
@@ -5810,3 +5818,38 @@ class TestAutoFixSkillIdleProse:
         assert "The resume check must have run" in step4
         # The instruction precedes the start commands it qualifies.
         assert step4.index("Zero process IDs") < step4.index("set total_batches=<M>")
+
+
+class TestConditionWorkspaceRule:
+    """Since Initiatives live in RHAISTRAT (2026-10-28) a split parent and an Outcome share the
+    key family the alignment condition reads. A parent_key that names a task of this workspace
+    is a split parent: the condition is not met and the skip stub is written, exactly as before
+    the move, when such children carried a key of another family."""
+
+    def _task(self, rel, **fm):
+        os.makedirs(os.path.dirname(rel), exist_ok=True)
+        with open(rel, "w") as f:
+            f.write("---\n" + "".join(f"{k}: {v}\n" for k, v in fm.items()) + "---\n\nBody.\n")
+
+    def test_an_outcome_parent_arms_the_condition(self, tmp_dir):
+        self._task("artifacts/initiatives/RHAISTRAT-8.md", parent_key="RHAISTRAT-50")
+        assert ps._has_rhaistrat_parent("RHAISTRAT-8", {"type": "initiative"}) is True
+
+    def test_a_split_parent_does_not(self, tmp_dir):
+        self._task("artifacts/initiatives/INIT-001.md", parent_key="RHAISTRAT-100")
+        self._task("artifacts/initiatives/RHAISTRAT-100.md", status="Archived")
+        assert ps._has_rhaistrat_parent("INIT-001", {"type": "initiative"}) is False
+
+    def test_rfe_has_no_such_condition(self, tmp_dir):
+        self._task("artifacts/rfe-tasks/RFE-001.md", parent_key="RHAISTRAT-50")
+        assert ps._has_rhaistrat_parent("RFE-001", {"type": "rfe"}) is False
+
+    def test_the_rule_is_for_parent_key_only(self, tmp_dir):
+        """A condition on another field is the plain prefix test, whatever the value names."""
+        self._task("artifacts/initiatives/INIT-001.md", theme="RHAISTRAT-100")
+        self._task("artifacts/initiatives/RHAISTRAT-100.md", status="Archived")
+        cond = {"frontmatter_field": "theme", "prefix": "RHAISTRAT-"}
+        assert ps._check_condition(cond, "INIT-001", {"type": "initiative"}) is True
+        cond = {"frontmatter_field": "parent_key", "prefix": "RHAISTRAT-"}
+        self._task("artifacts/initiatives/INIT-002.md", parent_key="RHAISTRAT-100")
+        assert ps._check_condition(cond, "INIT-002", {"type": "initiative"}) is False

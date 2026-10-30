@@ -6,7 +6,9 @@
 # the live literal on main (c1df503) with the consuming file:line AT THAT COMMIT in a trailing comment
 # (adopted scripts now derive it — the comment records where the literal lived); nothing here is
 # authored. Where §8.2 and main disagree, main wins and the comment says so (Q1, Q3, Q9, Q10, Q11 of
-# the PR-1 checklist; Q14 was reconciled in PR-3b).
+# the PR-1 checklist; Q14 was reconciled in PR-3b). 2026-10-28 (AISDLC-461): the Jira project moved from
+# RHOAIENG to RHAISTRAT — identity.jira.project, key_prefixes, query_default, parent_key_patterns and
+# snapshot.results_subdir changed together; every other value is unchanged.
 schema_version: 1
 type: initiative
 display: { entity: Initiative, entity_plural: Initiatives }   # split_submit.py:133-134 entity_name/_plural; generate_review_pdf.py:66-67
@@ -15,12 +17,12 @@ kind: work-item                                         # RESERVED (design §3.2
 identity:
   tracker: jira                                         # every write goes through jira_utils.py REST (create_issue :172-179)
   jira:
-    project: RHOAIENG                                   # submit.py:94; split_submit.py:129
+    project: RHAISTRAT                                  # submit.py:94; split_submit.py:129 — RHAISTRAT since 2026-10-28 (AISDLC-461: Initiatives live in the Red Hat AI Strategy project, next to the Outcomes they hang from; RHOAIENG before, never live beyond test runs)
     issue_type: Initiative                              # submit.py:95; split_submit.py:130; sent BY NAME jira_utils.py:175 (id 10103 in AGENTS.md:129 is unused)
-    key_prefixes: ["RHOAIENG-"]                         # submit.py:99 jira_prefix; generate_run_report.py:55 tracker_prefix; generate_review_pdf.py:64; check_conflicts.py:47
+    key_prefixes: ["RHAISTRAT-"]                        # submit.py:99 jira_prefix; generate_run_report.py:55 tracker_prefix; generate_review_pdf.py:64; check_conflicts.py:47
     split_link_type: "Work item split"                  # split_submit.py:210,:410,:497,:610,:685,:716 (shared with rfe)
     state_map:
-      approved: Approved                                # submit.py:987 (shared); emulator RHOAIENG workflow tests/conftest.py:114-121
+      approved: Approved                                # submit.py:987 (shared); emulator RHAISTRAT workflow patched in tests/conftest.py. RHAISTRAT's Initiative workflow has no Approved status (New, Backlog, Refinement, To Do, In Progress, Review, Release Pending, Closed), so the live transition is skipped until AISDLC-206 names a target
       close_superseded: { transition: Closed, resolution: Obsolete }   # split_submit.py:820 (target status name .lower()=="closed"), :837 resolution (shared)
   local_prefix: "INIT-"                                 # submit.py:98; generate_run_report.py:56; generate_review_pdf.py:65; next_rfe_id.py --prefix INIT (the NEXT_ID_FLAGS launch var of rfe-create / rfe-speedrun)
   local_id_pattern: '^INIT-\d+$'                        # artifact_utils.py:199 (initiative-task.local_id), :237 (initiative-review.local_id); rename guard :1058 re.fullmatch(r"INIT-\d+"). ONE backslash (the design's YAML doubled it)
@@ -59,8 +61,8 @@ conventions:
       weak: initiative-alignment-weak
   comment_prefix: "[Initiative Creator]"                # submit.py:125; split_submit.py:131 comment_marker — PUBLISHED CONTRACT (R7)
   removed_context_preamble: "*[Initiative Creator]* The following technical implementation details were removed from the Initiative description during review. This content may be useful as strategy context and is preserved here for reference:"   # submit.py:119-124 — PUBLISHED CONTRACT (R7); the design's "…" truncation is not the value; frozen
-  query_default: 'project = RHOAIENG AND issuetype = Initiative'   # Q10: no consumer at PR-1 (queries arrive via --jql: snapshot_fetch.py:489, bootstrap_snapshot.py:407, jql_query.py:64); not pinned; JQL because identity.tracker is jira
-  parent_key_patterns: ['RHAISTRAT-\d+', 'RHOAIENG-\d+', 'INIT-\d+']   # artifact_utils.py:219 r"^(RHAISTRAT-\d+|RHOAIENG-\d+|INIT-\d+)$" (initiative-task.parent_key). Q14 reconciled in PR-3b: validate_batch_input derives PARENT_KEY_PATTERN[type] from this list through Descriptor.parent_key_pattern, the task schema's join
+  query_default: 'project = RHAISTRAT AND issuetype = Initiative'  # Q10: no consumer at PR-1 (queries arrive via --jql: snapshot_fetch.py:489, bootstrap_snapshot.py:407, jql_query.py:64); not pinned; JQL because identity.tracker is jira
+  parent_key_patterns: ['RHAISTRAT-\d+', 'INIT-\d+']   # artifact_utils.py:219 (initiative-task.parent_key); was RHAISTRAT-/RHOAIENG-/INIT- while the type lived in RHOAIENG — an Initiative in RHAISTRAT hangs from a RHAISTRAT Outcome, its own key family, which is also the alignment dimension's condition prefix. Q14 reconciled in PR-3b: validate_batch_input derives PARENT_KEY_PATTERN[type] from this list through Descriptor.parent_key_pattern, the task schema's join
 
 schema:
   task:
@@ -97,8 +99,8 @@ pipeline:
     - name: alignment                                   # poll phase "initiative-alignment" (check_review_progress.py:34; pipeline_state.py:206)
       prompt: types/initiative/dimensions/alignment.md      # pipeline_state.py:115 alignment_skill (truthiness is the only switch, :202)
       blocking: false                                   # Q17: the generic rfe-review body renders a non-blocking dimension as "informational, not blocking" — unpinned
-      condition: { frontmatter_field: parent_key, prefix: "RHAISTRAT-" }   # pipeline_state.py:143-144 _has_rhaistrat_parent; the engine's closed name is "has_rhaistrat_parent" (:149/:208). Also what makes fetch_issue.py --fetch-all request Jira's parent and record a RHAISTRAT- one as parent_key (Descriptor.condition_prefixes, AISDLC-280)
-      skip_stub: { result: not_assessed, reason: "skipped by pipeline (no RHAISTRAT parent)" }   # pipeline_state.py:161-162 _write_poll_stub writes BOTH keys (§8.2 shows one)
+      condition: { frontmatter_field: parent_key, prefix: "RHAISTRAT-" }   # pipeline_state.py:143-144 _has_rhaistrat_parent (a parent_key that names a task of the workspace is a split parent, not an Outcome: not met, since the move to RHAISTRAT put both in one key family); the engine's closed name is "has_rhaistrat_parent" (:149/:208). Also what makes fetch_issue.py --fetch-all request Jira's parent and record a RHAISTRAT- one as parent_key (Descriptor.condition_prefixes, AISDLC-280)
+      skip_stub: { result: not_assessed, reason: "skipped by pipeline (no RHAISTRAT Outcome parent)" }   # pipeline_state.py:161-162 _write_poll_stub writes BOTH keys (§8.2 shows one)
   rubric:
     repo: https://github.com/fullsend-ai/assess-rfe     # bootstrap.sh:45 (verbatim URL; shared)
     ref: "d8391ae379fba0497164550e3a33495bc2007aa2"            # same commit as rfe (one shared checkout; validate_types cross rule 6): the assess-rfe PR #10 merge that brought skills/assess-initiative onto main. bootstrap.sh checks it out and verifies it unless ASSESS_RFE_REF overrides. Quoted: a digits-only ref would parse as a number
@@ -110,7 +112,7 @@ batch: { extra_fields: [parent_key] }                   # validate_batch_input.p
 snapshot:
   prefix: "initiative-snapshot-"                        # snapshot_fetch.py:65; submit.py:105 (forwarded when truthy :672-673,:1170-1171); bootstrap_snapshot.py:676-677
   report_prefix: "initiative-run-"                      # generate_run_report.py:50 output_prefix; bootstrap_snapshot.py:49; submit.py:325
-  results_subdir: "initiative-rhoaieng"                 # <type>-<project lowercased>: a second deployment of this type against another Jira project (AISDLC-8) gets its own subtree; clone_results_repo.py sparse set (DATA_REPO_TYPES), autofixer push-results.py / restore-artifacts.sh via `type_registry.py get` — initiative-rhoaieng/<run>/ and initiative-rhoaieng/latest in the shared results repository (AISDLC-202)
+  results_subdir: "initiative-rhaistrat"                # <type>-<project lowercased> (initiative-rhoaieng/ in the results repository is the pre-2026-10-28 subtree, kept as history): a second deployment of this type against another Jira project (AISDLC-8) gets its own subtree; clone_results_repo.py sparse set (DATA_REPO_TYPES), autofixer push-results.py / restore-artifacts.sh via `type_registry.py get` — initiative-rhoaieng/<run>/ and initiative-rhoaieng/latest in the shared results repository (AISDLC-202)
 reporting:
   item_key: per_initiative                              # generate_run_report.py:49; bootstrap_snapshot.py:50
   criterion_labels: { what: WHAT, why: WHY, scope: Scope, open_to_how: HOW, right_sized: Right-sized }   # generate_review_pdf.py:82-88 (key order = display order)

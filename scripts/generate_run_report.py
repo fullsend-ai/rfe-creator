@@ -50,9 +50,12 @@ def _type_config(desc):
         # <type>-task, sorted by identity.id_field); called as scan_tasks(artifacts_dir).
         "scan_tasks": partial(scan_tasks, desc=desc),
         "id_field": desc.id_field,
-        # parent_key values that mean "split from"; see split_children_map. The local
-        # prefix plus the tracker key prefixes — NOT conventions.parent_key_patterns, which
-        # admits the RHAISTRAT strategy rollup this predicate has to exclude.
+        # parent_key values that MAY mean "split from"; see split_children_map. The local
+        # prefix plus the tracker key prefixes — NOT conventions.parent_key_patterns — narrow
+        # a parent to the type's own key family; since Initiatives live in RHAISTRAT
+        # (2026-10-28) the Outcome rollup is in that family too, and only
+        # split_children_map's workspace check (the parent has a task here) tells a split
+        # parent from a hierarchy link. Do not simplify that function to the prefix test.
         "child_parent_prefixes": (desc.local_prefix, *desc.key_prefixes),
         "tracker_prefix": desc.write_prefix,
         # The tracker key prefixes as a union (write prefix first, then read prefixes): the
@@ -117,18 +120,29 @@ def split_children_map(artifacts_dir, config, tasks=None):
     """Map parent ID -> child IDs for split children found in the task dir.
 
     A child declares its parent with `parent_key`. On the initiative side that
-    same field also carries the RHAISTRAT Outcome link, which is a strategy
-    rollup, not a split — so only same-family parents count.
+    same field also carries the Outcome link, a strategy rollup, not a split —
+    and since Initiatives live in RHAISTRAT (2026-10-28) an Outcome parent is in
+    the type's own key family. So a parent counts only when it carries a
+    same-family prefix AND is a task of this workspace: a split parent is always
+    here (archived by the split), an Outcome never is — the rule `submit.py`'s
+    `_has_jira_ancestor` applies to a chain. The task may be torn mid-write (the
+    frontmatter scan skips it, RHAIFIRST-582), so the file's existence counts too.
 
     `config` is a TYPE_CONFIG entry. `tasks` lets a caller that already
     scanned the tree reuse the rows instead of walking it again.
     """
     if tasks is None:
         tasks = config["scan_tasks"](artifacts_dir)
+    task_ids = {task_data.get(config["id_field"]) for _, task_data in tasks}
+    tasks_dir = os.path.join(artifacts_dir, config["tasks_dir"])
+
+    def in_workspace(parent):
+        return parent in task_ids or os.path.isfile(os.path.join(tasks_dir, f"{parent}.md"))
+
     children_map = {}
     for _, task_data in tasks:
         parent = task_data.get("parent_key")
-        if parent and parent.startswith(config["child_parent_prefixes"]):
+        if parent and parent.startswith(config["child_parent_prefixes"]) and in_workspace(parent):
             children_map.setdefault(parent, []).append(task_data[config["id_field"]])
     return children_map
 

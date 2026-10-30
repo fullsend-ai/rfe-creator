@@ -221,7 +221,7 @@ def _is_existing(data, id_field, type_name, binding, registry=None, env=None):
     present it decides — a reference the resolved type's effective binding owns
     (``_owned_key``) is an existing issue; one it does NOT own is a ``TrackerRefError`` naming
     the id, the reference, the resolved type and the type that owns it (a ``type: rfe``
-    artifact carrying ``tracker_ref: RHOAIENG-123`` is never an update and never a create:
+    artifact carrying ``tracker_ref: RHAISTRAT-123`` is never an update and never a create:
     main() raises this before the first Jira write). Absent (a pre-migration artifact), the
     fallback is membership of the id in the effective ``key_prefixes`` union — with no
     override exactly the single-prefix ``startswith`` this replaces.
@@ -1246,6 +1246,8 @@ def main():
         if pk:
             _parent_of[data[id_field]] = pk
 
+    _torn_roots_warned = set()
+
     def _has_jira_ancestor(item_id):
         """True if ``item_id`` belongs to a split tree rooted in Jira — the trees Phase 1
         submits, so Phase 2 must leave them alone.
@@ -1255,16 +1257,40 @@ def main():
         ``Archived``, which is what the split skill leaves behind for the parent it decomposed
         (a Jira parent split in this run, or a local draft split before submit whose own
         parent is in Jira). A ``parent_key`` that names a Jira issue with no task here is not
-        a split: a batch entry's RHOAIENG Outcome above a new Initiative, say, is a hierarchy
+        a split: a batch entry's RHAISTRAT Outcome above a new Initiative, say, is a hierarchy
         link the create step forwards as Jira's ``parent``. Before this rule such a task was in
         no plan at all — not a split parent for Phase 1, excluded from Phase 2 — and a batch
-        run ended green without ever creating it.
+        run ended green without ever creating it. The same Outcome above a LOCAL split root
+        (a draft split before submit) ends the walk the same way: its children stay in Phase 2.
         """
+        # The prefixes the type's dimensions read ``parent_key`` with as a hierarchy link (the
+        # Initiative alignment condition's ``RHAISTRAT-``). Since Initiatives live in RHAISTRAT
+        # (2026-10-28) that is the type's own key family, so a key of this shape with no task
+        # here is the Outcome above a local split root, never the Jira root of a split tree:
+        # the walk stops and the descendants stay eligible for Phase 2. A type without such a
+        # condition (rfe) keeps the key-form rule for a task-less ancestor.
+        hierarchy_prefixes = tuple(desc.condition_prefixes("parent_key"))
         seen = set()
         pk = _parent_of.get(item_id)
         through_split_parent = False
         while pk and pk not in seen:
             parent_data = tasks_by_id.get(pk)
+            if parent_data is None and hierarchy_prefixes and pk.startswith(hierarchy_prefixes):
+                torn = os.path.isfile(
+                    os.path.join(args.artifacts_dir, cfg["tasks_dir"], f"{pk}.md")
+                )
+                if not torn:
+                    return False
+                # The file is here but scan_tasks could not read it: a Jira split root torn
+                # mid-write, not an Outcome. Fail closed, as before the move: the key-form rule
+                # below keeps the descendants out of Phase 2, and the reason is said once.
+                if pk not in _torn_roots_warned:
+                    _torn_roots_warned.add(pk)
+                    print(
+                        f"Warning: {pk}: task file present but unreadable; its split descendants"
+                        f" stay out of Phase 2 until it is fixed",
+                        file=sys.stderr,
+                    )
             if parent_data is not None and parent_data.get("status") == "Archived":
                 through_split_parent = True
             if through_split_parent and _existing_key(pk):

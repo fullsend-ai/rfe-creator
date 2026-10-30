@@ -98,7 +98,7 @@ class TestRFEChildren:
 
 class TestInitiativeChildren:
     def test_parent_with_children(self, init_workspace):
-        for child_id in ["RHOAIENG-11", "RHOAIENG-12", "RHOAIENG-13"]:
+        for child_id in ["RHAISTRAT-11", "RHAISTRAT-12", "RHAISTRAT-13"]:
             write_frontmatter(
                 str(init_workspace / f"artifacts/initiatives/{child_id}.md"),
                 {
@@ -106,102 +106,102 @@ class TestInitiativeChildren:
                     "title": f"Child {child_id}",
                     "priority": "Normal",
                     "status": "Ready",
-                    "parent_key": "RHOAIENG-10",
+                    "parent_key": "RHAISTRAT-10",
                 },
                 "initiative-task",
             )
-        out, _, rc = _run(["--type", "initiative", "RHOAIENG-10"], cwd=str(init_workspace))
+        out, _, rc = _run(["--type", "initiative", "RHAISTRAT-10"], cwd=str(init_workspace))
         assert rc == 0
         parts = out.split(":")
-        assert parts[0] == "RHOAIENG-10"
+        assert parts[0] == "RHAISTRAT-10"
         children = parts[1].split(",")
         assert len(children) == 3
 
     def test_archived_children_excluded(self, init_workspace):
         write_frontmatter(
-            str(init_workspace / "artifacts/initiatives/RHOAIENG-21.md"),
+            str(init_workspace / "artifacts/initiatives/RHAISTRAT-21.md"),
             {
-                "initiative_id": "RHOAIENG-21",
+                "initiative_id": "RHAISTRAT-21",
                 "title": "Active",
                 "priority": "Normal",
                 "status": "Ready",
-                "parent_key": "RHOAIENG-20",
+                "parent_key": "RHAISTRAT-20",
             },
             "initiative-task",
         )
         write_frontmatter(
-            str(init_workspace / "artifacts/initiatives/RHOAIENG-22.md"),
+            str(init_workspace / "artifacts/initiatives/RHAISTRAT-22.md"),
             {
-                "initiative_id": "RHOAIENG-22",
+                "initiative_id": "RHAISTRAT-22",
                 "title": "Archived",
                 "priority": "Normal",
                 "status": "Archived",
-                "parent_key": "RHOAIENG-20",
+                "parent_key": "RHAISTRAT-20",
             },
             "initiative-task",
         )
-        out, _, rc = _run(["--type", "initiative", "RHOAIENG-20"], cwd=str(init_workspace))
+        out, _, rc = _run(["--type", "initiative", "RHAISTRAT-20"], cwd=str(init_workspace))
         assert rc == 0
         parts = out.split(":")
-        assert parts[1] == "RHOAIENG-21"
+        assert parts[1] == "RHAISTRAT-21"
 
     def test_multiple_parents(self, init_workspace):
         write_frontmatter(
-            str(init_workspace / "artifacts/initiatives/RHOAIENG-31.md"),
+            str(init_workspace / "artifacts/initiatives/RHAISTRAT-31.md"),
             {
-                "initiative_id": "RHOAIENG-31",
+                "initiative_id": "RHAISTRAT-31",
                 "title": "Child of 30",
                 "priority": "Normal",
                 "status": "Ready",
-                "parent_key": "RHOAIENG-30",
+                "parent_key": "RHAISTRAT-30",
             },
             "initiative-task",
         )
         write_frontmatter(
-            str(init_workspace / "artifacts/initiatives/RHOAIENG-41.md"),
+            str(init_workspace / "artifacts/initiatives/RHAISTRAT-41.md"),
             {
-                "initiative_id": "RHOAIENG-41",
+                "initiative_id": "RHAISTRAT-41",
                 "title": "Child of 40",
                 "priority": "Normal",
                 "status": "Ready",
-                "parent_key": "RHOAIENG-40",
+                "parent_key": "RHAISTRAT-40",
             },
             "initiative-task",
         )
         out, _, rc = _run(
-            ["--type", "initiative", "RHOAIENG-30", "RHOAIENG-40"],
+            ["--type", "initiative", "RHAISTRAT-30", "RHAISTRAT-40"],
             cwd=str(init_workspace),
         )
         assert rc == 0
         lines = out.splitlines()
         assert len(lines) == 2
         line_map = {line.split(":")[0]: line.split(":")[1] for line in lines}
-        assert "RHOAIENG-31" in line_map["RHOAIENG-30"]
-        assert "RHOAIENG-41" in line_map["RHOAIENG-40"]
+        assert "RHAISTRAT-31" in line_map["RHAISTRAT-30"]
+        assert "RHAISTRAT-41" in line_map["RHAISTRAT-40"]
 
 
 class TestIdsFile:
     def test_ids_from_file(self, init_workspace):
         write_frontmatter(
-            str(init_workspace / "artifacts/initiatives/RHOAIENG-51.md"),
+            str(init_workspace / "artifacts/initiatives/RHAISTRAT-51.md"),
             {
-                "initiative_id": "RHOAIENG-51",
+                "initiative_id": "RHAISTRAT-51",
                 "title": "Child",
                 "priority": "Normal",
                 "status": "Ready",
-                "parent_key": "RHOAIENG-50",
+                "parent_key": "RHAISTRAT-50",
             },
             "initiative-task",
         )
         ids_file = str(init_workspace / "parents.txt")
         with open(ids_file, "w") as f:
-            f.write("RHOAIENG-50\n")
+            f.write("RHAISTRAT-50\n")
         out, _, rc = _run(
             ["--type", "initiative", "--ids-file", ids_file],
             cwd=str(init_workspace),
         )
         assert rc == 0
-        assert "RHOAIENG-50:RHOAIENG-51" in out
+        assert "RHAISTRAT-50:RHAISTRAT-51" in out
 
 
 class TestThirdType:

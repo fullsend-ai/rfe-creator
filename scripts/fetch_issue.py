@@ -130,15 +130,19 @@ def recorded_parent_key(desc, issue_key, fields):
 
     Recorded when the key carries one of ``parent_key_prefixes(desc)`` AND matches the type's
     ``parent_key`` grammar; both ``None`` for a type without prefixes or an issue without a
-    parent. A parent outside the prefixes is the documented decision (types/README.md "Parent
-    field"): to the run report a ``parent_key`` of the type's own family means "split from" (it
-    lists such a task under that parent; ``submit.py`` itself only treats a chain through an
-    archived task in the workspace as a split tree) — so a same-project Outcome parent
-    (``RHOAIENG`` for an Initiative) is NOT written; it stays in Jira, where split children
-    inherit it directly (``split_submit.discover_state``) and the alignment stage skips with
-    its ``not_assessed`` stub exactly as today. A parent carrying a prefix but failing the
-    grammar is not written either: the caller prints the ``Note:`` and the fetch continues
-    (writing it would have the schema refuse the frontmatter and fail the whole fetch).
+    parent. A parent outside the prefixes is left in Jira with one ``Note:`` (types/README.md
+    "Parent field"); the Outcome of the project Initiatives lived in before 2026-10-28
+    (``RHOAIENG``) is the live example. Since Initiatives live in RHAISTRAT, a RHAISTRAT
+    Outcome above an Initiative is in the type's own key family AND carries the alignment
+    condition's prefix: it IS recorded. The readers tell a split parent from such a hierarchy
+    link by the workspace, never by key family — ``generate_run_report.split_children_map``
+    and the review report count a ``parent_key`` as "split from" only when the parent has a
+    task here (archived by the split, or torn mid-write), and ``submit.py`` treats only a chain
+    through an archived task here as a split tree (``_has_jira_ancestor``); split children
+    still inherit the Jira link directly (``split_submit.discover_state``). A parent carrying
+    a prefix but failing the grammar is not written either: the caller prints the ``Note:``
+    and the fetch continues (writing it would have the schema refuse the frontmatter and fail
+    the whole fetch).
     """
     prefixes = parent_key_prefixes(desc)
     parent = fields.get(PARENT_FIELD)

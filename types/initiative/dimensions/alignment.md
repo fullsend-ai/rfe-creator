@@ -18,6 +18,8 @@ Parse the JSON output. Extract `parent_key`.
 
 If `parent_key` is absent, null, or does not match `RHAISTRAT-*`:
 
+The same applies when `parent_key` names a task file of this workspace (`artifacts/initiatives/{PARENT_KEY}.md` exists): that parent is a split parent, an Initiative, not an Outcome.
+
 Write `artifacts/initiative-reviews/{ID}-alignment.md`:
 
 ```
@@ -28,7 +30,7 @@ Write `artifacts/initiative-reviews/{ID}-alignment.md`:
 
 Stop here. Your work is complete.
 
-(`parent_key` is the batch entry's for a created Initiative and, for one fetched from Jira, the issue's Parent when that parent is a `RHAISTRAT-` key — `fetch_issue.py --fetch-all`, AISDLC-280. An Initiative whose Jira parent is an RHOAIENG Outcome arrives with `parent_key: null` on purpose — see "Parent field" in `types/README.md` — and takes this branch; the pipeline normally writes this stub itself without launching you.)
+(`parent_key` is the batch entry's for a created Initiative and, for one fetched from Jira, the issue's Parent when that parent is a `RHAISTRAT-` key — `fetch_issue.py --fetch-all`, AISDLC-280. An Initiative whose Jira parent is not a `RHAISTRAT-` key — the Outcome of the project Initiatives lived in before 2026-10-28 (`RHOAIENG`), say — arrives with `parent_key: null` on purpose — see "Parent field" in `types/README.md` — and takes this branch; the pipeline normally writes this stub itself without launching you.)
 
 ## Step 3: Fetch RHAISTRAT Outcome
 

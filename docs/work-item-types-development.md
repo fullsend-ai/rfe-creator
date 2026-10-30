@@ -137,7 +137,10 @@ pin.
   pre-280 argv. When it landed, 15 open Initiatives carried an RHOAIENG Outcome parent, the
   same-family case the fetch leaves in Jira. `submit.py` once dropped such a parent; since the
   batch-created-Initiative fix it forwards a Jira parent with no task in the workspace as Jira's
-  `parent` on create.
+  `parent` on create. Since 2026-10-28 (AISDLC-461) Initiatives live in RHAISTRAT: an Outcome
+  parent is in the type's own key family and IS recorded (the alignment condition fires), and
+  the run report, the review report and `submit.py` tell a split parent from a hierarchy link
+  by the workspace — the parent of a split has a task here — not by key family.
 - **Generated eval configs.** PR-4 (design §4.5), then PR-4b:
 
   **Dispositions applied at the first regeneration** (design §4.5: every silent drift became an

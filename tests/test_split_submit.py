@@ -537,7 +537,7 @@ class TestTypeChoices:
 
 INITIATIVE_PARENT = """\
 ---
-initiative_id: RHOAIENG-2000
+initiative_id: RHAISTRAT-2000
 title: Parent Initiative
 priority: Critical
 status: Archived
@@ -555,7 +555,7 @@ initiative_id: INIT-{num:03d}
 title: Child Initiative {num}
 priority: Normal
 status: Ready
-parent_key: RHOAIENG-2000
+parent_key: RHAISTRAT-2000
 ---
 
 ## Objective
@@ -569,7 +569,7 @@ class TestInitiativeDryRun:
         """--type initiative resolves every per-type value from the initiative descriptor:
         project, label prefix, alignment labels, link type, closure — and no index rebuild."""
         art = str(tmp_path)
-        _write(f"{art}/initiatives/RHOAIENG-2000.md", INITIATIVE_PARENT)
+        _write(f"{art}/initiatives/RHAISTRAT-2000.md", INITIATIVE_PARENT)
         for i in (1, 2):
             _write(f"{art}/initiatives/INIT-{i:03d}.md", INITIATIVE_CHILD.format(num=i))
         desc = split_submit._TYPES.get("initiative")
@@ -580,7 +580,7 @@ class TestInitiativeDryRun:
         _write(f"{art}/initiative-reviews/INIT-001-review.md", _fm(review))
 
         r = subprocess.run(
-            [sys.executable, SCRIPT, "RHOAIENG-2000", "--dry-run", "--type", "initiative"]
+            [sys.executable, SCRIPT, "RHAISTRAT-2000", "--dry-run", "--type", "initiative"]
             + ["--artifacts-dir", art],
             capture_output=True,
             text=True,
@@ -588,22 +588,22 @@ class TestInitiativeDryRun:
         )
         assert r.returncode == 0, r.stderr
         out = r.stdout
-        assert "Split submission: RHOAIENG-2000 -> 2 children" in out
+        assert "Split submission: RHAISTRAT-2000 -> 2 children" in out
         assert "Phase 1: Persisting child Initiative content to parent comments..." in out
-        assert "Would create RHOAIENG ticket for child 1/2: Child Initiative 1" in out
+        assert "Would create RHAISTRAT ticket for child 1/2: Child Initiative 1" in out
         assert (
             "Labels: initiative-auto-created, initiative-split-result, "
-            "initiative-split-child-rhoaieng-2000-init-001-"
+            "initiative-split-child-rhaistrat-2000-init-001-"
         ) in out
         assert (
             "initiative-auto-revised, initiative-needs-attention, "
             "initiative-autofix-rubric-pass, initiative-feasibility-pass, "
             "initiative-alignment-weak"
         ) in out
-        assert "Would link to RHOAIENG-2000 via 'Work item split'" in out
+        assert "Would link to RHAISTRAT-2000 via 'Work item split'" in out
         assert "Would post needs-attention comment" in out
-        assert "Would label RHOAIENG-2000 with initiative-split-original" in out
-        assert "Would transition RHOAIENG-2000 to Closed (resolution: Obsolete)" in out
+        assert "Would label RHAISTRAT-2000 with initiative-split-original" in out
+        assert "Would transition RHAISTRAT-2000 to Closed (resolution: Obsolete)" in out
         assert out.rstrip().endswith("Done.")
         assert not os.path.exists(f"{art}/rfes.md")
 
@@ -906,13 +906,13 @@ class TestEffectiveBindingCli:
         # "No rfe files found".
         r = self._run(
             str(tmp_path),
-            RFE_CREATOR_BINDING_RFE_PROJECT="RHOAIENG",
+            RFE_CREATOR_BINDING_RFE_PROJECT="RHAISTRAT",
             RFE_CREATOR_BINDING_RFE_ISSUE_TYPE="Initiative",
         )
         assert r.returncode == split_submit.EXIT_USAGE
         assert r.stdout == ""
         assert r.stderr == (
-            "Error: rfe: effective binding ('jira', 'RHOAIENG', 'Initiative') (source: env) is "
+            "Error: rfe: effective binding ('jira', 'RHAISTRAT', 'Initiative') (source: env) is "
             "the binding registered for type 'initiative'; a tracker binding must be owned by "
             "exactly one type (design §3.3 rule 1) — fix the override or pass --type initiative\n"
         )

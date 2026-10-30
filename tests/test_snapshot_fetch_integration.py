@@ -124,7 +124,7 @@ class TestJqlBindingConflict:
         # A live emulator with a matching issue, valid credentials and an empty snapshot
         # dir: the JQL names the initiative project under --type rfe, so cmd_fetch exits
         # 1 before the emulator is queried and before any snapshot or id file exists.
-        jira.create("RHOAIENG-1", "Initiative one", "Body.", issue_type="Initiative")
+        jira.create("RHAISTRAT-1", "Initiative one", "Body.", issue_type="Initiative")
         _jira_env(monkeypatch, jira.url)
         pages = []
         real = snapshot_fetch._fetch_paginated
@@ -134,7 +134,7 @@ class TestJqlBindingConflict:
             return real(*a, **kw)
 
         monkeypatch.setattr(snapshot_fetch, "_fetch_paginated", spy)
-        args = _fetch_args(tmp_path, jql="project = RHOAIENG")
+        args = _fetch_args(tmp_path, jql="project = RHAISTRAT")
         buf = io.StringIO()
         with pytest.raises(SystemExit) as exc, redirect_stdout(buf):
             cmd_fetch(args)
@@ -144,12 +144,12 @@ class TestJqlBindingConflict:
         assert os.listdir(work_dirs.snapshot_dir) == []
         assert not os.path.exists(args.ids_file) and not os.path.exists(args.changed_file)
         # The corrected invocation runs as before.
-        args = _fetch_args(tmp_path, jql="project = RHOAIENG")
+        args = _fetch_args(tmp_path, jql="project = RHAISTRAT")
         args.type = "initiative"
         out = _run_fetch(args)
         assert out.startswith("TOTAL=1\n")
         assert len(pages) == 1
-        assert _read_ids(args.ids_file) == ["RHOAIENG-1"]
+        assert _read_ids(args.ids_file) == ["RHAISTRAT-1"]
 
     def test_type_alias_conflict_is_refused_like_issuetype(
         self, work_dirs, jira, monkeypatch, tmp_path, capsys
@@ -157,14 +157,14 @@ class TestJqlBindingConflict:
         # `type` is Jira's alias of `issuetype` (the emulator honours it too): an Epic clause
         # under --type initiative is refused before the query, so no Epic is ever frozen into
         # the initiative snapshot.
-        jira.create("RHOAIENG-2", "An epic", "Body.", issue_type="Epic")
-        assert [i["key"] for i in jira.search("project = RHOAIENG AND type = Epic")] == [
-            "RHOAIENG-2"
+        jira.create("RHAISTRAT-2", "An epic", "Body.", issue_type="Epic")
+        assert [i["key"] for i in jira.search("project = RHAISTRAT AND type = Epic")] == [
+            "RHAISTRAT-2"
         ]
         _jira_env(monkeypatch, jira.url)
         pages = []
         monkeypatch.setattr(snapshot_fetch, "_fetch_paginated", lambda *a, **kw: pages.append(a))
-        args = _fetch_args(tmp_path, jql="project = RHOAIENG AND type = Epic")
+        args = _fetch_args(tmp_path, jql="project = RHAISTRAT AND type = Epic")
         args.type = "initiative"
         with pytest.raises(SystemExit) as exc:
             cmd_fetch(args)

@@ -379,7 +379,7 @@ These scripts exist but are not part of the normal pipeline flow:
 | T5 | Ready/Draft | Archived | Split agent archives parent | Split agent determines action=split | frontmatter.py set status=Archived | types/<t>/prompts/split-rules.md Step 3 |
 | T6 | Archived | Ready | cleanup_partial_split.py restores parent | split_failed error during retry; parent actually Archived | Deletes child task/companion/review files + split-status.yaml; sets parent status=Ready. Does NOT clean child feasibility files (orphaned). **Partial operation possible:** child deletion and split-status removal are unconditional; parent restore only runs if parent file exists AND status=Archived. Script always exits 0; caller cannot detect partial cleanup. | cleanup_partial_split.py:33-69 |
 | T7 | Draft | Submitted | split_submit.py creates child in Jira | Child of split parent, Phase 2 | create_issue() + rename_to_jira_key() | split_submit.py:232, artifact_utils.py:753 |
-| T8 | Ready | Ready | Re-fetch after content change | Snapshot diff detects changed hash | fetch_issue.py overwrites task file. DESTRUCTIVE: only {rfe_id, title, priority, status, original_labels, type, tracker_ref} restored; optional fields (size, parent_key) destroyed — except that for a type whose dimension conditions read `parent_key` (initiative) a `RHAISTRAT-` Jira parent is re-read into `parent_key` (AISDLC-280; a same-family Outcome parent is not, see types/README.md "Parent field"). | scripts/fetch_issue.py |
+| T8 | Ready | Ready | Re-fetch after content change | Snapshot diff detects changed hash | fetch_issue.py overwrites task file. DESTRUCTIVE: only {rfe_id, title, priority, status, original_labels, type, tracker_ref} restored; optional fields (size, parent_key) destroyed — except that for a type whose dimension conditions read `parent_key` (initiative) a `RHAISTRAT-` Jira parent is re-read into `parent_key` (AISDLC-280; since Initiatives live in RHAISTRAT, 2026-10-28, that Outcome is in the type's own key family and is recorded all the same; only a parent outside the prefixes, a legacy RHOAIENG Outcome say, is left in Jira, see types/README.md "Parent field"). | scripts/fetch_issue.py |
 
 ### 2.2 Review Recommendation Transitions
 
@@ -1169,7 +1169,8 @@ declared once for every type and never passed by the RFE production job. Phase 1
 runs `split_submit.py` for every archived, Jira-keyed parent that has children whatever
 `--auto-approve` says (that switch only decides whether the *children* are approved at
 creation), so the first live Initiative run whose review scored Right-sized 0/2 would mint
-child Initiatives in RHOAIENG and close the parent as Obsolete before the owners had seen a
+child Initiatives in the Initiative project (RHAISTRAT since 2026-10-28) and close the parent as
+Obsolete before the owners had seen a
 single result (AISDLC-206, decision D3). Under `--hold-splits` the recommendation is
 recorded, not executed. `split_submit.py` is not spawned. Two parents are not held: one
 whose review carries `split_submit_failed:` is a partial split an earlier run quarantined

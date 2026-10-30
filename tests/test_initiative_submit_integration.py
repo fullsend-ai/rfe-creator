@@ -151,7 +151,7 @@ class TestCreateNewInitiative:
         r = _run_submit(art_dir, jira.url)
         assert r.returncode == 0, r.stderr
 
-        issues = jira.search("project = RHOAIENG")
+        issues = jira.search("project = RHAISTRAT")
         assert len(issues) == 1
         key = issues[0]["key"]
         issue = jira.get(key)
@@ -169,7 +169,7 @@ class TestCreateNewInitiative:
         r = _run_submit(art_dir, jira.url)
         assert r.returncode == 0, r.stderr
 
-        issues = jira.search("project = RHOAIENG")
+        issues = jira.search("project = RHAISTRAT")
         issue = jira.get(issues[0]["key"])
         labels = issue["fields"]["labels"]
         assert "initiative-auto-created" in labels
@@ -179,7 +179,7 @@ class TestCreateNewInitiative:
         assert "rfe-creator-autofix-rubric-pass" not in labels
 
     def test_renames_files(self, art_dir, jira):
-        """New Initiative → INIT-001.md renamed to RHOAIENG-N.md."""
+        """New Initiative → INIT-001.md renamed to RHAISTRAT-N.md."""
         _write(f"{art_dir}/initiatives/INIT-001.md", TASK_FM.format(initiative_id="INIT-001"))
         _write(f"{art_dir}/initiative-reviews/INIT-001-review.md", _review("INIT-001"))
 
@@ -187,7 +187,7 @@ class TestCreateNewInitiative:
         assert r.returncode == 0, r.stderr
 
         assert not os.path.exists(f"{art_dir}/initiatives/INIT-001.md")
-        issues = jira.search("project = RHOAIENG")
+        issues = jira.search("project = RHAISTRAT")
         key = issues[0]["key"]
         assert os.path.exists(f"{art_dir}/initiatives/{key}.md")
         fm = _read_frontmatter(f"{art_dir}/initiatives/{key}.md")
@@ -197,20 +197,20 @@ class TestCreateNewInitiative:
 class TestUpdateExistingInitiative:
     def _setup_existing(self, art_dir, jira, original, revised, alignment="strong"):
         jira.create(
-            "RHOAIENG-1234",
+            "RHAISTRAT-1234",
             "Test Initiative",
             original,
             issue_type="Initiative",
         )
-        _write(f"{art_dir}/initiative-originals/RHOAIENG-1234.md", original)
+        _write(f"{art_dir}/initiative-originals/RHAISTRAT-1234.md", original)
         _write(
-            f"{art_dir}/initiatives/RHOAIENG-1234.md",
-            f"---\ninitiative_id: RHOAIENG-1234\ntitle: Test Initiative\n"
+            f"{art_dir}/initiatives/RHAISTRAT-1234.md",
+            f"---\ninitiative_id: RHAISTRAT-1234\ntitle: Test Initiative\n"
             f"priority: Major\nstatus: Ready\n---\n{revised}",
         )
         _write(
-            f"{art_dir}/initiative-reviews/RHOAIENG-1234-review.md",
-            _review("RHOAIENG-1234", auto_revised="true", alignment=alignment),
+            f"{art_dir}/initiative-reviews/RHAISTRAT-1234-review.md",
+            _review("RHAISTRAT-1234", auto_revised="true", alignment=alignment),
         )
 
     def test_puts_description(self, art_dir, jira):
@@ -228,7 +228,7 @@ class TestUpdateExistingInitiative:
         r = _run_submit(art_dir, jira.url)
         assert r.returncode == 0, r.stderr
 
-        issue = jira.get("RHOAIENG-1234")
+        issue = jira.get("RHAISTRAT-1234")
         labels = issue["fields"]["labels"]
         assert "initiative-auto-revised" in labels
         assert "initiative-alignment-strong" in labels
@@ -240,7 +240,7 @@ class TestUpdateExistingInitiative:
         r = _run_submit(art_dir, jira.url)
         assert r.returncode == 0, r.stderr
 
-        fm = _read_frontmatter(f"{art_dir}/initiatives/RHOAIENG-1234.md")
+        fm = _read_frontmatter(f"{art_dir}/initiatives/RHAISTRAT-1234.md")
         assert fm["status"] == "Submitted"
 
 
@@ -248,22 +248,22 @@ class TestLabelOnly:
     def test_no_description_put(self, art_dir, jira):
         """Unchanged content → label added, description not changed."""
         body = "Same content.\n"
-        jira.create("RHOAIENG-1234", "Test Initiative", body, issue_type="Initiative")
-        _write(f"{art_dir}/initiative-originals/RHOAIENG-1234.md", body)
+        jira.create("RHAISTRAT-1234", "Test Initiative", body, issue_type="Initiative")
+        _write(f"{art_dir}/initiative-originals/RHAISTRAT-1234.md", body)
         _write(
-            f"{art_dir}/initiatives/RHOAIENG-1234.md",
-            f"---\ninitiative_id: RHOAIENG-1234\ntitle: Test Initiative\n"
+            f"{art_dir}/initiatives/RHAISTRAT-1234.md",
+            f"---\ninitiative_id: RHAISTRAT-1234\ntitle: Test Initiative\n"
             f"priority: Major\nstatus: Ready\n---\n{body}",
         )
         _write(
-            f"{art_dir}/initiative-reviews/RHOAIENG-1234-review.md",
-            _review("RHOAIENG-1234"),
+            f"{art_dir}/initiative-reviews/RHAISTRAT-1234-review.md",
+            _review("RHAISTRAT-1234"),
         )
 
         r = _run_submit(art_dir, jira.url)
         assert r.returncode == 0, r.stderr
 
-        issue = jira.get("RHOAIENG-1234")
+        issue = jira.get("RHAISTRAT-1234")
         labels = issue["fields"]["labels"]
         assert "initiative-alignment-strong" in labels
         assert "initiative-feasibility-pass" in labels
@@ -288,16 +288,16 @@ class TestInterruptedRevisionHold:
     REWRITE = "## Objective\n\nRewritten by the revise agent, never re-reviewed.\n"
 
     def _seed(self, art_dir, jira):
-        jira.create("RHOAIENG-1234", "Test Initiative", self.ORIGINAL, issue_type="Initiative")
-        _write(f"{art_dir}/initiative-originals/RHOAIENG-1234.md", self.ORIGINAL)
+        jira.create("RHAISTRAT-1234", "Test Initiative", self.ORIGINAL, issue_type="Initiative")
+        _write(f"{art_dir}/initiative-originals/RHAISTRAT-1234.md", self.ORIGINAL)
         _write(
-            f"{art_dir}/initiatives/RHOAIENG-1234.md",
-            "---\ninitiative_id: RHOAIENG-1234\ntitle: Test Initiative\n"
+            f"{art_dir}/initiatives/RHAISTRAT-1234.md",
+            "---\ninitiative_id: RHAISTRAT-1234\ntitle: Test Initiative\n"
             f"priority: Major\nstatus: Ready\n---\n{self.REWRITE}",
         )
         _write(
-            f"{art_dir}/initiative-reviews/RHOAIENG-1234-review.md",
-            _review("RHOAIENG-1234", auto_revised="false"),
+            f"{art_dir}/initiative-reviews/RHAISTRAT-1234-review.md",
+            _review("RHAISTRAT-1234", auto_revised="false"),
         )
 
     @staticmethod
@@ -317,26 +317,26 @@ class TestInterruptedRevisionHold:
         r = _run_submit(art_dir, jira.url, ["--hold-interrupted"])
         assert r.returncode == 0, r.stderr
         assert "revision interrupted" in r.stdout
-        assert "RHOAIENG-1234: Updated" not in r.stdout
-        issue = jira.get("RHOAIENG-1234")
+        assert "RHAISTRAT-1234: Updated" not in r.stdout
+        issue = jira.get("RHAISTRAT-1234")
         assert "Original content." in self._desc_text(issue)
         assert "Rewritten" not in self._desc_text(issue)
         assert issue["fields"]["labels"] == ["initiative-needs-attention"]
-        comments = jira.request("GET", "/rest/api/3/issue/RHOAIENG-1234/comment")["comments"]
+        comments = jira.request("GET", "/rest/api/3/issue/RHAISTRAT-1234/comment")["comments"]
         assert [c for c in comments if "Revision interrupted" in json.dumps(c["body"])]
-        fm = _read_frontmatter(f"{art_dir}/initiative-reviews/RHOAIENG-1234-review.md")
+        fm = _read_frontmatter(f"{art_dir}/initiative-reviews/RHAISTRAT-1234-review.md")
         assert fm["pass"] is False
         assert fm["error"].startswith("revision_interrupted:")
         assert fm["needs_attention"] is True
-        assert _read_frontmatter(f"{art_dir}/initiatives/RHOAIENG-1234.md")["status"] == "Ready"
+        assert _read_frontmatter(f"{art_dir}/initiatives/RHAISTRAT-1234.md")["status"] == "Ready"
 
     def test_without_the_switch_the_initiative_is_updated(self, art_dir, jira):
         """The interactive /rfe-submit --type initiative passes neither switch."""
         self._seed(art_dir, jira)
         r = _run_submit(art_dir, jira.url)
         assert r.returncode == 0, r.stderr
-        assert "RHOAIENG-1234: Updated" in r.stdout
-        issue = jira.get("RHOAIENG-1234")
+        assert "RHAISTRAT-1234: Updated" in r.stdout
+        issue = jira.get("RHAISTRAT-1234")
         assert "Rewritten" in self._desc_text(issue)
         assert "initiative-needs-attention" not in issue["fields"]["labels"]
 
@@ -353,7 +353,7 @@ class TestSecondPassInterruptedHold:
 
     def _seed(self, art_dir, jira, marker):
         TestInterruptedRevisionHold._seed(self, art_dir, jira)
-        review = f"{art_dir}/initiative-reviews/RHOAIENG-1234-review.md"
+        review = f"{art_dir}/initiative-reviews/RHAISTRAT-1234-review.md"
         with open(review) as f:
             text = f.read()
         text = text.replace("auto_revised: false", "auto_revised: true", 1)
@@ -364,7 +364,7 @@ class TestSecondPassInterruptedHold:
         _write(
             f"{art_dir}/tmp/pipeline-state.yaml",
             "phase: DONE\ntype: initiative\nreassess_cycle: 2\n"
-            "revise_passes:\n  RHOAIENG-1234: 1\n",
+            "revise_passes:\n  RHAISTRAT-1234: 1\n",
         )
 
     def test_interrupted_second_pass_is_held(self, art_dir, jira):
@@ -372,11 +372,11 @@ class TestSecondPassInterruptedHold:
         r = _run_submit(art_dir, jira.url, ["--hold-interrupted"])
         assert r.returncode == 0, r.stderr
         assert "revision interrupted (revise pass 1 never completed)" in r.stdout
-        assert "RHOAIENG-1234: Updated" not in r.stdout
-        issue = jira.get("RHOAIENG-1234")
+        assert "RHAISTRAT-1234: Updated" not in r.stdout
+        issue = jira.get("RHAISTRAT-1234")
         assert "Original content." in self._desc_text(issue)
         assert issue["fields"]["labels"] == ["initiative-needs-attention"]
-        fm = _read_frontmatter(f"{art_dir}/initiative-reviews/RHOAIENG-1234-review.md")
+        fm = _read_frontmatter(f"{art_dir}/initiative-reviews/RHAISTRAT-1234-review.md")
         assert fm["pass"] is False
         assert fm["error"].startswith("revision_interrupted:")
         assert fm["needs_attention"] is True
@@ -385,8 +385,8 @@ class TestSecondPassInterruptedHold:
         self._seed(art_dir, jira, marker=1)
         r = _run_submit(art_dir, jira.url, ["--hold-interrupted"])
         assert r.returncode == 0, r.stderr
-        assert "RHOAIENG-1234: Updated" in r.stdout
-        issue = jira.get("RHOAIENG-1234")
+        assert "RHAISTRAT-1234: Updated" in r.stdout
+        issue = jira.get("RHAISTRAT-1234")
         assert "Rewritten" in self._desc_text(issue)
         assert "initiative-auto-revised" in issue["fields"]["labels"]
 
@@ -395,17 +395,17 @@ class TestConflictDetection:
     def test_conflict_prevents_update(self, art_dir, jira):
         """Jira description differs from original → skip, no PUT."""
         jira.create(
-            "RHOAIENG-1234", "Test Initiative", "Edited by someone.", issue_type="Initiative"
+            "RHAISTRAT-1234", "Test Initiative", "Edited by someone.", issue_type="Initiative"
         )
-        _write(f"{art_dir}/initiative-originals/RHOAIENG-1234.md", "Original.")
+        _write(f"{art_dir}/initiative-originals/RHAISTRAT-1234.md", "Original.")
         _write(
-            f"{art_dir}/initiatives/RHOAIENG-1234.md",
-            "---\ninitiative_id: RHOAIENG-1234\ntitle: Test Initiative\n"
+            f"{art_dir}/initiatives/RHAISTRAT-1234.md",
+            "---\ninitiative_id: RHAISTRAT-1234\ntitle: Test Initiative\n"
             "priority: Major\nstatus: Ready\n---\nOur revision.",
         )
         _write(
-            f"{art_dir}/initiative-reviews/RHOAIENG-1234-review.md",
-            _review("RHOAIENG-1234", auto_revised="true"),
+            f"{art_dir}/initiative-reviews/RHAISTRAT-1234-review.md",
+            _review("RHAISTRAT-1234", auto_revised="true"),
         )
 
         r = _run_submit(art_dir, jira.url)
@@ -433,7 +433,7 @@ class TestCommentPosting:
         assert r.returncode == 0, r.stderr
         assert "Posted removed-context comment" in r.stdout
 
-        issues = jira.search("project = RHOAIENG")
+        issues = jira.search("project = RHAISTRAT")
         key = issues[0]["key"]
         comments = jira.request("GET", f"/rest/api/3/issue/{key}/comment")
         assert comments["total"] >= 1
@@ -454,7 +454,7 @@ class TestCommentPosting:
         assert r.returncode == 0, r.stderr
         assert "needs-attention comment" in r.stdout
 
-        issues = jira.search("project = RHOAIENG")
+        issues = jira.search("project = RHAISTRAT")
         key = issues[0]["key"]
         comments = jira.request("GET", f"/rest/api/3/issue/{key}/comment")
         assert comments["total"] >= 1
@@ -477,7 +477,7 @@ class TestSnapshotUpdate:
 
     def test_snapshot_updated_on_create(self, art_dir, jira):
         """Create → snapshot updated with new issue hash."""
-        snap_path = self._seed_snapshot(art_dir, {"RHOAIENG-9000": "existing"})
+        snap_path = self._seed_snapshot(art_dir, {"RHAISTRAT-9000": "existing"})
         _write(f"{art_dir}/initiatives/INIT-001.md", TASK_FM.format(initiative_id="INIT-001"))
         _write(f"{art_dir}/initiative-reviews/INIT-001-review.md", _review("INIT-001"))
 
@@ -486,7 +486,7 @@ class TestSnapshotUpdate:
 
         with open(snap_path) as f:
             data = yaml.safe_load(f)
-        issues = jira.search("project = RHOAIENG")
+        issues = jira.search("project = RHAISTRAT")
         key = issues[0]["key"]
         assert key in data["issues"]
         entry = data["issues"][key]
@@ -496,17 +496,17 @@ class TestSnapshotUpdate:
 
     def test_snapshot_updated_on_update(self, art_dir, jira):
         """Update → snapshot updated with revised hash."""
-        snap_path = self._seed_snapshot(art_dir, {"RHOAIENG-1234": "old-hash"})
-        jira.create("RHOAIENG-1234", "Test Initiative", "Original.", issue_type="Initiative")
-        _write(f"{art_dir}/initiative-originals/RHOAIENG-1234.md", "Original.")
+        snap_path = self._seed_snapshot(art_dir, {"RHAISTRAT-1234": "old-hash"})
+        jira.create("RHAISTRAT-1234", "Test Initiative", "Original.", issue_type="Initiative")
+        _write(f"{art_dir}/initiative-originals/RHAISTRAT-1234.md", "Original.")
         _write(
-            f"{art_dir}/initiatives/RHOAIENG-1234.md",
-            "---\ninitiative_id: RHOAIENG-1234\ntitle: Test Initiative\n"
+            f"{art_dir}/initiatives/RHAISTRAT-1234.md",
+            "---\ninitiative_id: RHAISTRAT-1234\ntitle: Test Initiative\n"
             "priority: Major\nstatus: Ready\n---\nRevised.",
         )
         _write(
-            f"{art_dir}/initiative-reviews/RHOAIENG-1234-review.md",
-            _review("RHOAIENG-1234"),
+            f"{art_dir}/initiative-reviews/RHAISTRAT-1234-review.md",
+            _review("RHAISTRAT-1234"),
         )
 
         r = _run_submit(art_dir, jira.url)
@@ -514,8 +514,8 @@ class TestSnapshotUpdate:
 
         with open(snap_path) as f:
             data = yaml.safe_load(f)
-        assert "RHOAIENG-1234" in data["issues"]
-        entry = data["issues"]["RHOAIENG-1234"]
+        assert "RHAISTRAT-1234" in data["issues"]
+        entry = data["issues"]["RHAISTRAT-1234"]
         assert isinstance(entry, dict)
         assert len(entry["hash"]) == 64
         assert entry["hash"] != "old-hash"
@@ -523,18 +523,18 @@ class TestSnapshotUpdate:
 
     def test_dry_run_does_not_update_snapshot(self, art_dir, jira):
         """Dry-run must not write processed flags or hashes to snapshot."""
-        snap_path = self._seed_snapshot(art_dir, {"RHOAIENG-1234": "existing"})
+        snap_path = self._seed_snapshot(art_dir, {"RHAISTRAT-1234": "existing"})
 
-        jira.create("RHOAIENG-1234", "Test Initiative", "Original.", issue_type="Initiative")
-        _write(f"{art_dir}/initiative-originals/RHOAIENG-1234.md", "Original.")
+        jira.create("RHAISTRAT-1234", "Test Initiative", "Original.", issue_type="Initiative")
+        _write(f"{art_dir}/initiative-originals/RHAISTRAT-1234.md", "Original.")
         _write(
-            f"{art_dir}/initiatives/RHOAIENG-1234.md",
-            "---\ninitiative_id: RHOAIENG-1234\ntitle: Test Initiative\n"
+            f"{art_dir}/initiatives/RHAISTRAT-1234.md",
+            "---\ninitiative_id: RHAISTRAT-1234\ntitle: Test Initiative\n"
             "priority: Major\nstatus: Ready\n---\nRevised.",
         )
         _write(
-            f"{art_dir}/initiative-reviews/RHOAIENG-1234-review.md",
-            _review("RHOAIENG-1234"),
+            f"{art_dir}/initiative-reviews/RHAISTRAT-1234-review.md",
+            _review("RHAISTRAT-1234"),
         )
 
         env = {
@@ -561,7 +561,7 @@ class TestSnapshotUpdate:
 
         with open(snap_path) as f:
             data = yaml.safe_load(f)
-        assert data["issues"] == {"RHOAIENG-1234": "existing"}
+        assert data["issues"] == {"RHAISTRAT-1234": "existing"}
 
 
 class TestReplayIdempotency:
@@ -576,27 +576,27 @@ class TestReplayIdempotency:
         # File was renamed — re-run should find it as Submitted
         _run_submit(art_dir, jira.url)
         # Should succeed (no error) — either "No submittable" or processes the submitted one
-        issues = jira.search("project = RHOAIENG")
+        issues = jira.search("project = RHAISTRAT")
         assert len(issues) == 1  # No duplicate created
 
     def test_replay_update_skipped(self, art_dir, jira):
         """Replay after update → second run sees Submitted status."""
-        jira.create("RHOAIENG-1234", "Test Initiative", "Original.", issue_type="Initiative")
-        _write(f"{art_dir}/initiative-originals/RHOAIENG-1234.md", "Original.")
+        jira.create("RHAISTRAT-1234", "Test Initiative", "Original.", issue_type="Initiative")
+        _write(f"{art_dir}/initiative-originals/RHAISTRAT-1234.md", "Original.")
         _write(
-            f"{art_dir}/initiatives/RHOAIENG-1234.md",
-            "---\ninitiative_id: RHOAIENG-1234\ntitle: Test Initiative\n"
+            f"{art_dir}/initiatives/RHAISTRAT-1234.md",
+            "---\ninitiative_id: RHAISTRAT-1234\ntitle: Test Initiative\n"
             "priority: Major\nstatus: Ready\n---\nRevised.",
         )
         _write(
-            f"{art_dir}/initiative-reviews/RHOAIENG-1234-review.md",
-            _review("RHOAIENG-1234"),
+            f"{art_dir}/initiative-reviews/RHAISTRAT-1234-review.md",
+            _review("RHAISTRAT-1234"),
         )
 
         r1 = _run_submit(art_dir, jira.url)
         assert r1.returncode == 0, r1.stderr
 
-        fm = _read_frontmatter(f"{art_dir}/initiatives/RHOAIENG-1234.md")
+        fm = _read_frontmatter(f"{art_dir}/initiatives/RHAISTRAT-1234.md")
         assert fm["status"] == "Submitted"
 
         r2 = _run_submit(art_dir, jira.url)
@@ -607,26 +607,26 @@ class TestReplayIdempotency:
 class TestAutoApproveIntegration:
     def test_passing_review_transitions_to_approved(self, art_dir, jira):
         """--auto-approve + passing review → Jira status transitions to Approved."""
-        jira.create("RHOAIENG-1234", "Test Initiative", "Original.", issue_type="Initiative")
-        _write(f"{art_dir}/initiative-originals/RHOAIENG-1234.md", "Original.")
+        jira.create("RHAISTRAT-1234", "Test Initiative", "Original.", issue_type="Initiative")
+        _write(f"{art_dir}/initiative-originals/RHAISTRAT-1234.md", "Original.")
         _write(
-            f"{art_dir}/initiatives/RHOAIENG-1234.md",
-            "---\ninitiative_id: RHOAIENG-1234\ntitle: Test Initiative\n"
+            f"{art_dir}/initiatives/RHAISTRAT-1234.md",
+            "---\ninitiative_id: RHAISTRAT-1234\ntitle: Test Initiative\n"
             "priority: Major\nstatus: Ready\n---\nRevised.",
         )
         _write(
-            f"{art_dir}/initiative-reviews/RHOAIENG-1234-review.md",
-            _review("RHOAIENG-1234", auto_revised="true"),
+            f"{art_dir}/initiative-reviews/RHAISTRAT-1234-review.md",
+            _review("RHAISTRAT-1234", auto_revised="true"),
         )
 
         r = _run_submit(art_dir, jira.url, ["--auto-approve"])
         assert r.returncode == 0, r.stderr
         assert "Transitioned to Approved" in r.stdout
 
-        issue = jira.get("RHOAIENG-1234")
+        issue = jira.get("RHAISTRAT-1234")
         assert issue["fields"]["status"]["name"] == "Approved"
 
-        comments = jira.request("GET", "/rest/api/3/issue/RHOAIENG-1234/comment")
+        comments = jira.request("GET", "/rest/api/3/issue/RHAISTRAT-1234/comment")
         comment_bodies = []
         for c in comments.get("comments", []):
             body = c.get("body", {})
@@ -640,46 +640,46 @@ class TestAutoApproveIntegration:
 
     def test_failing_review_no_transition(self, art_dir, jira):
         """--auto-approve + failing review → no transition."""
-        jira.create("RHOAIENG-1234", "Test Initiative", "Original.", issue_type="Initiative")
-        _write(f"{art_dir}/initiative-originals/RHOAIENG-1234.md", "Original.")
+        jira.create("RHAISTRAT-1234", "Test Initiative", "Original.", issue_type="Initiative")
+        _write(f"{art_dir}/initiative-originals/RHAISTRAT-1234.md", "Original.")
         _write(
-            f"{art_dir}/initiatives/RHOAIENG-1234.md",
-            "---\ninitiative_id: RHOAIENG-1234\ntitle: Test Initiative\n"
+            f"{art_dir}/initiatives/RHAISTRAT-1234.md",
+            "---\ninitiative_id: RHAISTRAT-1234\ntitle: Test Initiative\n"
             "priority: Major\nstatus: Ready\n---\nRevised.",
         )
         _write(
-            f"{art_dir}/initiative-reviews/RHOAIENG-1234-review.md",
-            REJECT_REVIEW_FM.format(initiative_id="RHOAIENG-1234"),
+            f"{art_dir}/initiative-reviews/RHAISTRAT-1234-review.md",
+            REJECT_REVIEW_FM.format(initiative_id="RHAISTRAT-1234"),
         )
 
         r = _run_submit(art_dir, jira.url, ["--auto-approve"])
         assert r.returncode == 0, r.stderr
         assert "Transitioned to Approved" not in r.stdout
 
-        issue = jira.get("RHOAIENG-1234")
+        issue = jira.get("RHAISTRAT-1234")
         assert issue["fields"]["status"]["name"] != "Approved"
 
 
 class TestInfeasibleSubmit:
     def test_infeasible_initiative_submitted_with_fail_label(self, art_dir, jira):
         """Infeasible initiative → submitted with feasibility-fail label."""
-        jira.create("RHOAIENG-1234", "Test Initiative", "Original.", issue_type="Initiative")
-        _write(f"{art_dir}/initiative-originals/RHOAIENG-1234.md", "Original.")
+        jira.create("RHAISTRAT-1234", "Test Initiative", "Original.", issue_type="Initiative")
+        _write(f"{art_dir}/initiative-originals/RHAISTRAT-1234.md", "Original.")
         _write(
-            f"{art_dir}/initiatives/RHOAIENG-1234.md",
-            "---\ninitiative_id: RHOAIENG-1234\ntitle: Test Initiative\n"
+            f"{art_dir}/initiatives/RHAISTRAT-1234.md",
+            "---\ninitiative_id: RHAISTRAT-1234\ntitle: Test Initiative\n"
             "priority: Major\nstatus: Ready\n---\nRevised.",
         )
-        review = _review("RHOAIENG-1234").replace(
+        review = _review("RHAISTRAT-1234").replace(
             "feasibility: feasible", "feasibility: infeasible"
         )
-        _write(f"{art_dir}/initiative-reviews/RHOAIENG-1234-review.md", review)
+        _write(f"{art_dir}/initiative-reviews/RHAISTRAT-1234-review.md", review)
 
         r = _run_submit(art_dir, jira.url)
         assert r.returncode == 0, r.stderr
         assert "Updated" in r.stdout
 
-        issue = jira.get("RHOAIENG-1234")
+        issue = jira.get("RHAISTRAT-1234")
         assert "initiative-feasibility-fail" in issue["fields"]["labels"]
 
 
@@ -703,13 +703,13 @@ class TestAlignmentLabelIntegration:
         r = _run_submit(art_dir, jira.url)
         assert r.returncode == 0, r.stderr
 
-        issues = jira.search("project = RHOAIENG")
+        issues = jira.search("project = RHAISTRAT")
         issue = jira.get(issues[0]["key"])
         assert expected_label in issue["fields"]["labels"]
 
 
 class TestParentKeyForwarding:
-    """An Initiative's parent is a RHAISTRAT Outcome, not a RHOAIENG key.
+    """An Initiative's parent is a RHAISTRAT Outcome, not a RHAISTRAT key.
 
     The local-id guard in submit.py therefore excludes `INIT-`, rather than
     requiring the type's own jira_prefix, which would drop a valid parent.
@@ -734,36 +734,36 @@ class TestParentKeyForwarding:
         assert r.returncode == 0, r.stderr
         assert "is not in Jira" not in r.stdout
 
-        issues = jira.search("project = RHOAIENG")
-        assert len(issues) == 1
+        issues = [i for i in jira.search("project = RHAISTRAT") if i["key"] != "RHAISTRAT-1234"]
+        assert len(issues) == 1  # the new Initiative, in the same project as its Outcome
         parent = jira.get(issues[0]["key"])["fields"].get("parent")
         assert parent and parent["key"] == "RHAISTRAT-1234"
 
     TASK_WITH_OUTCOME_PARENT = (
         "---\ninitiative_id: INIT-003\ntitle: Test Initiative\n"
-        "priority: Major\nstatus: Ready\nparent_key: RHOAIENG-123\n---\n\nBody.\n"
+        "priority: Major\nstatus: Ready\nparent_key: RHAISTRAT-123\n---\n\nBody.\n"
     )
 
     def test_same_project_outcome_parent_is_forwarded(self, art_dir, jira):
-        """An RHOAIENG Outcome above a new Initiative is a hierarchy link, not a split. Before
+        """An RHAISTRAT Outcome above a new Initiative is a hierarchy link, not a split. Before
         the fix the ancestor walk took any tracker-owned parent key for a Jira split ancestor,
         so such a batch-created Initiative was in no plan: not a split parent for Phase 1,
         excluded from Phase 2, never created — and the run ended green."""
-        jira.create("RHOAIENG-123", "Outcome", "Outcome body.", issue_type="Outcome")
+        jira.create("RHAISTRAT-123", "Outcome", "Outcome body.", issue_type="Outcome")
         _write(f"{art_dir}/initiatives/INIT-003.md", self.TASK_WITH_OUTCOME_PARENT)
         _write(f"{art_dir}/initiative-reviews/INIT-003-review.md", _review("INIT-003"))
 
         r = _run_submit(art_dir, jira.url, ["--dry-run"])
         assert r.returncode == 0, r.stderr
-        assert "Would create RHOAIENG Initiative: Test Initiative" in r.stdout
+        assert "Would create RHAISTRAT Initiative: Test Initiative" in r.stdout
 
         r = _run_submit(art_dir, jira.url)
         assert r.returncode == 0, r.stderr
         assert "is not in Jira" not in r.stdout
-        created = [i for i in jira.search("project = RHOAIENG") if i["key"] != "RHOAIENG-123"]
+        created = [i for i in jira.search("project = RHAISTRAT") if i["key"] != "RHAISTRAT-123"]
         assert len(created) == 1
         parent = jira.get(created[0]["key"])["fields"].get("parent")
-        assert parent and parent["key"] == "RHOAIENG-123"
+        assert parent and parent["key"] == "RHAISTRAT-123"
 
     def test_local_parent_is_not_forwarded(self, art_dir, jira):
         """INIT- parent → dropped, Initiative created standalone."""
@@ -773,7 +773,7 @@ class TestParentKeyForwarding:
         r = _run_submit(art_dir, jira.url)
         assert r.returncode == 0, r.stderr
 
-        issues = jira.search("project = RHOAIENG")
+        issues = jira.search("project = RHAISTRAT")
         assert len(issues) == 1
         assert jira.get(issues[0]["key"])["fields"].get("parent") is None
         assert "is not in Jira" in r.stdout
@@ -784,42 +784,44 @@ class TestResolveLine:
     the run itself is unchanged (the initiative binding is the descriptor's — no override)."""
 
     def test_explicit_type_prints_exactly_one_line_and_updates(self, art_dir, jira):
-        jira.create("RHOAIENG-1234", "Test Initiative", "Original.", issue_type="Initiative")
-        _write(f"{art_dir}/initiative-originals/RHOAIENG-1234.md", "Original.")
+        jira.create("RHAISTRAT-1234", "Test Initiative", "Original.", issue_type="Initiative")
+        _write(f"{art_dir}/initiative-originals/RHAISTRAT-1234.md", "Original.")
         _write(
-            f"{art_dir}/initiatives/RHOAIENG-1234.md",
-            "---\ninitiative_id: RHOAIENG-1234\ntitle: Test Initiative\n"
-            "priority: Major\nstatus: Ready\ntype: initiative\ntracker_ref: RHOAIENG-1234\n"
+            f"{art_dir}/initiatives/RHAISTRAT-1234.md",
+            "---\ninitiative_id: RHAISTRAT-1234\ntitle: Test Initiative\n"
+            "priority: Major\nstatus: Ready\ntype: initiative\ntracker_ref: RHAISTRAT-1234\n"
             "---\nRevised.",
         )
         _write(
-            f"{art_dir}/initiative-reviews/RHOAIENG-1234-review.md",
-            _review("RHOAIENG-1234", auto_revised="true"),
+            f"{art_dir}/initiative-reviews/RHAISTRAT-1234-review.md",
+            _review("RHAISTRAT-1234", auto_revised="true"),
         )
         r = _run_submit(art_dir, jira.url)
         assert r.returncode == 0, r.stderr
         assert r.stderr.startswith("TYPE RESOLVED: initiative (--type)\n")
         assert r.stderr.count("TYPE RESOLVED") == 1 and "Traceback" not in r.stderr
-        assert "RHOAIENG-1234: Updated" in r.stdout
-        assert _read_frontmatter(f"{art_dir}/initiatives/RHOAIENG-1234.md")["status"] == "Submitted"
+        assert "RHAISTRAT-1234: Updated" in r.stdout
+        assert (
+            _read_frontmatter(f"{art_dir}/initiatives/RHAISTRAT-1234.md")["status"] == "Submitted"
+        )
 
     def test_a_feature_request_behind_an_initiative_key_is_skipped(self, art_dir, jira):
-        jira.create("RHOAIENG-1234", "Test Initiative", "Original.")  # a Feature Request
-        _write(f"{art_dir}/initiative-originals/RHOAIENG-1234.md", "Original.")
+        jira.create("RHAISTRAT-1234", "Test Initiative", "Original.")  # a Feature Request
+        _write(f"{art_dir}/initiative-originals/RHAISTRAT-1234.md", "Original.")
         _write(
-            f"{art_dir}/initiatives/RHOAIENG-1234.md",
-            "---\ninitiative_id: RHOAIENG-1234\ntitle: Test Initiative\n"
+            f"{art_dir}/initiatives/RHAISTRAT-1234.md",
+            "---\ninitiative_id: RHAISTRAT-1234\ntitle: Test Initiative\n"
             "priority: Major\nstatus: Ready\n---\nRevised.",
         )
         _write(
-            f"{art_dir}/initiative-reviews/RHOAIENG-1234-review.md",
-            _review("RHOAIENG-1234", auto_revised="true"),
+            f"{art_dir}/initiative-reviews/RHAISTRAT-1234-review.md",
+            _review("RHAISTRAT-1234", auto_revised="true"),
         )
         r = _run_submit(art_dir, jira.url)
         assert r.returncode == 0, r.stderr
         assert (
-            "Reason: binding mismatch — RHOAIENG-1234 is (RHOAIENG, Feature Request) in Jira "
-            "but type initiative binds (RHOAIENG, Initiative)"
+            "Reason: binding mismatch — RHAISTRAT-1234 is (RHAISTRAT, Feature Request) in Jira "
+            "but type initiative binds (RHAISTRAT, Initiative)"
         ) in r.stdout
         assert "Updated" not in r.stdout
-        assert _read_frontmatter(f"{art_dir}/initiatives/RHOAIENG-1234.md")["status"] == "Ready"
+        assert _read_frontmatter(f"{art_dir}/initiatives/RHAISTRAT-1234.md")["status"] == "Ready"

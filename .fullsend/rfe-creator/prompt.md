@@ -62,7 +62,7 @@ generate local artifacts but do not POST/PUT/DELETE against Jira.
 `/rfe-create`, `/rfe-review`, `/rfe-submit`, `/rfe-split`, `/rfe-auto-fix`,
 `/rfe-speedrun` (the dotted forms `/rfe.review` etc. are compatibility aliases).
 Every skill accepts `--type <name>` for any type in `python3
-scripts/type_registry.py list` (`rfe` by default, `initiative` for RHOAIENG
+scripts/type_registry.py list` (`rfe` by default, `initiative` for RHAISTRAT
 Initiatives). Review dimensions and scoring agents are launched by the skills
 themselves, not by this prompt.
 

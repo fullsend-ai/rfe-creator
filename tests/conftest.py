@@ -204,15 +204,15 @@ def jira(jira_emu):
     if _global_approve not in _wf:
         seed_service.WORKFLOWS["RHAIRFE Workflow"] = _wf + [_global_approve]
 
-    # Patch RHOAIENG workflow for initiative tests.
-    # RHOAIENG uses "Default Workflow" in seed data, so copy it and add
-    # the approve transition, then wire the project to the new workflow.
+    # Patch the RHAISTRAT workflow for initiative tests (Initiatives live in RHAISTRAT since
+    # 2026-10-28): copy the seed's Default Workflow, add the approve transition the tests
+    # exercise, and wire the project to it.
     _default_wf = seed_service.WORKFLOWS.get("Default Workflow", [])
     _iwf = list(_default_wf)
     if _global_approve not in _iwf:
         _iwf.append(_global_approve)
-    seed_service.WORKFLOWS["RHOAIENG Workflow"] = _iwf
-    seed_service.PROJECT_WORKFLOWS["RHOAIENG"] = "RHOAIENG Workflow"
+    seed_service.WORKFLOWS["RHAISTRAT Workflow"] = _iwf
+    seed_service.PROJECT_WORKFLOWS["RHAISTRAT"] = "RHAISTRAT Workflow"
 
     # Reset all data before each test (re-seeds with patched data)
     req = urllib.request.Request(f"{jira_emu}/api/admin/reset", method="POST", data=b"")

@@ -15,7 +15,7 @@ your working directory. Two types are registered:
 | Type | Jira project | Jira issue type | Purpose | Jira key | Id before submit |
 |---|---|---|---|---|---|
 | RFE | RHAIRFE | Feature Request | A business need from the user's perspective: the WHAT and the WHY, never the HOW. | `RHAIRFE-1234` | `RFE-001` |
-| Initiative | RHOAIENG | Initiative | A team commitment: a scoped body of work with a clear objective and the evidence for why it matters. It sits between a strategic Outcome and the Epics. | `RHOAIENG-12345` | `INIT-001` |
+| Initiative | RHAISTRAT | Initiative | A team commitment: a scoped body of work with a clear objective and the evidence for why it matters. It sits between a strategic Outcome and the Epics. | `RHAISTRAT-12345` | `INIT-001` |
 
 A new item carries a local id (`RFE-001`, `INIT-001`) until it is submitted; submit renames it
 to the Jira key the ticket was created under.
@@ -48,7 +48,7 @@ order; the first signal present wins:
 2. **The batch file's `type:`** (`/rfe-speedrun --input <file>`), when the file is written as
    `type: initiative` followed by `items:`. A `--type` that disagrees with it is an error.
 3. **What you pass.** A Jira key or local id names its type on its own: `RHAIRFE-` and `RFE-`
-   ids are RFEs, `RHOAIENG-` and `INIT-` ids are Initiatives. An item file (not reachable from
+   ids are RFEs, `RHAISTRAT-` and `INIT-` ids are Initiatives. An item file (not reachable from
    the skills, which take ids) names its type through its `type:` field, or failing that
    through the folder it sits in (`artifacts/rfe-tasks/` is RFE, `artifacts/initiatives/` is
    Initiative).
@@ -77,7 +77,7 @@ asks. This is what the error looks like:
 
 ```
 ERROR: conflicting type signals: --type initiative vs RHAIRFE-123 -> rfe; a run is single-typed — split the input by type
-ERROR: conflicting type signals: RHAIRFE-123 -> rfe, RHOAIENG-456 -> initiative; a run is single-typed — split the input by type or pass --type
+ERROR: conflicting type signals: RHAIRFE-123 -> rfe, RHAISTRAT-456 -> initiative; a run is single-typed — split the input by type or pass --type
 ```
 
 The fix is what the message says: run the RFEs and the Initiatives as separate invocations.
@@ -96,7 +96,7 @@ Three more shapes you may meet:
 
 | | RFE | Initiative |
 |---|---|---|
-| Jira ticket | project RHAIRFE, issue type Feature Request | project RHOAIENG, issue type Initiative |
+| Jira ticket | project RHAIRFE, issue type Feature Request | project RHAISTRAT, issue type Initiative |
 | Template | Summary, Affected Customers, Business Justification, Acceptance Criteria; medium items add Problem Statement and Success Criteria; large items add User Scenarios, Scope and Open Questions. Sized S, M, L or XL by the number of acceptance criteria. | Objective, Problem Statement, Scope. Prose is fine; there is no size. |
 | Clarifying questions (two to five) | Who are the affected customers? What is the business justification? What is the user's problem? How big is this? What does success look like? | What is the objective? What problem does it solve, with what evidence? What is in and out of scope? Is there a parent RHAISTRAT Outcome? |
 | Parent | none | `--parent RHAISTRAT-NNNN` on create, `parent_key` in a batch entry; links the ticket to the Outcome |
@@ -108,7 +108,7 @@ Three more shapes you may meet:
 | Companion files | `<id>-comments.md` (stakeholder comments) and `<id>-removed-context.yaml` (implementation detail moved out during review) | `<id>-removed-context.yaml` only |
 | Index | `artifacts/rfes.md`, rebuilt after every write | none |
 | Jira comment the pipeline posts | starts with `[RFE Creator]` | starts with `[Initiative Creator]` |
-| Batch query (`/rfe-auto-fix --jql`) | a query on project RHAIRFE | a query on project RHOAIENG |
+| Batch query (`/rfe-auto-fix --jql`) | a query on project RHAIRFE | a query on project RHAISTRAT |
 | Run report of a batch run | `artifacts/auto-fix-runs/<run-id>.yaml`, items listed under `per_rfe` | `artifacts/auto-fix-runs/initiative-run-<run-id>.yaml`, items listed under `per_initiative`, each with its `alignment` and `feasibility` |
 
 For either type, the batch query is checked against the type's project before anything is
@@ -141,7 +141,7 @@ How to tell:
 - The `TYPE RESOLVED` line at the top of the run names the type and the rule that chose it.
 - The folder: an RFE lands in `artifacts/rfe-tasks/RFE-NNN.md`, an Initiative in
   `artifacts/initiatives/INIT-NNN.md`.
-- The ticket: an RFE is created in RHAIRFE, an Initiative in RHOAIENG.
+- The ticket: an RFE is created in RHAIRFE, an Initiative in RHAISTRAT.
 
 What to do:
 
@@ -150,7 +150,7 @@ What to do:
   and delete the file that landed in the wrong folder (and its review file, if any) so a later
   run of that type does not pick it up.
 - For the review, split or submit of an existing ticket, pass the key together with `--type`,
-  or just the key: `RHOAIENG-12345` resolves to Initiative on its own, and the conflict error
+  or just the key: `RHAISTRAT-12345` resolves to Initiative on its own, and the conflict error
   above tells you when a `--type` and a key disagree.
 - Once a ticket exists in Jira under the wrong project, no skill moves it: close it in Jira and
   file it again with the right `--type`.
@@ -208,17 +208,17 @@ The skill does not ask for confirmation; invoking it is the confirmation. For ea
 prints what happened, for example:
 
 ```
-  INIT-001: Created RHOAIENG-12345
+  INIT-001: Created RHAISTRAT-12345
            Labels: initiative-auto-created, initiative-feasibility-pass
 ```
 
 What you get:
 
-- In Jira: an **Initiative** in project **RHOAIENG**, status New, with the labels above (plus an
+- In Jira: an **Initiative** in project **RHAISTRAT**, status New, with the labels above (plus an
   `initiative-alignment-*` label when alignment was assessed, and `initiative-auto-revised` when
   the review changed the text), and its parent set to the RHAISTRAT Outcome when you gave one.
-- Locally: the files renamed to the Jira key, `artifacts/initiatives/RHOAIENG-12345.md` and
-  `artifacts/initiative-reviews/RHOAIENG-12345-review.md`, with `initiative_id: RHOAIENG-12345`,
+- Locally: the files renamed to the Jira key, `artifacts/initiatives/RHAISTRAT-12345.md` and
+  `artifacts/initiative-reviews/RHAISTRAT-12345-review.md`, with `initiative_id: RHAISTRAT-12345`,
   `status: Submitted` and `local_id: INIT-001` in the header.
 - An item the review did not clear is skipped, with the reason printed next to its id.
 
@@ -226,7 +226,7 @@ What you get:
 
 ```
 /rfe-speedrun --type initiative <the objective text>
-/rfe-speedrun --type initiative RHOAIENG-12345        # review, revise and update an existing Initiative
+/rfe-speedrun --type initiative RHAISTRAT-12345        # review, revise and update an existing Initiative
 /rfe-speedrun --input initiatives.yaml --headless     # a batch; the file carries the type
 ```
 

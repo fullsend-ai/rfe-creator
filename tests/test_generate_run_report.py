@@ -1330,7 +1330,7 @@ class TestKeyPrefixUnionFallback:
 
     def test_config_carries_the_union(self):
         assert TYPE_CONFIG["rfe"]["key_prefixes"] == ("RHAIRFE-",)
-        assert TYPE_CONFIG["initiative"]["key_prefixes"] == ("RHOAIENG-",)
+        assert TYPE_CONFIG["initiative"]["key_prefixes"] == ("RHAISTRAT-",)
         assert _union_config()["key_prefixes"] == ("RHAIRFE-", "RHAIOLD-")
         assert _union_config()["tracker_prefix"] == "RHAIRFE-"
 
@@ -1574,7 +1574,7 @@ class TestBindingHeader:
         )
         assert initiative["binding"] == {
             "tracker": "jira",
-            "project": "RHOAIENG",
+            "project": "RHAISTRAT",
             "issue_type": "Initiative",
             "source": "descriptor",
         }
@@ -1616,7 +1616,7 @@ class TestBindingHeader:
             artifacts_dir=self._initiative_dir(tmp_path),
             entry_type="initiative",
         )
-        assert initiative["binding"]["project"] == "RHOAIENG"
+        assert initiative["binding"]["project"] == "RHAISTRAT"
         assert initiative["binding"]["source"] == "descriptor"
 
     def test_shorthand_is_recorded_as_its_own_source(self, no_override, monkeypatch, art_dir):
@@ -2278,3 +2278,48 @@ class TestProvenanceHeader:
         prov = build_report(["RHAIRFE-1234"], "2026-08-18T09:00:00Z")["provenance"]
         assert prov["pipeline_commit"] is None
         assert prov["pipeline_version"] == "9.9.9"
+
+
+class TestHierarchyParentIsNotASplitParent:
+    """Since Initiatives live in RHAISTRAT (2026-10-28) a fetched Initiative's Outcome parent is in
+    the type's own key family, exactly like a split parent. split_children_map tells them apart by
+    the workspace rule: a split parent has a task here (archived by the split, or torn mid-write),
+    an Outcome never does."""
+
+    TASK = (
+        "---\ninitiative_id: {iid}\ntitle: Serve models\npriority: Major\nstatus: Submitted\n"
+        "{extra}---\n\nBody.\n"
+    )
+
+    def _config(self):
+        return generate_run_report.TYPE_CONFIG["initiative"]
+
+    def test_an_outcome_without_a_task_is_a_hierarchy_link(self, art_dir):
+        _write(
+            f"{art_dir}/initiatives/RHAISTRAT-8.md",
+            self.TASK.format(iid="RHAISTRAT-8", extra="parent_key: RHAISTRAT-50\n"),
+        )
+        assert generate_run_report.split_children_map(art_dir, self._config()) == {}
+
+    def test_a_parent_with_a_task_is_a_split_parent(self, art_dir):
+        _write(
+            f"{art_dir}/initiatives/RHAISTRAT-8.md",
+            self.TASK.format(iid="RHAISTRAT-8", extra="parent_key: RHAISTRAT-50\n"),
+        )
+        _write(
+            f"{art_dir}/initiatives/RHAISTRAT-50.md",
+            self.TASK.format(iid="RHAISTRAT-50", extra="").replace("Submitted", "Archived"),
+        )
+        assert generate_run_report.split_children_map(art_dir, self._config()) == {
+            "RHAISTRAT-50": ["RHAISTRAT-8"]
+        }
+
+    def test_a_torn_parent_task_still_counts(self, art_dir):
+        _write(
+            f"{art_dir}/initiatives/RHAISTRAT-8.md",
+            self.TASK.format(iid="RHAISTRAT-8", extra="parent_key: RHAISTRAT-50\n"),
+        )
+        _write(f"{art_dir}/initiatives/RHAISTRAT-50.md", "---\ninitiative_id: RHAIS")
+        assert generate_run_report.split_children_map(art_dir, self._config()) == {
+            "RHAISTRAT-50": ["RHAISTRAT-8"]
+        }

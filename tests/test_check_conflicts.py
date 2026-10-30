@@ -29,7 +29,7 @@ LAYOUT = {
         "initiative-originals",
         "initiative_id",
         "INIT-001",
-        "RHOAIENG-12345",
+        "RHAISTRAT-12345",
     ),
 }
 
@@ -206,11 +206,11 @@ class TestIsExisting:
         assert check_conflicts._is_existing(task, "RHAIRFE-1", "rfe", self.PREFIXES) is True
 
     def test_foreign_tracker_ref_is_a_hard_error_not_a_create(self):
-        task = {"rfe_id": "RHAIRFE-1", "tracker_ref": "RHOAIENG-1"}
+        task = {"rfe_id": "RHAIRFE-1", "tracker_ref": "RHAISTRAT-1"}
         with pytest.raises(check_conflicts.ForeignTrackerRefError) as exc:
             check_conflicts._is_existing(task, "RHAIRFE-1", "rfe", self.PREFIXES)
         assert str(exc.value) == (
-            "RHAIRFE-1: tracker_ref 'RHOAIENG-1' is not owned by the resolved type rfe (key "
+            "RHAIRFE-1: tracker_ref 'RHAISTRAT-1' is not owned by the resolved type rfe (key "
             "prefixes RHAIRFE-); a task of another type is never updated as this one — fix the "
             "artifact or pass the type that owns it"
         )
@@ -252,9 +252,9 @@ class TestBindingMismatch:
         assert check_conflicts._binding_mismatch(fields, "rfe", self.BINDING) is None
 
     def test_other_pair_is_named(self):
-        fields = _fields("RHOAIENG", "Initiative")
+        fields = _fields("RHAISTRAT", "Initiative")
         assert check_conflicts._binding_mismatch(fields, "rfe", self.BINDING) == (
-            "is (RHOAIENG, Initiative) in Jira but the resolved type rfe binds "
+            "is (RHAISTRAT, Initiative) in Jira but the resolved type rfe binds "
             "(RHAIRFE, Feature Request)"
         )
 
@@ -398,8 +398,8 @@ class TestMain:
 
     def test_type_selects_the_tree(self, jira, monkeypatch, capsys, tmp_path):
         # An initiative tree scanned as rfe (the default) has nothing to check, and vice versa.
-        _task(tmp_path, "initiative", "RHOAIENG-1")
-        _original(tmp_path, "initiative", "RHOAIENG-1")
+        _task(tmp_path, "initiative", "RHAISTRAT-1")
+        _original(tmp_path, "initiative", "RHAISTRAT-1")
         monkeypatch.setattr(
             check_conflicts,
             "check_description_conflict",
@@ -430,7 +430,7 @@ class TestMain:
     def test_foreign_tracker_ref_is_a_hard_error_before_any_fetch(
         self, jira, monkeypatch, capsys, tmp_path
     ):
-        path = _task(tmp_path, "rfe", "RHAIRFE-1", extra="type: rfe\ntracker_ref: RHOAIENG-1\n")
+        path = _task(tmp_path, "rfe", "RHAIRFE-1", extra="type: rfe\ntracker_ref: RHAISTRAT-1\n")
         _original(tmp_path, "rfe", "RHAIRFE-1")
         monkeypatch.setattr(
             check_conflicts,
@@ -442,7 +442,7 @@ class TestMain:
         out = capsys.readouterr()
         assert out.out == ""
         assert out.err == (
-            f"Error: {path}: RHAIRFE-1: tracker_ref 'RHOAIENG-1' is not owned by the resolved "
+            f"Error: {path}: RHAIRFE-1: tracker_ref 'RHAISTRAT-1' is not owned by the resolved "
             "type rfe (key prefixes RHAIRFE-); a task of another type is never updated as this "
             "one — fix the artifact or pass the type that owns it\n"
         )
@@ -455,7 +455,7 @@ class TestMain:
             _task(tmp_path, "rfe", item)
             _original(tmp_path, "rfe", item)
         outcomes = {
-            "RHAIRFE-1": (True, _fields("RHOAIENG", "Initiative")),
+            "RHAIRFE-1": (True, _fields("RHAISTRAT", "Initiative")),
             "RHAIRFE-2": (True, _fields("RHAIRFE", "Feature Request")),
             "RHAIRFE-3": (False, {"description": "x"}),
             "RHAIRFE-4": (False, _fields("RHAIRFE", "Feature Request")),
@@ -466,7 +466,7 @@ class TestMain:
         out = capsys.readouterr()
         assert out.out == (
             "CONFLICT_COUNT=3\n"
-            "CONFLICT: RHAIRFE-1 — is (RHOAIENG, Initiative) in Jira but the resolved type rfe "
+            "CONFLICT: RHAIRFE-1 — is (RHAISTRAT, Initiative) in Jira but the resolved type rfe "
             "binds (RHAIRFE, Feature Request)\n"
             "CONFLICT: RHAIRFE-2 — modified in Jira since last fetch\n"
             "CONFLICT: RHAIRFE-3 — cannot verify against the resolved type rfe binding "
@@ -543,7 +543,7 @@ class TestMain:
     def test_a_binding_owned_by_another_type_exits_two_before_any_access(
         self, jira, monkeypatch, capsys, tmp_path
     ):
-        monkeypatch.setenv(type_registry.binding_env_var("rfe", "PROJECT"), "RHOAIENG")
+        monkeypatch.setenv(type_registry.binding_env_var("rfe", "PROJECT"), "RHAISTRAT")
         monkeypatch.setenv(type_registry.binding_env_var("rfe", "ISSUE_TYPE"), "Initiative")
         monkeypatch.setattr(
             check_conflicts, "scan_tasks", lambda *a, **k: pytest.fail("no scan expected")
@@ -553,7 +553,7 @@ class TestMain:
         out = capsys.readouterr()
         assert out.out == ""
         assert out.err == (
-            "Error: rfe: effective binding ('jira', 'RHOAIENG', 'Initiative') (source: env) is "
+            "Error: rfe: effective binding ('jira', 'RHAISTRAT', 'Initiative') (source: env) is "
             "the binding registered for type 'initiative'; a tracker binding must be owned by "
             "exactly one type (design §3.3 rule 1) — fix the override or pass --type initiative\n"
         )

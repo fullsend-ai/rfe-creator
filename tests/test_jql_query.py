@@ -142,13 +142,13 @@ class TestSearch:
 
     def test_main_sends_the_wrapped_query_and_lists_keys(self, fake_api, monkeypatch, capsys):
         calls, pages = fake_api
-        pages[None] = {"issues": [{"key": "RHOAIENG-1"}, {"key": "RHOAIENG-2"}], "isLast": True}
+        pages[None] = {"issues": [{"key": "RHAISTRAT-1"}, {"key": "RHAISTRAT-2"}], "isLast": True}
         monkeypatch.setattr(sys, "argv", ["jql_query.py", "--project", "initiative", SAMPLE])
         jql_query.main()
         out = capsys.readouterr()
         wrapped = jql_query.wrap_jql(SAMPLE, "initiative")
         assert out.err == f"JQL={wrapped}\n"
-        assert out.out == "TOTAL=2\nRHOAIENG-1\nRHOAIENG-2\n"
+        assert out.out == "TOTAL=2\nRHAISTRAT-1\nRHAISTRAT-2\n"
         sent = urllib.parse.parse_qs(urllib.parse.urlsplit(calls[0]).query)
         assert sent["jql"] == [wrapped]
         assert sent["fields"] == ["key"]

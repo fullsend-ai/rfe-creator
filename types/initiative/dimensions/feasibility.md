@@ -49,7 +49,7 @@ If `artifacts/initiative-review-report.md` exists, read it. This is a re-review 
 
 ## Output
 
-Write your assessment to `artifacts/initiative-reviews/{ID}-feasibility.md` where `{ID}` is exactly the Initiative ID passed to you (e.g., `INIT-001` or `RHOAIENG-12345`). The Write tool creates parent directories on its own — do not run `mkdir` first.
+Write your assessment to `artifacts/initiative-reviews/{ID}-feasibility.md` where `{ID}` is exactly the Initiative ID passed to you (e.g., `INIT-001` or `RHAISTRAT-12345`). The Write tool creates parent directories on its own — do not run `mkdir` first.
 
 ```
 ### {ID}: <title>

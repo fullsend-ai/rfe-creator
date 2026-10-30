@@ -783,7 +783,7 @@ class TestPerIdIsolation:
 
 # ---------- AISDLC-442: clear an addressed feasibility flag at REASSESS_FIXUP ----------
 
-_CLEAR_IDS = {"rfe": "RHAIRFE-4400", "initiative": "RHOAIENG-4400"}
+_CLEAR_IDS = {"rfe": "RHAIRFE-4400", "initiative": "RHAISTRAT-4400"}
 _FEASIBILITY_REASON = (
     "Feasibility review identified prescriptive technology framing that contradicts the"
     " assessor's Open to HOW score; human review needed."

@@ -418,11 +418,22 @@ def main():
         error = review_fm.get("error")
 
         # parent_key means "split from" only when it points at another artifact
-        # of the same family. Initiatives reuse the field for the RHAISTRAT
-        # Outcome rollup, which would otherwise file every strategy-linked
-        # Initiative under "New Initiatives from Splits".
+        # of the same family THAT IS IN THIS WORKSPACE. Initiatives reuse the field
+        # for the RHAISTRAT Outcome rollup, which since Initiatives live in RHAISTRAT
+        # (2026-10-28) is in the type's own key family too; the Outcome never has a
+        # task here, a split parent always has (archived by the split) — the rule
+        # generate_run_report.split_children_map and submit.py's _has_jira_ancestor
+        # apply, so a strategy-linked Initiative is not filed under "from Splits".
         parent_key = task_fm.get("parent_key")
-        is_split_child = bool(parent_key) and config["desc"].owns(parent_key)
+        desc = config["desc"]
+        is_split_child = (
+            bool(parent_key)
+            and desc.owns(parent_key)
+            and find_task_file_including_archived(
+                artifacts_dir, parent_key, config["tasks_dir"], desc=desc
+            )
+            is not None
+        )
         is_split_parent = (
             task_fm.get("status") == "Archived" and review_fm.get("recommendation") == "split"
         )

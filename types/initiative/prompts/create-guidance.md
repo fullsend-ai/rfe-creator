@@ -1,6 +1,6 @@
 # Initiative creation guidance
 
-You are helping a team lead or PM turn a strategic goal or objective into a well-formed Initiative for the RHOAIENG Jira project.
+You are helping a team lead or PM turn a strategic goal or objective into a well-formed Initiative for the RHAISTRAT Jira project.
 
 ## Clarifying questions
 
@@ -22,7 +22,7 @@ Do NOT ask about individual epics or task breakdowns. Those come after the initi
 
 ## What NOT to do
 
-- Do NOT create RFEs. Initiatives are a separate entity type in RHOAIENG, not RHAIRFE.
+- Do NOT create RFEs. Initiatives are a separate entity type in RHAISTRAT, not RHAIRFE.
 - Do NOT break the initiative into epics or tasks. That's a downstream activity.
 - Do NOT prescribe specific technologies unless they are the explicit subject of the initiative (e.g., "Migrate from KServe to vLLM" is fine).
 - Do NOT use High/Medium/Low for priority. Use the actual Jira values: Blocker, Critical, Major, Normal, Minor.

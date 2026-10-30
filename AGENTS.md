@@ -1,6 +1,6 @@
 # RFE Creator
 
-Skills for creating, reviewing, and submitting RFEs to the RHAIRFE Jira project and Initiatives to the RHOAIENG Jira project.
+Skills for creating, reviewing, and submitting RFEs to the RHAIRFE Jira project and Initiatives to the RHAISTRAT Jira project.
 
 ## Artifact Conventions
 
@@ -27,14 +27,14 @@ artifacts/
 
   initiatives/              # Individual Initiative files with YAML frontmatter
     INIT-001.md              # New Initiative (pre-submission, renamed on submit)
-    RHOAIENG-12345.md        # Existing Jira Initiative (keyed by Jira key)
+    RHAISTRAT-12345.md        # Existing Jira Initiative (keyed by Jira key)
 
   initiative-originals/     # Raw Jira descriptions at time of fetch
-    RHOAIENG-12345.md        # Baseline for conflict detection
+    RHAISTRAT-12345.md        # Baseline for conflict detection
 
   initiative-reviews/       # Per-Initiative review files with YAML frontmatter
     INIT-001-review.md
-    RHOAIENG-12345-review.md
+    RHAISTRAT-12345-review.md
 
 ```
 
@@ -100,7 +100,7 @@ Each skill uses distinct file prefixes to avoid collisions during nested calls: 
 - **On submit**: `RFE-NNN.md` files are renamed to `RHAIRFE-NNNN.md`, and `rfe_id` is updated to the Jira key
 - **Companion files**: Same prefix as main file with `-comments.md` or `-removed-context.md` suffix
 - **Archived RFEs**: Set `status: Archived` in frontmatter (no filename changes)
-- **Initiatives**: Use `INIT-NNN.md` naming with `initiative_id: INIT-NNN`; renamed to `RHOAIENG-NNNN.md` on submit
+- **Initiatives**: Use `INIT-NNN.md` naming with `initiative_id: INIT-NNN`; renamed to `RHAISTRAT-NNNN.md` on submit
 
 ## Jira Integration
 
@@ -135,12 +135,12 @@ Skills that only work with local artifacts (`/rfe-create`) do not require Jira a
 - **Priority values** (use these exactly): Blocker, Critical, Major, Normal, Minor, Undefined
 - **Status on creation**: `New`
 
-### RHOAIENG Project (Initiatives)
-- **Project**: `RHOAIENG`
+### RHAISTRAT Project (Initiatives)
+- **Project**: `RHAISTRAT` (since 2026-10-28, AISDLC-461; RHOAIENG before, never live beyond test runs)
 - **Issue Type**: `Initiative` (id: 10103)
 - **Priority values** (use these exactly): Blocker, Critical, Major, Normal, Minor, Undefined
 - **Status on creation**: `New`
-- **Parent field**: Set to a RHAISTRAT Outcome key to link the Initiative to a strategic outcome. `fetch_issue.py --fetch-all --type initiative` reads it back into the task's `parent_key` (what arms the alignment check for an Initiative fetched from Jira); an RHOAIENG Outcome parent is left in Jira — types/README.md "Parent field"
+- **Parent field**: Set to a RHAISTRAT Outcome key to link the Initiative to a strategic outcome, in the same project. `fetch_issue.py --fetch-all --type initiative` reads it back into the task's `parent_key` (what arms the alignment check for an Initiative fetched from Jira). The Outcome is in the Initiative's own key family, so the run report, the review report and `submit.py` tell such a hierarchy link from a split parent by the workspace (a split parent has a task here), never by key family — types/README.md "Parent field"
 - **Submission script**: `scripts/submit.py --type initiative`
 
 ## Work Item Types

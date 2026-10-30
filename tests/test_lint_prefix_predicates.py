@@ -39,7 +39,6 @@ EXPECTED_PREFIXES = [
     "initiative-run-",
     "issue-snapshot-",
     "RHAISTRAT-",
-    "RHOAIENG-",
     "RHAIRFE-",
     "INIT-",
     "RFE-",
@@ -201,7 +200,7 @@ class Thing:
     """Class docstring: INIT-001."""
 
     def method(self):
-        """Method docstring: RHOAIENG-1."""
+        """Method docstring: RHAISTRAT-1."""
         # a comment: issue-snapshot-2026.yaml
         return None  # RHAISTRAT-1
 
@@ -241,9 +240,9 @@ async def coro():
         assert [h.prefixes for h in hits] == [("RHAIRFE-",)]
 
     def test_call_arguments_and_dict_keys_are_code(self):
-        source = 'd = {"RHOAIENG-": 1}\nok = k.startswith(("RFE-", "INIT-"))\n'
+        source = 'd = {"RHAISTRAT-": 1}\nok = k.startswith(("RFE-", "INIT-"))\n'
         hits = lint.scan_source(source, _prefixes())
-        assert [h.prefixes for h in hits] == [("RHOAIENG-",), ("RFE-",), ("INIT-",)]
+        assert [h.prefixes for h in hits] == [("RHAISTRAT-",), ("RFE-",), ("INIT-",)]
 
     def test_non_string_constants_are_ignored(self):
         assert lint.scan_source("x = 1\ny = b'RFE-'\nz = None\n", _prefixes()) == []
@@ -360,7 +359,7 @@ class TestBaselineRatchet:
 
     def test_new_file_with_occurrences_fails_even_if_others_are_fine(self, tree, capsys):
         _write(tree, "scripts/old.py", 'A = "RFE-"\n')
-        _write(tree, "scripts/new.py", 'B = "RHOAIENG-"\n')
+        _write(tree, "scripts/new.py", 'B = "RHAISTRAT-"\n')
         assert _main(tree, _baseline(tree, {"scripts/old.py": 1})) == 1
         out = capsys.readouterr().out
         assert (
