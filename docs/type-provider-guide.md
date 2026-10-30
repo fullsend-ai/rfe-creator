@@ -187,6 +187,22 @@ Rules that are easy to trip:
   and the `{key}-strategy.md` attachment convention are consumed downstream; change them only with
   a migration note.
 
+### The classification block
+
+Optional, and the one block written for a reader rather than a script: `summary`, `driver`,
+`signals`, `counter_signals`, `examples` ("Classification block" in
+[`types/README.md`](../types/README.md)). The generic create body will classify a free-text idea
+against every installed type's block (stage 1, AISDLC-190) and the review launcher will hand the
+other types' cues to the review (stage 2, AISDLC-191); until those ship, gate 1 is the only reader.
+Write it after the template and the create guidance, from the same vocabulary: the summary is the
+one sentence you would give a colleague who asks "is this an X or a Y"; `signals` are what an idea
+of your type typically mentions (an escalation, an acceptance criterion, a quarter-long objective,
+a parent Outcome), not keywords; `counter_signals` are what the sibling type would claim;
+`examples` are one to five anonymized ideas, one line each, that a reader would file as your type
+without hesitation (the eval dataset's titles are a good source). Gate 1 refuses a repeated or
+blank phrase, a phrase on both sides, a signal another type also lists, and, once any registered
+type carries the block, a type that lists the `create` stage without one.
+
 ### Gates checklist
 
 A new type is done when every gate below passes; `make lint` runs all of them (and CI runs
@@ -207,6 +223,9 @@ field.
     finding names the value your type shares with another — give your type its own (binding,
     `local_prefix`, `local_id_pattern`, `id_field`, poll / state / snapshot / report prefixes,
     `results_subdir`), as "Lint gates" in [`types/README.md`](../types/README.md) lists.
+  - A `classification` finding names the phrase: reword it so each type's signals are its
+    own, keep a phrase on one side only, and give every type with a `create` stage a block once
+    one type has it.
 - [ ] **No new literal key-prefix predicates** — `python3 scripts/lint_prefix_predicates.py`.
   - Passes with `OK: <n> file(s) scanned, <k> grandfathered occurrence(s) in <f> file(s) within
     baseline (prefixes: ...)`; the prefix list includes your type's prefixes as soon as it is

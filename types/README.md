@@ -104,6 +104,7 @@ asserts that every differing or one-sided leaf falls under one of these keys:
 | Group | Dotted keys that differ between the two files |
 |---|---|
 | Identity | `type`, `display.entity`, `display.entity_plural`, `identity.jira.{project,issue_type,key_prefixes}`, `identity.{local_prefix,local_id_pattern,id_field}` |
+| Classification | `classification.{summary,driver,signals,counter_signals,examples}` (§6; "Classification block" below) |
 | Layout | `dirs.{tasks,originals,reviews}`, `index.enabled`, `companions.comments`, `batch.extra_fields`, `snapshot.{prefix,report_prefix,results_subdir}` (`results_subdir` = the type's subtree of the shared results repository: `''` the root for `rfe`, grandfathered; every other type `<type>-<project lowercased>`, `initiative-rhoaieng/` for initiative, so a second deployment of the type against another Jira project gets its own subtree) |
 | Conventions | `conventions.{type_label,label_prefix,comment_prefix,removed_context_preamble,query_default,parent_key_patterns}`, `conventions.labels.*` (every reserved key; `alignment.*` only when an alignment dimension exists; `opt_in` only for a type production selects by label — Initiative `initiative-autofix-opt-in` — the value rfe-autofixer's selection JQL and strat-creator's intake should read through `type_registry.py get <type> conventions.labels.opt_in` rather than copy; read by no rfe-creator script) |
 | Schema | `schema.task.extra_fields` (rfe adds `size`), `schema.review.{score_fields,extra_fields,extra_rules}` |
@@ -116,13 +117,31 @@ Identical in both files — shared machinery, **not** extension points: `schema_
 `schema.task.priority`, `pipeline.{stages,resplit,rubric.repo}`, `pipeline.context_sources[]`
 (name/bootstrap/required), and eight of the ten eval judge thresholds.
 
+## Classification block (§6)
+
+`classification` describes the type for a reader, human or model, deciding between the registered
+types: `summary` (one sentence: what belongs here), `driver` (who originates it), `signals` (cues in
+a free-text idea that point at this type), `counter_signals` (cues that point elsewhere) and
+`examples` (one to five anonymized one-line ideas typical of the type). Both shipped descriptors
+carry one; the paper `epic` fixture shows the block omitted. Its readers are pending: the generic
+create body (stage 1, AISDLC-190: a clear match prints `Type: <t> — pass --type to override`, an
+ambiguous idea becomes one question built from the installed types' `display.entity` and
+`examples`, a headless run never asks) and the review launcher (stage 2, AISDLC-191: the other
+types' cues enter the review context so a misfiled item is named in the review report and the
+needs-attention note, with no routing). Gate 1 checks the block: a non-empty summary, non-blank
+phrases, no phrase repeated within the block or listed on both of its sides, no signal shared by
+two types, and, once one registered type declares the block, a block on every type that lists the
+`create` stage (the create step classifies against every installed type). The phrases are prose
+for the model, not patterns: write them as a reader would recognise them, keep each type's signals
+distinct from the other types', and put under `counter_signals` what the sibling type would claim.
+
 ## Reserved vocabulary (schema only, no consumer at v1)
 
 `kind` (`work-item` | `strategy` | `decomposition` — the engine runs `work-item` only, and gate 1
 rejects a *registered* descriptor of any other kind), `inputs[]`
 and `produces[]` (§3.7 cross-type chain; rfe-creator ships no gate evaluator),
 `identity.jira.{duplicate_link_type, state_map.close_duplicate, state_map.ready, priority}`, the whole
-`identity.github` branch (§8.6 shape; adapter/emulator are first-requester work), `classification`,
+`identity.github` branch (§8.6 shape; adapter/emulator are first-requester work),
 `dirs.{dupes,merges}`, `companions.extra_suffixes`, `conventions.labels.{processing,human_sign_off,
 templates}`, `conventions.query_default`, `schema.task.priority.map_to_tracker` (the `enum`
 beside it feeds `artifact_utils.SCHEMAS` and, per type, `validate_batch_input.ALLOWED_PRIORITIES`;
@@ -579,7 +598,9 @@ the `extra_rules` consistency check, the `annotations_extra` lines, the run-repo
    one external `rubric.repo` across all descriptors and one `rubric.ref` for it, repositories
    compared as the canonical `owner/repo` whatever the spelling (the bootstrap keeps one checkout in
    `.context/assess-rfe`, cloned from the descriptor's `rubric.repo` at its `rubric.ref`; a second
-   external rubric repository needs bootstrap support first, and the lint refuses one until then).
+   external rubric repository needs bootstrap support first, and the lint refuses one until then); the `classification` block, when present, has a non-empty summary, non-blank phrases, no
+   phrase repeated or listed on both of its sides, no signal shared by two types, and once one
+   registered type declares it every type listing the `create` stage does (§6).
 2. **Gate 2 — `--with-deps`** (after bootstrap): `rubric.path` exists under `--assess-dir` (under
    the repo root when `rubric.repo` is `self`) and the agent file `agents/<scorer_agent>.md` is
    present in the assess checkout.
