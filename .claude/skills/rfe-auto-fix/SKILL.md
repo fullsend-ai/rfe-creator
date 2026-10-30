@@ -49,6 +49,8 @@ Pass `--headless` only when the caller passed it.
 
 ### 2. IDs
 
+The `tmp/pipeline-*` files in this skill take no type prefix (`STATE_PREFIX` is for the review, split and speedrun state files): write them exactly as shown.
+
 **JQL mode** (`--jql`):
 
 ```bash
