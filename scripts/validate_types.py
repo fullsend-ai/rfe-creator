@@ -21,6 +21,8 @@ design-proposals/work-item-types-unified.md §3.3:
     * schema.review.score_fields is non-empty
     * identity.local_id_pattern is an anchored, compilable regex
     * conventions.labels.alignment only when an alignment dimension is declared
+    * classification (optional, design §6): a non-empty summary, non-blank phrases, no
+      phrase repeated in the block or listed on both of its sides
     * pipeline.rubric.ref is a 7-40 char lowercase hex commit SHA — the commit
       bootstrap.sh checks out and verifies when ASSESS_RFE_REF is
       unset (Q9; the shipped descriptors pin the full 40-hex form); for the D3
@@ -59,6 +61,8 @@ design-proposals/work-item-types-unified.md §3.3:
     * a binding the registry refuses to compute (a malformed identity block, an
       invalid or D13-inconsistent RFE_CREATOR_BINDING_* override) is a finding
       for that type, never a traceback
+    * classification: no signal phrase shared by two types; once one registered type
+      declares the block, every type listing the create stage does (§6)
   Gate 2 — --with-deps, post-bootstrap, opt-in (Q8):
     * pipeline.rubric.path exists under --assess-dir (under the repo root when
       pipeline.rubric.repo is self — the rubric is embedded, not vendored)
@@ -656,6 +660,55 @@ def alignment_labels_messages(desc):
     ]
 
 
+def _normalize_phrase(value):
+    """A classification phrase compared loosely: whitespace collapsed, case folded."""
+    return " ".join(value.split()).casefold()
+
+
+def classification_messages(desc):
+    """The classification block (design §6, AISDLC-189) is optional; when present its
+    phrases must be usable by a model deciding between the registered types: a non-empty
+    summary, non-blank phrases, no phrase repeated within the block (case and spacing
+    aside) and none on both of its sides — a signal that is also a counter-signal says
+    nothing. The schema requires summary, signals and examples and bounds the lists."""
+    block = _opt(desc, "classification")
+    if block is None:
+        return []
+    if not isinstance(block, dict):
+        return ["classification must be a mapping"]
+    messages = []
+    summary = block.get("summary")
+    if not isinstance(summary, str) or not summary.strip():
+        messages.append("classification.summary must be a non-empty sentence")
+    side_of = {}  # normalized phrase -> the first list it appeared in
+    for key in ("signals", "counter_signals", "examples"):
+        values = block.get(key)
+        if values is None:
+            continue
+        if not isinstance(values, list):
+            messages.append(f"classification.{key} must be a list of phrases")
+            continue
+        seen_here = set()
+        for value in values:
+            if not isinstance(value, str) or not value.strip():
+                messages.append(f"classification.{key} has a blank or non-string entry")
+                continue
+            phrase = _normalize_phrase(value)
+            if phrase in seen_here:
+                message = f"classification.{key} repeats {phrase!r}"
+                if message not in messages:
+                    messages.append(message)
+                continue
+            seen_here.add(phrase)
+            first = side_of.setdefault(phrase, key)
+            if first != key and {first, key} == {"signals", "counter_signals"}:
+                messages.append(
+                    f"classification.{key} lists {value!r}, which is also under "
+                    f"classification.{first} (a phrase on both sides tells the create step nothing)"
+                )
+    return messages
+
+
 def rubric_ref_messages(desc):
     """The rubric pin: a commit SHA for an external assess repo (Q9), or — when
     pipeline.rubric.repo is `self` (D3, the schema's second oneOf branch) — a
@@ -897,6 +950,7 @@ def per_type_findings(
         ("schema.review.score_fields", lambda: score_fields_messages(desc)),
         ("identity.local_id_pattern", lambda: local_id_pattern_messages(desc)),
         ("conventions.labels.alignment", lambda: alignment_labels_messages(desc)),
+        ("classification", lambda: classification_messages(desc)),
         ("pipeline.rubric", lambda: rubric_ref_messages(desc)),
         ("review error stub", lambda: error_stub_messages(desc, artifact_utils)),
     ]
@@ -1212,6 +1266,38 @@ def cross_type_findings(registry, env):
                     f"route type {name_a}'s local ids to type {name_b} (PR-3 D13)",
                     [name_a, name_b],
                 )
+    # (7) classification (design §6, AISDLC-189): the same signal phrase on two types tells
+    #     the create step nothing, and once one registered type declares the block the create
+    #     step builds its notice or question from every type that lists the create stage, so a
+    #     type without a block would be invisible to it.
+    signal_pairs = []
+    classified = []
+    for name, desc in descs.items():
+        block = _opt(desc, "classification")
+        if not isinstance(block, dict):
+            continue
+        classified.append(name)
+        for value in block.get("signals") or []:
+            if isinstance(value, str) and value.strip():
+                signal_pairs.append((_normalize_phrase(value), name))
+    for phrase, names in _duplicates(signal_pairs).items():
+        names = sorted(set(names))
+        if len(names) > 1:
+            cross(
+                f"duplicate classification signal {phrase!r} shared by types: {_fmt_types(names)}",
+                names,
+            )
+    for name, desc in descs.items():
+        if name in classified or not classified:
+            continue
+        if "create" in (_opt(desc, "pipeline.stages") or []):
+            cross(
+                f"type {name!r} lists the create stage but declares no classification block "
+                f"while {_fmt_types(classified)} do (the create step classifies an idea against "
+                "every installed type)",
+                [name],
+            )
+
     return findings
 
 

@@ -62,14 +62,15 @@
     "classification": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["summary"],
+      "required": ["summary", "signals", "examples"],
       "properties": {
-        "summary": { "type": "string", "description": "One-sentence description of what belongs to this type." },
-        "driver": { "type": "string", "description": "Who typically originates the item (e.g. customer, engineering)." },
-        "signals": { "type": "array", "items": { "type": "string" }, "description": "Phrases that suggest this type." },
-        "counter_signals": { "type": "array", "items": { "type": "string" }, "description": "Phrases that suggest another type." }
+        "summary": { "type": "string", "minLength": 1, "description": "One sentence: what belongs to this type, written for a reader deciding between the registered types." },
+        "driver": { "type": "string", "description": "Who typically originates the item (a Product Manager relaying customers; a team lead answering a strategic goal)." },
+        "signals": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "description": "Cues in a free-text idea that suggest this type. Gate 1 keeps them unique within the block and across the registered types." },
+        "counter_signals": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Cues that suggest another type instead; never the same phrase as one of this type's signals." },
+        "examples": { "type": "array", "minItems": 1, "maxItems": 5, "items": { "type": "string", "minLength": 1 }, "description": "One-line ideas typical of this type (anonymized), shown when the create step asks which type an ambiguous idea is." }
       },
-      "description": "Optional at v1; consumed by interactive create (design section 6 stage 1) and the mis-filed report signal (stage 2) from PR-7."
+      "description": "Optional (design section 6, AISDLC-189). Read by the create body (stage 1: a notice or a question, AISDLC-190) and the review launcher (stage 2: the other types' cues enter the review context, AISDLC-191); gate 1 checks the shape, that no phrase repeats within a block or appears on both of its sides, that no signal is shared by two types, and that once one registered type declares the block every type listing the create stage does."
     },
     "dirs": {
       "type": "object",

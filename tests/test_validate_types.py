@@ -178,7 +178,8 @@ def _third_type(root, name="docs"):
     """A complete drop-in descriptor derived from rfe with a disjoint identity.
 
     Every cross-type invariant is satisfied: its own (project, issue_type), local
-    prefix/pattern/id field, dirs, poll/state/report prefixes and snapshot prefix.
+    prefix/pattern/id field, dirs, poll/state/report prefixes, snapshot prefix and
+    classification signals.
     Prompt/eval references stay rfe's live files, which exist in this checkout.
     """
     data = _read_yaml(TYPES_ROOT / "rfe" / "type.yaml")
@@ -222,6 +223,20 @@ def _third_type(root, name="docs"):
     }
     data["reporting"]["item_key"] = "per_doc"
     data["eval"]["mlflow_experiment"] = "docs-speedrun-eval"
+    # Its own classification block (AISDLC-189): a copied one would share every signal with
+    # rfe, which cross rule 7 refuses, as it should for a real copy.
+    data["classification"] = {
+        "summary": "A request for product documentation: a page, a guide or a reference that "
+        "readers of the product are missing",
+        "driver": "a technical writer or a support engineer relaying readers",
+        "signals": [
+            "a missing or outdated page, guide or reference",
+            "readers cannot find how to do something that the product supports",
+            "a docs portal, a book or a release note as the deliverable",
+        ],
+        "counter_signals": ["a product capability that does not exist yet"],
+        "examples": ["Readers need a how-to for serving a model from a private registry"],
+    }
     # The quality judge is named <type>_quality (generate_eval_config); a copied rfe_quality
     # threshold would be a gate-1 finding ("thresholds name judges the config does not define").
     data["eval"]["thresholds"][f"{name}_quality"] = data["eval"]["thresholds"].pop("rfe_quality")
@@ -2600,3 +2615,107 @@ class TestEvalFragmentGate:
         assert _cli().returncode == 0
         assert _cli("--no-eval-sync").returncode == 0
         assert "--no-eval-sync" in _cli("--help").stdout
+
+
+class TestClassificationGate:
+    """Design §6, AISDLC-189: the classification block is optional, shaped by the schema and
+    kept usable by gate 1 (a model decides between the registered types from its phrases)."""
+
+    def test_shipped_descriptors_declare_the_block(self):
+        for name in SHIPPED:
+            block = _read_yaml(TYPES_ROOT / name / "type.yaml")["classification"]
+            assert block["summary"].strip() and block["driver"].strip(), name
+            assert len(block["signals"]) >= 4 and len(block["counter_signals"]) >= 3, name
+            assert 1 <= len(block["examples"]) <= 5, name
+
+    def test_the_block_is_optional_when_no_type_declares_it(self, types_copy):
+        for name in SHIPPED:
+            _mutate(types_copy, name, lambda d: d.pop("classification"))
+        report = _validate(types_copy)
+        assert not [m for m in _messages(report) if "classification" in m], report.lines()
+
+    def test_the_paper_epic_fixture_omits_it(self):
+        assert "classification" not in _read_yaml(EPIC_FIXTURE)
+
+    def test_one_type_without_the_block_is_a_cross_finding(self, types_copy):
+        _mutate(types_copy, "initiative", lambda d: d.pop("classification"))
+        _assert_finding(
+            _validate(types_copy),
+            "type 'initiative' lists the create stage but declares no classification block "
+            "while rfe do",
+            "*",
+        )
+
+    def test_schema_requires_signals_and_examples_and_refuses_unknown_keys(self, types_copy):
+        _mutate(types_copy, "rfe", lambda d: d["classification"].pop("signals"))
+        _assert_finding(_validate(types_copy), "'signals' is a required property", "rfe")
+
+        def drop_examples(d):
+            d["classification"]["signals"] = ["a cue"]
+            d["classification"].pop("examples")
+
+        _mutate(types_copy, "rfe", drop_examples)
+        _assert_finding(_validate(types_copy), "'examples' is a required property", "rfe")
+
+        def unknown_key(d):
+            d["classification"]["examples"] = ["an idea"]
+            d["classification"]["labels"] = ["RFE"]
+
+        _mutate(types_copy, "rfe", unknown_key)
+        _assert_finding(
+            _validate(types_copy),
+            "Additional properties are not allowed ('labels' was unexpected)",
+            "rfe",
+        )
+
+    def test_blank_and_repeated_phrases_are_findings(self, types_copy):
+        def mutate(d):
+            block = d["classification"]
+            block["signals"].append("  " + block["signals"][0].upper() + " ")
+            block["signals"].append(block["signals"][0])
+            block["examples"].append("   ")
+
+        _mutate(types_copy, "rfe", mutate)
+        report = _validate(types_copy)
+        _assert_finding(report, "classification.examples has a blank or non-string entry", "rfe")
+        assert len(_find(report, "classification.signals repeats", "rfe")) == 1  # once per phrase
+
+    def test_a_phrase_on_both_sides_is_a_finding(self, types_copy):
+        _mutate(
+            types_copy,
+            "initiative",
+            lambda d: d["classification"]["counter_signals"].append(
+                d["classification"]["signals"][1]
+            ),
+        )
+        _assert_finding(
+            _validate(types_copy), "which is also under classification.signals", "initiative"
+        )
+
+    def test_a_signal_shared_by_two_types_is_a_cross_finding(self, types_copy):
+        shared = _read_yaml(types_copy / "rfe" / "type.yaml")["classification"]["signals"][0]
+        _mutate(
+            types_copy,
+            "initiative",
+            lambda d: d["classification"]["signals"].append("  " + shared.upper()),
+        )
+        _assert_finding(
+            _validate(types_copy),
+            f"duplicate classification signal {shared.casefold()!r} shared by types: "
+            "initiative, rfe",
+            "*",
+        )
+
+    def test_verify_names_the_rule_without_jsonschema(self, types_copy, monkeypatch):
+        """Gate 3 in the sandbox: the structural rule still decides when the JSON-Schema shape
+        check is skipped."""
+        _mutate(
+            types_copy,
+            "rfe",
+            lambda d: d["classification"]["counter_signals"].append(
+                d["classification"]["signals"][0]
+            ),
+        )
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        report = _validate(types_copy, only="rfe", allow_missing_jsonschema=True, eval_gate=False)
+        _assert_finding(report, "which is also under classification.signals", "rfe")

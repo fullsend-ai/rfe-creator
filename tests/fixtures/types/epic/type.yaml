@@ -13,6 +13,7 @@ schema_version: 1
 type: epic
 display: { entity: Epic, entity_plural: Epics }
 kind: decomposition                                     # its own 13-phase engine (pipeline_state.py:54-60: BATCH_START, FETCH, DECOMPOSE, REVIEW_DECOMP, REVISE_DECOMP, RE_REVIEW_CHECK, RE_REVIEW, REVISE_CHECK, RE_REVISE, BATCH_DONE, ERROR_COLLECT, REPORT, DONE) — 1:N decompose, set-level review, create-only submit. Recorded; the v1 engine runs work-item only
+# classification: omitted on purpose — the block is optional (design §6, AISDLC-189) and a decomposition kind has no create stage to classify for; the gate's all-or-none rule reads registered work-item types only
 
 inputs:                                                 # design §3.7 — the strategy -> epic edge; the gate is the agentic-ci production JQL (gl-epic-decomposer .gitlab-ci.yml:64)
   - from_type: strategy                                 # strat-creator's (RHAISTRAT, Feature): a PEER pipeline's type, not registered here, so gate labels are literals — the ${types.strategy.labels.rubric_pass} reference form cannot resolve
