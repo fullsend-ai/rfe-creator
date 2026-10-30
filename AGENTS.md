@@ -91,7 +91,7 @@ python3 scripts/state.py timestamp                    # Print current UTC time (
 python3 scripts/state.py clean                        # Reset tmp/ directory
 ```
 
-Each skill uses distinct file prefixes to avoid collisions during nested calls: `pipeline-` (the dispatcher, driven by `/rfe-auto-fix`), `review-`, `split-`, `speedrun-`. The generic bodies render each prefix behind the type's `pipeline.state_prefix` (`STATE_PREFIX` in the launch block: empty for RFEs, `initiative-` for Initiatives, e.g. `tmp/initiative-review-config.yaml`), so runs of different types do not collide either.
+Each skill uses distinct file prefixes to avoid collisions during nested calls: `pipeline-` (the dispatcher, driven by `/rfe-auto-fix`), `review-`, `split-`, `speedrun-`. The review, split and speedrun bodies render their prefix behind the type's `pipeline.state_prefix` (`STATE_PREFIX` in the launch block: empty for RFEs, `initiative-` for Initiatives, e.g. `tmp/initiative-review-config.yaml`), so runs of different types do not collide either. The dispatcher's `pipeline-` files (`tmp/pipeline-state.yaml`, `tmp/pipeline-*-ids.txt`) take no type prefix: `pipeline_state.py` names them itself and one auto-fix run owns the working directory, so write them exactly as the auto-fix skill shows, whatever `STATE_PREFIX` says.
 
 ### File Naming
 
