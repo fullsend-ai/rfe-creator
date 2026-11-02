@@ -113,7 +113,9 @@ pin.
   joined the Layout group with AISDLC-202. `conventions.labels.opt_in` came with the Initiative
   production trial, AISDLC-205; rfe-autofixer reads it through `type_registry.py get`
   when its job variable is empty, and strat-creator's intake is planned to read it under
-  AISDLC-301.
+  AISDLC-301. `classification.*` joined with AISDLC-189 (the block the create body and the review
+  launcher read from AISDLC-190 and AISDLC-191; gate 1 checks it, "Classification block" in
+  `types/README.md`).
 - **Reserved vocabulary.** The `schema.task.priority.enum` beside the reserved `map_to_tracker`
   feeds `artifact_utils.SCHEMAS` since PR-2b and `validate_batch_input.ALLOWED_PRIORITIES` per
   type since PR-3b.

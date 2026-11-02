@@ -189,9 +189,12 @@ Rules that are easy to trip:
 
 ### The classification block
 
-Optional, and the one block written for a reader rather than a script: `summary`, `driver`,
-`signals`, `counter_signals`, `examples` ("Classification block" in
-[`types/README.md`](../types/README.md)). The generic create body will classify a free-text idea
+The one block written for a reader rather than a script: `summary`, `driver`, `signals`,
+`counter_signals`, `examples` ("Classification block" in [`types/README.md`](../types/README.md)).
+Optional in the schema, required in practice for a type that lists the `create` stage: once any
+registered type declares the block, and `rfe` and `initiative` do, every create-stage type needs
+one. Within the block `summary`, `signals` (at least one) and `examples` (one to five) are required,
+`driver` and `counter_signals` optional. The generic create body will classify a free-text idea
 against every installed type's block (stage 1, AISDLC-190) and the review launcher will hand the
 other types' cues to the review (stage 2, AISDLC-191); until those ship, gate 1 is the only reader.
 Write it after the template and the create guidance, from the same vocabulary: the summary is the
@@ -199,9 +202,10 @@ one sentence you would give a colleague who asks "is this an X or a Y"; `signals
 of your type typically mentions (an escalation, an acceptance criterion, a quarter-long objective,
 a parent Outcome), not keywords; `counter_signals` are what the sibling type would claim;
 `examples` are one to five anonymized ideas, one line each, that a reader would file as your type
-without hesitation (the eval dataset's titles are a good source). Gate 1 refuses a repeated or
-blank phrase, a phrase on both sides, a signal another type also lists, and, once any registered
-type carries the block, a type that lists the `create` stage without one.
+without hesitation (the eval dataset's titles are a good source). Gate 1 refuses an unknown key, a
+missing required field, an empty `signals` list, more than five examples, a repeated or blank
+phrase anywhere in the block, a signal another type also lists, and, once any registered type
+carries the block, a type that lists the `create` stage without one.
 
 ### Gates checklist
 

@@ -120,18 +120,24 @@ Identical in both files — shared machinery, **not** extension points: `schema_
 ## Classification block (§6)
 
 `classification` describes the type for a reader, human or model, deciding between the registered
-types: `summary` (one sentence: what belongs here), `driver` (who originates it), `signals` (cues in
-a free-text idea that point at this type), `counter_signals` (cues that point elsewhere) and
-`examples` (one to five anonymized one-line ideas typical of the type). Both shipped descriptors
-carry one; the paper `epic` fixture shows the block omitted. Its readers are pending: the generic
+types. Optional in the schema; required for any type that lists the `create` stage while any
+registered type declares one, which is always, since `rfe` and `initiative` both do (an out-of-tree
+create-stage descriptor without a block fails gate 1 from this version on). Fields: `summary` (one
+sentence: what belongs here; required), `driver` (who originates it; optional), `signals` (cues in
+a free-text idea that point at this type; required, at least one), `counter_signals` (cues that
+point elsewhere; optional) and `examples` (one to five anonymized one-line ideas typical of the
+type; required). The paper `epic` fixture, a decomposition kind with no `create` stage, shows the
+block omitted. Its readers are pending: the generic
 create body (stage 1, AISDLC-190: a clear match prints `Type: <t> — pass --type to override`, an
 ambiguous idea becomes one question built from the installed types' `display.entity` and
 `examples`, a headless run never asks) and the review launcher (stage 2, AISDLC-191: the other
 types' cues enter the review context so a misfiled item is named in the review report and the
-needs-attention note, with no routing). Gate 1 checks the block: a non-empty summary, non-blank
-phrases, no phrase repeated within the block or listed on both of its sides, no signal shared by
-two types, and, once one registered type declares the block, a block on every type that lists the
-`create` stage (the create step classifies against every installed type). The phrases are prose
+needs-attention note, with no routing). Gate 1 checks the block, with or without jsonschema: the
+known keys only, the required fields present and the list bounds, a non-empty summary, non-blank
+phrases, no phrase repeated anywhere in the block (the signal/counter-signal pair named as such),
+no signal shared by two types, and, once one registered type declares the block, a block on every
+type that lists the `create` stage (the create step classifies against every installed type; the
+finding is attributed to the classified types too, so `--verify --type <t>` keeps it). The phrases are prose
 for the model, not patterns: write them as a reader would recognise them, keep each type's signals
 distinct from the other types', and put under `counter_signals` what the sibling type would claim.
 
@@ -598,9 +604,10 @@ the `extra_rules` consistency check, the `annotations_extra` lines, the run-repo
    one external `rubric.repo` across all descriptors and one `rubric.ref` for it, repositories
    compared as the canonical `owner/repo` whatever the spelling (the bootstrap keeps one checkout in
    `.context/assess-rfe`, cloned from the descriptor's `rubric.repo` at its `rubric.ref`; a second
-   external rubric repository needs bootstrap support first, and the lint refuses one until then); the `classification` block, when present, has a non-empty summary, non-blank phrases, no
-   phrase repeated or listed on both of its sides, no signal shared by two types, and once one
-   registered type declares it every type listing the `create` stage does (§6).
+   external rubric repository needs bootstrap support first, and the lint refuses one until then); the `classification` block, when present, has the known keys only, `summary`, `signals` and
+   `examples`, one to five examples, a non-empty summary, non-blank phrases, no phrase repeated
+   anywhere in it, no signal shared by two types, and once one registered type declares it every
+   type listing the `create` stage does (§6).
 2. **Gate 2 — `--with-deps`** (after bootstrap): `rubric.path` exists under `--assess-dir` (under
    the repo root when `rubric.repo` is `self`) and the agent file `agents/<scorer_agent>.md` is
    present in the assess checkout.

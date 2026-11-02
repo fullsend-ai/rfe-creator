@@ -660,25 +660,44 @@ def alignment_labels_messages(desc):
     ]
 
 
+CLASSIFICATION_KEYS = ("summary", "driver", "signals", "counter_signals", "examples")
+CLASSIFICATION_REQUIRED = ("summary", "signals", "examples")
+CLASSIFICATION_MAX_EXAMPLES = 5
+
+
 def _normalize_phrase(value):
     """A classification phrase compared loosely: whitespace collapsed, case folded."""
     return " ".join(value.split()).casefold()
 
 
 def classification_messages(desc):
-    """The classification block (design §6, AISDLC-189) is optional; when present its
-    phrases must be usable by a model deciding between the registered types: a non-empty
-    summary, non-blank phrases, no phrase repeated within the block (case and spacing
-    aside) and none on both of its sides — a signal that is also a counter-signal says
-    nothing. The schema requires summary, signals and examples and bounds the lists."""
+    """The classification block (design §6, AISDLC-189) is optional in the schema; when
+    present its phrases must be usable by a model deciding between the registered types.
+    The rule repeats the schema's shape so that gate 3 decides without jsonschema too: the
+    known keys only, ``summary``, ``signals`` and ``examples`` present, ``signals`` non-empty,
+    one to five ``examples``; then a non-empty summary, non-blank phrases, no phrase repeated
+    anywhere in the block (case and spacing aside), with the signal/counter-signal pair named
+    as such — a signal that is also a counter-signal says nothing."""
     block = _opt(desc, "classification")
     if block is None:
         return []
     if not isinstance(block, dict):
         return ["classification must be a mapping"]
     messages = []
+    unknown = sorted(k for k in block if k not in CLASSIFICATION_KEYS)
+    if unknown:
+        messages.append(
+            "classification has unknown key(s) "
+            + ", ".join(repr(k) for k in unknown)
+            + " (known: "
+            + ", ".join(CLASSIFICATION_KEYS)
+            + ")"
+        )
+    for key in CLASSIFICATION_REQUIRED:
+        if key not in block:
+            messages.append(f"classification.{key} is required when the block is declared")
     summary = block.get("summary")
-    if not isinstance(summary, str) or not summary.strip():
+    if "summary" in block and (not isinstance(summary, str) or not summary.strip()):
         messages.append("classification.summary must be a non-empty sentence")
     side_of = {}  # normalized phrase -> the first list it appeared in
     for key in ("signals", "counter_signals", "examples"):
@@ -688,6 +707,13 @@ def classification_messages(desc):
         if not isinstance(values, list):
             messages.append(f"classification.{key} must be a list of phrases")
             continue
+        if key == "signals" and not values:
+            messages.append("classification.signals must list at least one phrase")
+        if key == "examples" and not 1 <= len(values) <= CLASSIFICATION_MAX_EXAMPLES:
+            messages.append(
+                f"classification.examples must list 1 to {CLASSIFICATION_MAX_EXAMPLES} ideas, "
+                f"got {len(values)}"
+            )
         seen_here = set()
         for value in values:
             if not isinstance(value, str) or not value.strip():
@@ -701,10 +727,17 @@ def classification_messages(desc):
                 continue
             seen_here.add(phrase)
             first = side_of.setdefault(phrase, key)
-            if first != key and {first, key} == {"signals", "counter_signals"}:
+            if first == key:
+                continue
+            if {first, key} == {"signals", "counter_signals"}:
                 messages.append(
                     f"classification.{key} lists {value!r}, which is also under "
                     f"classification.{first} (a phrase on both sides tells the create step nothing)"
+                )
+            else:
+                messages.append(
+                    f"classification.{key} lists {value!r}, which is also under "
+                    f"classification.{first} (no phrase repeats anywhere in the block)"
                 )
     return messages
 
@@ -1277,7 +1310,10 @@ def cross_type_findings(registry, env):
         if not isinstance(block, dict):
             continue
         classified.append(name)
-        for value in block.get("signals") or []:
+        signals = block.get("signals")
+        if not isinstance(signals, list):
+            continue  # the per-type rule and the schema report the shape
+        for value in signals:
             if isinstance(value, str) and value.strip():
                 signal_pairs.append((_normalize_phrase(value), name))
     for phrase, names in _duplicates(signal_pairs).items():
@@ -1290,12 +1326,15 @@ def cross_type_findings(registry, env):
     for name, desc in descs.items():
         if name in classified or not classified:
             continue
-        if "create" in (_opt(desc, "pipeline.stages") or []):
+        stages = _opt(desc, "pipeline.stages")
+        if isinstance(stages, list) and "create" in stages:
+            # Owned by the classified types too: --verify --type <classified> must keep the
+            # registry-wide finding (its create step would be the one asking the question).
             cross(
                 f"type {name!r} lists the create stage but declares no classification block "
                 f"while {_fmt_types(classified)} do (the create step classifies an idea against "
                 "every installed type)",
-                [name],
+                [name, *classified],
             )
 
     return findings
