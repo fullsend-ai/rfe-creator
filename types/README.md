@@ -127,12 +127,16 @@ sentence: what belongs here; required), `driver` (who originates it; optional), 
 a free-text idea that point at this type; required, at least one), `counter_signals` (cues that
 point elsewhere; optional) and `examples` (one to five anonymized one-line ideas typical of the
 type; required). The paper `epic` fixture, a decomposition kind with no `create` stage, shows the
-block omitted. Its readers are pending: the generic
-create body (stage 1, AISDLC-190: a clear match prints `Type: <t> — pass --type to override`, an
-ambiguous idea becomes one question built from the installed types' `display.entity` and
-`examples`, a headless run never asks) and the review launcher (stage 2, AISDLC-191: the other
-types' cues enter the review context so a misfiled item is named in the review report and the
-needs-attention note, with no routing). Gate 1 checks the block, with or without jsonschema: the
+block omitted. Its first reader is the generic create body (stage 1,
+AISDLC-190): an interactive run whose type came from the legacy default reads
+`python3 scripts/type_registry.py classification`, the digest of every create-stage type's block
+(a new type appears in it as soon as it is registered), and either prints
+`Type: <t> — pass --type to override` on a clear match, re-running `resolve --type <t>` when that
+is not the resolved type, or asks one question built from the types' `display.entity`, `summary`
+and `examples`; `--type` skips the step and a headless run never asks (under `--headless` or the
+CI markers the digest answers one `HEADLESS:` line and nothing else). The review launcher
+follows (stage 2, AISDLC-191: the other types' cues enter the review context so a misfiled item
+is named in the review report and the needs-attention note, with no routing). Gate 1 checks the block, with or without jsonschema: the
 known keys only, the required fields present and the list bounds, a non-empty summary, non-blank
 phrases, no phrase repeated anywhere in the block (the signal/counter-signal pair named as such),
 no signal shared by two types, and, once one registered type declares the block, a block on every
@@ -240,7 +244,8 @@ batch `type:` it is a hard error, exit 1 (D5: headless never guesses) — an `--
 held to that rule. Provisional-only candidates (a key from a project no type is bound to, `KONFLUX-12`)
 resolve when they single out one type; otherwise the run is **ambiguous**: headless → `ERROR:
 ambiguous type ... pass --type` on stderr, exit 3; interactive → `TYPE AMBIGUOUS: rfe, initiative -
-pass --type` on stdout, exit 3 (the hook for the interactive picker, which is not implemented).
+pass --type` on stdout, exit 3 (the hook for the interactive picker; for a free-text idea the
+create body fills it through the `classification` digest, "Classification block" above).
 Headless means `is_headless(env, flag)`: `RFE_CREATOR_HEADLESS` (exported by the headless pipeline),
 `CI` or `GITHUB_ACTIONS` set, or `--headless` passed (`load(headless=True)` in code) — one
 predicate for the extra-roots seam, the workspace file and resolve (D4). `python3 scripts/type_registry.py candidates <ID>` prints the rung

@@ -152,6 +152,7 @@ python3 scripts/type_registry.py list              # Registered type names
 python3 scripts/type_registry.py show rfe          # Full descriptor
 python3 scripts/type_registry.py get rfe conventions.labels.rubric_pass
 python3 scripts/type_registry.py launch-vars rfe review   # The KEY=value block a generic skill / the dispatcher renders a stage's launches from
+python3 scripts/type_registry.py classification       # Every create-stage type's classification block, the digest /rfe-create reads an interactive idea against (design §6 stage 1)
 python3 scripts/validate_types.py                  # Descriptor lint (part of make lint)
 python3 scripts/lint_prefix_predicates.py          # Literal key-prefix predicates in scripts/
 python3 scripts/generate_eval_config.py --check    # Generated eval configs in sync (part of make lint)

@@ -102,7 +102,9 @@ directory against every type's ``dirs``, else ids through ``candidates``)
 error, never a question. Provisional-only signals resolve when they single out one type and
 are otherwise ambiguous: headless -> ``ResolveError`` (exit 3), interactive -> a
 ``Resolution`` with ``type_name None`` and ``candidates`` filled — the hook for the
-interactive rung 4 (classification / picker), which is not implemented here. The resolved
+interactive rung 4 (classification / picker): the generic create body reads a free-text
+idea against the ``classification`` digest and re-runs ``resolve --type`` (design §6 stage 1,
+AISDLC-190); an id nobody owns stays a question to the user. The resolved
 line is ``TYPE RESOLVED: <type> (<rung>[; binding override project=...])``; the ``resolve``
 CLI always prints it (D3), entry scripts stay silent for the legacy default.
 
@@ -1283,8 +1285,9 @@ def resolve(
        single out one type. An id no type owns is no signal in an interactive run; in a
        headless run with neither an explicit nor a batch type it is an error (D5: headless
        never guesses) — an artifact stem is never held to that rule.
-    4. (interactive classification / picker — not implemented; the ambiguous result is its
-       hook): several candidates and nothing deterministic -> headless
+    4. (interactive classification / picker — the generic create body, for a free-text idea,
+       through the ``classification`` digest, design §6 stage 1; here the ambiguous result is
+       its hook): several candidates and nothing deterministic -> headless
        (``is_headless(env, headless)``, ``env`` defaulting to the registry's and a registry
        built with ``headless=True`` counting as headless) raises
        ``ResolveError`` with ``exit_code`` 3 naming the candidates; interactive returns a
@@ -1959,6 +1962,73 @@ def _cmd_launch_vars(reg, args):
     return 0
 
 
+def classification_digest(reg):
+    """Design §6 stage 1 (AISDLC-190): one entry per registered type that lists the ``create``
+    stage and declares a ``classification`` block, in registry order — what the generic create
+    body reads an interactive idea against. A type without the block, or without the stage, is
+    left out (gate 1 refuses the former once any type declares the block)."""
+    rows = []
+    for desc in reg:
+        block = desc.get("classification", None)
+        stages = desc.get("pipeline.stages", None)
+        if not isinstance(block, dict) or not isinstance(stages, list) or "create" not in stages:
+            continue
+        rows.append(
+            {
+                "type": desc.name,
+                "entity": desc.get("display.entity", desc.name),
+                "summary": block.get("summary", ""),
+                "driver": block.get("driver", ""),
+                "signals": list(block.get("signals") or []),
+                "counter_signals": list(block.get("counter_signals") or []),
+                "examples": list(block.get("examples") or []),
+            }
+        )
+    return rows
+
+
+def render_classification_digest(rows):
+    """The text form of ``classification_digest``: a TYPES line, then one section per type."""
+    if not rows:
+        return "TYPES: none (no registered create-stage type declares a classification block)\n"
+    out = ["TYPES: " + ", ".join(r["type"] for r in rows), ""]
+    for r in rows:
+        out.append(f"## {r['type']} ({r['entity']})")
+        out.append(f"Summary: {r['summary']}")
+        if r["driver"]:
+            out.append(f"Driver: {r['driver']}")
+        out.append("Signals: " + "; ".join(r["signals"]))
+        if r["counter_signals"]:
+            out.append("Counter-signals: " + "; ".join(r["counter_signals"]))
+        out.append("Examples:")
+        out.extend(f"- {e}" for e in r["examples"])
+        out.append("")
+    return "\n".join(out)
+
+
+HEADLESS_CLASSIFICATION_LINE = (
+    "HEADLESS: classification is interactive-only; the resolved type stands"
+)
+
+
+def _cmd_classification(reg, args):
+    """Headless runs (``--headless``, or the CI markers in the environment) get the HEADLESS
+    line and no digest, so the create body cannot classify where it must not ask: the gate is
+    in code, not in the model's reading of the environment (review on #282)."""
+    if is_headless(reg.env, getattr(reg, "headless", False) or getattr(args, "headless", False)):
+        if args.json:
+            _emit([], True)
+        else:
+            print(HEADLESS_CLASSIFICATION_LINE)
+        return 0
+    rows = classification_digest(reg)
+    if args.json:
+        _emit(rows, True)
+    else:
+        sys.stdout.write(render_classification_digest(rows))
+    return 0
+
+
 def _cmd_binding(reg, args):
     desc = reg.get(args.type)
     _emit(_binding_view(desc, desc.binding()), args.json)
@@ -2069,6 +2139,19 @@ def _build_parser():
     p_vars.add_argument("stage", help="one of the type's pipeline.stages")
     p_vars.set_defaults(func=_cmd_launch_vars)
 
+    p_classification = sub.add_parser(
+        "classification",
+        parents=[common],
+        help="print every create-stage type's classification block, the digest the generic "
+        "create body reads an interactive idea against (design §6 stage 1)",
+    )
+    p_classification.add_argument(
+        "--headless",
+        action="store_true",
+        help=f"treat the run as headless (also implied by {'/'.join(HEADLESS_MARKER_VARS)}): "
+        "prints the HEADLESS line and no digest",
+    )
+    p_classification.set_defaults(func=_cmd_classification)
     p_binding = sub.add_parser(
         "binding", parents=[common], help="print the effective tracker binding"
     )

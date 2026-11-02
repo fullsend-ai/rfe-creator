@@ -194,9 +194,11 @@ The one block written for a reader rather than a script: `summary`, `driver`, `s
 Optional in the schema, required in practice for a type that lists the `create` stage: once any
 registered type declares the block, and `rfe` and `initiative` do, every create-stage type needs
 one. Within the block `summary`, `signals` (at least one) and `examples` (one to five) are required,
-`driver` and `counter_signals` optional. The generic create body will classify a free-text idea
-against every installed type's block (stage 1, AISDLC-190) and the review launcher will hand the
-other types' cues to the review (stage 2, AISDLC-191); until those ship, gate 1 is the only reader.
+`driver` and `counter_signals` optional. The generic create body classifies a free-text idea
+against every installed type's block (stage 1, AISDLC-190): it reads
+`python3 scripts/type_registry.py classification`, the digest of every create-stage type's block,
+so your type takes part in the notice and the question as soon as it is registered; the review
+launcher will hand the other types' cues to the review (stage 2, AISDLC-191).
 Write it after the template and the create guidance, from the same vocabulary: the summary is the
 one sentence you would give a colleague who asks "is this an X or a Y"; `signals` are what an idea
 of your type typically mentions (an escalation, an acceptance criterion, a quarter-long objective,
