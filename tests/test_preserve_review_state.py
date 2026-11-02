@@ -370,6 +370,32 @@ def test_restore_keeps_a_fresh_classification_flag_of_its_own(workdir):
     assert fm["needs_attention_reason"] == "likely an Initiative: fresh evidence"
 
 
+@pytest.mark.parametrize("restores", [1, 2])
+def test_restore_appends_the_saved_classification_to_a_fresh_flag_of_another_source(
+    workdir, restores
+):
+    """A fresh review that raised its own flag (here alignment) keeps that source and reason;
+    the saved classification sentence joins the reason, once however often restore runs."""
+    item_id, id_field, reviews_dir, scores = CASES[0]
+    path = f"{reviews_dir}/{item_id}-review.md"
+    _write(path, _classified_review(id_field, item_id, scores))
+    prs.save(item_id)
+    fresh = _fresh_review(id_field, item_id, scores).replace(
+        "needs_attention: false\n",
+        "needs_attention: true\nneeds_attention_source: alignment\n"
+        "needs_attention_reason: 'alignment is weak: no outcome named'\n",
+    )
+    _write(path, fresh)
+    for _ in range(restores):
+        prs.restore(item_id, keep_state=True)
+    fm, _ = read_frontmatter(path)
+    assert fm["needs_attention"] is True
+    assert fm["needs_attention_source"] == "alignment"
+    assert "alignment is weak: no outcome named" in fm["needs_attention_reason"]
+    assert "likely an Initiative" in fm["needs_attention_reason"]
+    assert fm["needs_attention_reason"].count("likely an Initiative") == 1
+
+
 def test_restore_tolerates_a_state_file_without_the_classification_key(workdir):
     item_id, id_field, reviews_dir, scores = CASES[0]
     path = f"{reviews_dir}/{item_id}-review.md"

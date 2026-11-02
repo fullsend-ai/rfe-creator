@@ -94,8 +94,12 @@ class TestReviewPromptStageTwo:
         )
         assert "in its assessor-feedback section" in paragraph
         assert (
-            "`likely a <its entity>: <one line of evidence from the text>; "
+            "`likely a <its entity>: <one line of evidence, in your own words>; "
             "consider /rfe-create --type <its type>`" in paragraph
+        )
+        assert (
+            "Paraphrase; never quote the task text, and keep the reason free of dollar signs "
+            "and backslashes: Step 4 passes it as a shell argument." in paragraph
         )
         assert "in its one `frontmatter.py set` call" in paragraph
         assert "`needs_attention_source=classification` (no dimension)" in paragraph
@@ -103,6 +107,12 @@ class TestReviewPromptStageTwo:
         assert text.count("Misfiled item (design §6 stage 2)") == 1
         # the source enumeration the agent copies into frontmatter.py set names the new value
         assert "needs_attention_source=<feasibility/alignment/rubric/classification/agent>" in text
+        # Step 4 tells the agent its values are shell arguments
+        assert (
+            "Every value you pass to `frontmatter.py set` is a shell argument: write reasons "
+            "in plain words, without dollar signs, backticks, double quotes or backslashes." in text
+        )
+        assert text.index("## Step 4") < text.index("Every value you pass to `frontmatter.py set`")
         # every placeholder the paragraph uses is a review launch var
         reg = type_registry.load(root=TYPES_ROOT, extra_roots=[], env={})
         for name in SHIPPED:

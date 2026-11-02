@@ -196,15 +196,27 @@ def restore(rfe_id, keep_state=False):
         current_cycle = _cycle_marker(current.get("auto_revised_cycle"))
         if current_cycle is None or current_cycle < saved_cycle:
             fm_updates["auto_revised_cycle"] = saved_cycle
-    # A saved classification flag is re-raised when the fresh review does not carry one; a
-    # fresh review that raised its own keeps its own reason.
+    # A saved classification flag is re-raised when the fresh review carries no flag (no
+    # needs_attention, or no source). A fresh review that raised its own classification flag
+    # keeps its own reason. A fresh flag of another source keeps that source and reason, and
+    # the saved classification sentence is appended to the reason (once), so the human's
+    # classification call is not lost behind the other flag.
     saved_flag = state.get("classification_flag")
     if isinstance(saved_flag, dict):
         current, _ = read_frontmatter(rpath)
-        if current.get("needs_attention_source") != "classification":
+        fresh_source = current.get("needs_attention_source")
+        saved_reason = saved_flag.get("reason")
+        if not current.get("needs_attention") or not fresh_source:
             fm_updates["needs_attention"] = True
             fm_updates["needs_attention_source"] = "classification"
-            fm_updates["needs_attention_reason"] = saved_flag.get("reason")
+            fm_updates["needs_attention_reason"] = saved_reason
+        elif fresh_source != "classification" and isinstance(saved_reason, str) and saved_reason:
+            fresh_reason = current.get("needs_attention_reason")
+            fresh_reason = fresh_reason if isinstance(fresh_reason, str) else ""
+            if saved_reason not in fresh_reason:
+                fm_updates["needs_attention_reason"] = (
+                    f"{fresh_reason}; {saved_reason}" if fresh_reason else saved_reason
+                )
     if fm_updates:
         update_frontmatter(rpath, fm_updates, _schema(rfe_id))
 

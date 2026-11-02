@@ -252,8 +252,9 @@ class TestDerivedValues:
         assert d["criteria_count"] == "5"
         assert d["quality_judge"] == "rfe_quality"
         assert d["pairwise_prompt_file"] == "types/rfe/eval/pairwise-judge.md"
-        assert (
-            d["run_report_entry_fields"] == "id, recommendation, revision_cycles, needs_attention"
+        assert d["run_report_entry_fields"] == (
+            "id, recommendation, revision_cycles, needs_attention, "
+            "needs_attention_source, needs_attention_reason"
         )
         assert d["annotations_extra"] == ""
         assert d["review_extra_fields"] == ""
@@ -285,7 +286,8 @@ class TestDerivedValues:
             == "Type rule: alignment=weak requires needs_attention=true."
         )
         assert d["run_report_entry_fields"] == (
-            "id, recommendation, revision_cycles, alignment, feasibility, needs_attention"
+            "id, recommendation, revision_cycles, alignment, feasibility, needs_attention, "
+            "needs_attention_source, needs_attention_reason"
         )
         assert d["arch.not_relevant_pattern_def"].startswith("not_relevant_pattern = re.compile(")
 
