@@ -931,9 +931,7 @@ class TestClearAddressedAttention:
             pytest.param({"needs_attention_source": "alignment"}, id="source-alignment"),
             pytest.param({"needs_attention_source": "rubric"}, id="source-rubric"),
             pytest.param({"needs_attention_source": "agent"}, id="source-agent"),
-            pytest.param(
-                {"needs_attention_source": "classification"}, id="source-classification"
-            ),
+            pytest.param({"needs_attention_source": "classification"}, id="source-classification"),
             pytest.param({"needs_attention_source": None}, id="source-unset"),
             pytest.param({"needs_attention_dimension": None}, id="dimension-unset"),
             pytest.param({"scores.open_to_how": 1}, id="dimension-below-max"),
