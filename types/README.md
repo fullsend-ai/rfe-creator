@@ -133,7 +133,8 @@ AISDLC-190): an interactive run whose type came from the legacy default reads
 (a new type appears in it as soon as it is registered), and either prints
 `Type: <t> — pass --type to override` on a clear match, re-running `resolve --type <t>` when that
 is not the resolved type, or asks one question built from the types' `display.entity`, `summary`
-and `examples`; `--type` skips the step and a headless run never asks. The review launcher
+and `examples`; `--type` skips the step and a headless run never asks (under `--headless` or the
+CI markers the digest answers one `HEADLESS:` line and nothing else). The review launcher
 follows (stage 2, AISDLC-191: the other types' cues enter the review context so a misfiled item
 is named in the review report and the needs-attention note, with no routing). Gate 1 checks the block, with or without jsonschema: the
 known keys only, the required fields present and the list bounds, a non-empty summary, non-blank

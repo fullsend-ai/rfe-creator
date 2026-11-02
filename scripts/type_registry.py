@@ -2006,7 +2006,21 @@ def render_classification_digest(rows):
     return "\n".join(out)
 
 
+HEADLESS_CLASSIFICATION_LINE = (
+    "HEADLESS: classification is interactive-only; the resolved type stands"
+)
+
+
 def _cmd_classification(reg, args):
+    """Headless runs (``--headless``, or the CI markers in the environment) get the HEADLESS
+    line and no digest, so the create body cannot classify where it must not ask: the gate is
+    in code, not in the model's reading of the environment (review on #282)."""
+    if is_headless(reg.env, getattr(reg, "headless", False) or getattr(args, "headless", False)):
+        if args.json:
+            _emit([], True)
+        else:
+            print(HEADLESS_CLASSIFICATION_LINE)
+        return 0
     rows = classification_digest(reg)
     if args.json:
         _emit(rows, True)
@@ -2130,6 +2144,12 @@ def _build_parser():
         parents=[common],
         help="print every create-stage type's classification block, the digest the generic "
         "create body reads an interactive idea against (design §6 stage 1)",
+    )
+    p_classification.add_argument(
+        "--headless",
+        action="store_true",
+        help=f"treat the run as headless (also implied by {'/'.join(HEADLESS_MARKER_VARS)}): "
+        "prints the HEADLESS line and no digest",
     )
     p_classification.set_defaults(func=_cmd_classification)
     p_binding = sub.add_parser(

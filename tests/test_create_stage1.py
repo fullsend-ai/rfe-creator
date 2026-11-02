@@ -137,6 +137,26 @@ class TestClassificationDigest:
             assert result.stdout.startswith("TYPES: rfe, initiative\n"), kwargs
             assert "docs" not in result.stdout, kwargs
 
+    def test_headless_runs_get_no_digest(self):
+        """Review on #282: the registry treats CI, GITHUB_ACTIONS and RFE_CREATOR_HEADLESS as
+        headless, not only --headless; the digest refuses in every one of those cases, so the
+        create body cannot classify (and switch the default type) where it must not ask."""
+        for extra in ({"CI": "true"}, {"GITHUB_ACTIONS": "true"}, {"RFE_CREATOR_HEADLESS": "1"}):
+            result = subprocess.run(
+                [sys.executable, SCRIPT, "classification"],
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                env=_env(**extra),
+            )
+            assert result.returncode == 0, (extra, result.stderr)
+            assert result.stdout == type_registry.HEADLESS_CLASSIFICATION_LINE + "\n", extra
+        flagged = _cli("classification", "--headless")
+        assert flagged.stdout == type_registry.HEADLESS_CLASSIFICATION_LINE + "\n"
+        assert json.loads(_cli("--json", "classification", "--headless").stdout) == []
+        assert type_registry.HEADLESS_CLASSIFICATION_LINE.startswith("HEADLESS")
+
     def test_python_api_matches_the_cli(self):
         reg = type_registry.load(root=TYPES_ROOT, extra_roots=[], env={})
         rows = type_registry.classification_digest(reg)
@@ -182,6 +202,7 @@ class TestCreateBodyStageOne:
         assert "`(legacy default)`" in paragraph and "`--headless` is absent" in paragraph
         assert "an idea rather than ids" in paragraph
         assert "python3 scripts/type_registry.py classification" in paragraph
+        assert "if its first line starts with `HEADLESS`" in paragraph
         # clear match: the notice, and the switch when the match is not the resolved type
         assert "print `Type: <t> — pass --type to override`" in paragraph
         assert "re-run `python3 scripts/type_registry.py resolve --type <t>`" in paragraph
