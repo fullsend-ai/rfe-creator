@@ -181,6 +181,18 @@ class TestCreateBodyStageOne:
         "Then print the stage's launch block and keep it: every `{VAR}` in this skill is the "
         "value of that `VAR=` line:"
     )
+    # The alias's whole forwarding paragraph, byte for byte.
+    ALIAS_PARAGRAPH = (
+        "`/rfe.create` is the compatibility alias of `/rfe-create`. Unless the working directory "
+        "is the plugin root (this skill directory's third parent, a checkout), first run once "
+        '`bash "${CLAUDE_SKILL_DIR}/../../../scripts/bootstrap.sh" --layout` (on a host that '
+        "leaves the variable unsubstituted, use this skill file's directory; on any nonzero exit "
+        "stop and show its message). Read `${CLAUDE_SKILL_DIR}/../rfe-create/SKILL.md` (the "
+        "sibling skill directory; its own layout check is then a no-op) and follow it from Step 0 "
+        "with the same arguments: wherever that file refers to its invocation arguments (its "
+        "placeholder is spelled dollar-sign ARGUMENTS), use exactly the arguments below, which "
+        "are this invocation's:"
+    )
 
     def test_the_stage_sits_between_resolution_and_the_launch_block(self):
         body = CREATE_BODY.read_text()
@@ -199,7 +211,9 @@ class TestCreateBodyStageOne:
             line for line in CREATE_BODY.read_text().splitlines() if line.startswith(self.STAGE)
         )
         # when it runs: the legacy default, interactively, on an idea
-        assert "`(legacy default)`" in paragraph and "`--headless` is absent" in paragraph
+        assert "the rule in the line's parentheses is `legacy default`" in paragraph
+        assert "`; binding override …` clause" in paragraph
+        assert "`--headless` is absent" in paragraph
         assert "an idea rather than ids" in paragraph
         assert "python3 scripts/type_registry.py classification" in paragraph
         assert "if its first line starts with `HEADLESS`" in paragraph
@@ -221,6 +235,7 @@ class TestCreateBodyStageOne:
 
     def test_the_alias_still_forwards_from_step_zero_with_the_same_arguments(self):
         alias = ALIAS_BODY.read_text()
+        assert alias.count(self.ALIAS_PARAGRAPH) == 1
         assert "Read `${CLAUDE_SKILL_DIR}/../rfe-create/SKILL.md`" in alias
         assert "follow it from Step 0 with the same arguments" in alias
         assert self.STAGE not in alias  # the stage lives in the one body both names run
