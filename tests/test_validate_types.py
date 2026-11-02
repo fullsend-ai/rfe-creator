@@ -2762,6 +2762,24 @@ class TestClassificationGate:
         ):
             _assert_finding(report, stem, "rfe")
 
+    @pytest.mark.parametrize("key", ["signals", "examples", "counter_signals"])
+    def test_an_explicit_null_list_is_a_finding_without_jsonschema(
+        self, types_copy, monkeypatch, key
+    ):
+        """An explicit null is not an absent key: the list message names it and nothing crashes."""
+        _mutate(types_copy, "rfe", lambda d: d["classification"].__setitem__(key, None))
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        report = _validate(types_copy, only="rfe", allow_missing_jsonschema=True, eval_gate=False)
+        _assert_finding(report, f"classification.{key} must be a list of phrases", "rfe")
+        assert not [m for m in _messages(report) if "TypeError" in m], report.lines()
+        assert not _find(report, "is required when the block is declared", "rfe")
+
+    def test_a_non_string_driver_is_a_finding_without_jsonschema(self, types_copy, monkeypatch):
+        _mutate(types_copy, "rfe", lambda d: d["classification"].__setitem__("driver", 7))
+        monkeypatch.setitem(sys.modules, "jsonschema", None)
+        report = _validate(types_copy, only="rfe", allow_missing_jsonschema=True, eval_gate=False)
+        _assert_finding(report, "classification.driver must be a non-empty string", "rfe")
+
     def test_verify_of_a_classified_type_keeps_the_missing_block_finding(self, types_copy):
         """Review on #280: the registry-wide finding is owned by the classified types too, so
         --verify --type rfe does not pass while initiative lacks a block."""

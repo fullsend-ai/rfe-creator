@@ -699,11 +699,13 @@ def classification_messages(desc):
     summary = block.get("summary")
     if "summary" in block and (not isinstance(summary, str) or not summary.strip()):
         messages.append("classification.summary must be a non-empty sentence")
+    if "driver" in block and (not isinstance(block["driver"], str) or not block["driver"].strip()):
+        messages.append("classification.driver must be a non-empty string")
     side_of = {}  # normalized phrase -> the first list it appeared in
     for key in ("signals", "counter_signals", "examples"):
-        values = block.get(key)
-        if values is None:
-            continue
+        if key not in block:
+            continue  # absent: signals/examples are reported as required above
+        values = block[key]
         if not isinstance(values, list):
             messages.append(f"classification.{key} must be a list of phrases")
             continue
