@@ -52,8 +52,13 @@ order; the first signal present wins:
    the skills, which take ids) names its type through its `type:` field, or failing that
    through the folder it sits in (`artifacts/rfe-tasks/` is RFE, `artifacts/initiatives/` is
    Initiative).
-4. **Nothing at all**: the run is an RFE run. That is the historical default, so `/rfe-create`
-   with just a sentence writes an RFE and a new Initiative needs `--type initiative`.
+4. **Nothing at all**: the run is an RFE run, the historical default. In a terminal,
+   `/rfe-create` then reads your idea against each type's description (the descriptor's
+   `classification` block) before asking anything else: a clear match prints
+   `Type: rfe — pass --type to override`, or `Type: initiative — pass --type to override` and
+   switches the run to Initiatives; an idea that could be either asks you one question, with one
+   option per type. A headless or CI run never asks and stays an RFE run, so a new Initiative
+   there still needs `--type initiative`.
 
 ### The `TYPE RESOLVED` line
 
