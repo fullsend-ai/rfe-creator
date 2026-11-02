@@ -1,7 +1,8 @@
 """Save and restore cumulative review state across re-assessment cycles.
 
-Saves before_scores, the auto_revised flag, the auto_revised_cycle marker and
-revision history to a JSON state file before re-review, then restores them after
+Saves before_scores, the auto_revised flag, the auto_revised_cycle marker, a
+classification needs-attention flag (AISDLC-191) and revision history to a JSON state file before
+re-review, then restores them after
 the new review file is written. The re-review recreates the review file from
 scratch, so the flag would otherwise fall back to the schema default (false) for
 every re-reviewed item; submit.py derives the auto-revised Jira label from it.
@@ -136,6 +137,14 @@ def save(rfe_id):
         # none. Saved as the agent wrote it, never derived.
         "auto_revised_cycle": _cycle_marker(data.get("auto_revised_cycle")),
         "revision_history": extract_revision_history(rpath),
+        # AISDLC-191: a classification flag ("likely an Initiative ...") is a human's call,
+        # never cleared automatically; the re-review reads the revised text, which may no
+        # longer read as the other type, so the flag survives only through this file.
+        "classification_flag": (
+            {"reason": data.get("needs_attention_reason")}
+            if data.get("needs_attention_source") == "classification"
+            else None
+        ),
     }
 
     spath = state_path(rfe_id)
@@ -187,6 +196,15 @@ def restore(rfe_id, keep_state=False):
         current_cycle = _cycle_marker(current.get("auto_revised_cycle"))
         if current_cycle is None or current_cycle < saved_cycle:
             fm_updates["auto_revised_cycle"] = saved_cycle
+    # A saved classification flag is re-raised when the fresh review does not carry one; a
+    # fresh review that raised its own keeps its own reason.
+    saved_flag = state.get("classification_flag")
+    if isinstance(saved_flag, dict):
+        current, _ = read_frontmatter(rpath)
+        if current.get("needs_attention_source") != "classification":
+            fm_updates["needs_attention"] = True
+            fm_updates["needs_attention_source"] = "classification"
+            fm_updates["needs_attention_reason"] = saved_flag.get("reason")
     if fm_updates:
         update_frontmatter(rpath, fm_updates, _schema(rfe_id))
 

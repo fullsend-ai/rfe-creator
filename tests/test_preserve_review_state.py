@@ -295,3 +295,87 @@ def test_restore_tolerates_a_state_file_without_the_marker(workdir):
 
     data, _ = read_frontmatter(prs.review_path(item_id))
     assert data["auto_revised"] is True and "auto_revised_cycle" not in data
+
+
+# ── AISDLC-191: a classification flag survives the re-review ─────────────────────────────────
+
+
+def _classified_review(id_field, item_id, scores):
+    reason = (
+        "likely an Initiative: a quarter-long objective across teams; "
+        "consider /rfe-create --type initiative"
+    )
+    return _revised_review(id_field, item_id, scores, auto_revised=True).replace(
+        "needs_attention: false\n",
+        f"needs_attention: true\nneeds_attention_source: classification\n"
+        f"needs_attention_reason: '{reason}'\n",
+    )
+
+
+@pytest.mark.parametrize("item_id,id_field,reviews_dir,scores", CASES)
+def test_save_records_a_classification_flag(workdir, item_id, id_field, reviews_dir, scores):
+    _write(f"{reviews_dir}/{item_id}-review.md", _classified_review(id_field, item_id, scores))
+    prs.save(item_id)
+    with open(prs.state_path(item_id)) as f:
+        state = json.load(f)
+    assert state["classification_flag"] == {
+        "reason": "likely an Initiative: a quarter-long objective across teams; "
+        "consider /rfe-create --type initiative"
+    }
+
+
+def test_save_records_no_classification_flag_for_another_source(workdir):
+    item_id, id_field, reviews_dir, scores = CASES[0]
+    review = _revised_review(id_field, item_id, scores, auto_revised=True).replace(
+        "needs_attention: false\n",
+        "needs_attention: true\nneeds_attention_source: feasibility\nneeds_attention_reason: 'x'\n",
+    )
+    _write(f"{reviews_dir}/{item_id}-review.md", review)
+    prs.save(item_id)
+    with open(prs.state_path(item_id)) as f:
+        assert json.load(f)["classification_flag"] is None
+
+
+@pytest.mark.parametrize("item_id,id_field,reviews_dir,scores", CASES)
+def test_restore_re_raises_the_classification_flag_on_a_fresh_review(
+    workdir, item_id, id_field, reviews_dir, scores
+):
+    """The re-review reads the revised text, which the reviser may have reshaped into the
+    filed type, so the fresh review does not raise the flag again; the restore does."""
+    path = f"{reviews_dir}/{item_id}-review.md"
+    _write(path, _classified_review(id_field, item_id, scores))
+    prs.save(item_id)
+    _write(path, _fresh_review(id_field, item_id, scores))
+    prs.restore(item_id)
+    fm, _ = read_frontmatter(path)
+    assert fm["needs_attention"] is True
+    assert fm["needs_attention_source"] == "classification"
+    assert fm["needs_attention_reason"].startswith("likely an Initiative:")
+    assert fm["pass"] is True and fm["recommendation"] == "submit"  # nothing else moved
+
+
+def test_restore_keeps_a_fresh_classification_flag_of_its_own(workdir):
+    item_id, id_field, reviews_dir, scores = CASES[0]
+    path = f"{reviews_dir}/{item_id}-review.md"
+    _write(path, _classified_review(id_field, item_id, scores))
+    prs.save(item_id)
+    fresh = _fresh_review(id_field, item_id, scores).replace(
+        "needs_attention: false\n",
+        "needs_attention: true\nneeds_attention_source: classification\n"
+        "needs_attention_reason: 'likely an Initiative: fresh evidence'\n",
+    )
+    _write(path, fresh)
+    prs.restore(item_id)
+    fm, _ = read_frontmatter(path)
+    assert fm["needs_attention_reason"] == "likely an Initiative: fresh evidence"
+
+
+def test_restore_tolerates_a_state_file_without_the_classification_key(workdir):
+    item_id, id_field, reviews_dir, scores = CASES[0]
+    path = f"{reviews_dir}/{item_id}-review.md"
+    _write(path, _fresh_review(id_field, item_id, scores))
+    with open(prs.state_path(item_id), "w") as f:
+        json.dump({"before_score": 6, "auto_revised": True, "revision_history": ""}, f)
+    prs.restore(item_id)
+    fm, _ = read_frontmatter(path)
+    assert fm["needs_attention"] is False and "needs_attention_source" not in fm

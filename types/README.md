@@ -142,7 +142,9 @@ review rules say the item reads as one of them it flags the item with
 /rfe-create --type <t>`, in the review file, the review report and the run report (which carries
 `needs_attention_source` and `needs_attention_reason` per item since AISDLC-191); scores,
 recommendation, type and labels stay what the rules decide, nothing is routed, relabelled or
-moved, and the flag is never cleared automatically. Gate 1 checks the block, with or without jsonschema: the
+moved, and the flag is never cleared automatically: `preserve_review_state.py` carries it across the
+re-review (the reviser may have reshaped the text into the filed type, so the fresh review would not
+raise it again) and the review report shows the source before the reason. Gate 1 checks the block, with or without jsonschema: the
 known keys only, the required fields present and the list bounds, a non-empty summary, non-blank
 phrases, no phrase repeated anywhere in the block (the signal/counter-signal pair named as such),
 no signal shared by two types, and, once one registered type declares the block, a block on every

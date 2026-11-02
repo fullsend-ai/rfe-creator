@@ -75,22 +75,32 @@ class TestOthersDigest:
 
 
 class TestReviewPromptStageTwo:
-    PARAGRAPH = "**Misfiled item (design §6 stage 2).**"
+    PARAGRAPH = "**Misfiled item (design §6 stage 2), decided before you write.**"
 
     def test_the_misfiled_check_and_its_placeholders(self):
+        """Review on #284: the decision precedes the body and the single frontmatter write it
+        feeds; the digest is read with the other inputs in Step 1."""
         text = REVIEW_AGENT.read_text()
+        read_line = (
+            "Read the other installed types' descriptions: "
+            "`python3 scripts/type_registry.py classification --others {TYPE}`"
+        )
+        assert text.index("## Step 1") < text.index(read_line) < text.index("## Step 2")
         [paragraph] = [ln for ln in text.splitlines() if ln.startswith(self.PARAGRAPH)]
-        assert "python3 scripts/type_registry.py classification --others {TYPE}" in paragraph
+        assert text.index("## Step 3") < text.index(self.PARAGRAPH) < text.index("## Step 4")
         assert (
-            "the rules in `{RULES_PATH}` say the task text reads as one of those types" in paragraph
+            "the rules in `{RULES_PATH}` say the task text reads as one of the other types"
+            in paragraph
         )
+        assert "in its assessor-feedback section" in paragraph
+        assert (
+            "`likely a <its entity>: <one line of evidence from the text>; "
+            "consider /rfe-create --type <its type>`" in paragraph
+        )
+        assert "in its one `frontmatter.py set` call" in paragraph
         assert "`needs_attention_source=classification` (no dimension)" in paragraph
-        assert (
-            "`likely a <that type's entity>: <one line of evidence from the text>; "
-            "consider /rfe-create --type <that type>`" in paragraph
-        )
-        assert "say the same in the review body's assessor feedback" in paragraph
         assert "the review neither relabels nor moves the item" in paragraph
+        assert text.count("Misfiled item (design §6 stage 2)") == 1
         # the source enumeration the agent copies into frontmatter.py set names the new value
         assert "needs_attention_source=<feasibility/alignment/rubric/classification/agent>" in text
         # every placeholder the paragraph uses is a review launch var
@@ -112,12 +122,29 @@ class TestReviewPromptStageTwo:
             assert "`needs_attention_source=classification`" in paragraph
             assert "the review neither relabels nor moves the item" in paragraph
             assert "`classification` (the item reads as another registered type, below)" in text
-        assert "when `not_a_task` scores 0" in rfe
-        assert "`likely an Initiative: <evidence>; consider /rfe-create --type initiative`" in rfe
-        assert "`classification`, `rubric` or `agent` take precedence over `feasibility`" in rfe
-        assert "`likely an RFE: <evidence>; consider /rfe-create --type rfe`" in init
+            # the reason follows the matching description, whatever other type it names
+            assert "a reason built from the matching description" in paragraph
+            assert (
+                "`likely a <its entity>: <evidence>; consider /rfe-create --type <its type>`"
+                in paragraph
+            )
+            assert "whatever the scores say" in paragraph
+            assert (
+                "`classification` first when it applies (its reason carries the filing advice)"
+                in text
+            )
+        # no score gate on the RFE side: the rubric's not_a_task 0 is a chore, not an Initiative
+        assert "neither is required" in rfe and "when `not_a_task` scores 0" not in rfe
         assert (
-            "`alignment`, `classification`, `rubric` or `agent` take precedence over `feasibility`"
+            "for the Initiative description: `likely an Initiative: <evidence>; "
+            "consider /rfe-create --type initiative`" in rfe
+        )
+        assert (
+            "for the RFE description: `likely an RFE: <evidence>; consider /rfe-create --type rfe`"
+            in init
+        )
+        assert (
+            "a `weak` alignment verdict is always `alignment`; otherwise `classification` first"
             in init
         )
 

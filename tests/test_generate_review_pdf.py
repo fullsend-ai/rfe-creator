@@ -703,3 +703,37 @@ class TestReportLinksAndSplitClassification:
 
         assert "New Initiatives from Splits (1)" in html
         assert "Re-split Intermediaries (1)" in html
+
+
+class TestNeedsAttentionSource:
+    """AISDLC-191: the report shows a needs-attention flag's source before its reason, so a
+    classification flag reads 'classification: likely an Initiative: ...' in the badge tooltip
+    and in the item's attention box; a flag without a source renders the reason alone."""
+
+    def _flagged_review(self, root, type_name, item_id, source):
+        dirs = REPORT_CONFIG[type_name]
+        path = root / dirs["reviews_dir"] / f"{item_id}-review.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        scores = "".join(f"  {k}: 2\n" for k in dirs["criterion_keys"])
+        source_line = f"needs_attention_source: {source}\n" if source else ""
+        path.write_text(
+            f"---\n{dirs['id_field']}: {item_id}\nscore: 10\npass: true\n"
+            "recommendation: submit\nfeasibility: feasible\nauto_revised: false\n"
+            "needs_attention: true\n"
+            "needs_attention_reason: 'likely an Initiative: a quarter-long objective; "
+            "consider /rfe-create --type initiative'\n"
+            f"{source_line}scores:\n{scores}---\n\nFeedback.\n",
+            encoding="utf-8",
+        )
+
+    def test_the_source_prefixes_the_reason(self, tmp_path, monkeypatch):
+        root = tmp_path / "artifacts"
+        _task(root, "rfe", "RHAIRFE-7001")
+        self._flagged_review(root, "rfe", "RHAIRFE-7001", "classification")
+        _task(root, "rfe", "RHAIRFE-7002")
+        self._flagged_review(root, "rfe", "RHAIRFE-7002", None)
+        html = _render(tmp_path, monkeypatch, "rfe")
+        assert html.count("classification: likely an Initiative: a quarter-long objective") == 2
+        assert "feasibility: likely" not in html
+        # the unsourced flag keeps its bare reason (tooltip + box)
+        assert html.count("likely an Initiative: a quarter-long objective") == 4
