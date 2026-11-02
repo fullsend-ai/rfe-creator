@@ -62,9 +62,9 @@ revision:
     Or was it simply deleted without reframing the underlying need?
 threshold_notes:
   revision_coverage: |
-    with 26 cases of which 6 are tagged revision-expected (case-021 to
-    case-026), 4 of 6 revised leaves 2 failures -> 24/26 = 0.923 (pass); 3 of 6
-    revised leaves 3 failures -> 23/26 = 0.885 (fail). case-026 (a maintenance
+    with 28 cases of which 6 are tagged revision-expected (case-021 to
+    case-026), 4 of 6 revised leaves 2 failures -> 26/28 = 0.929 (pass); 3 of 6
+    revised leaves 3 failures -> 25/28 = 0.893 (fail). case-026 (a maintenance
     checklist with no business evidence) calibrated on 2026-09-21 as a
     one-revision pass: first review 5/10 (WHY 0, not_a_task 0), revised once to
     9/10 — the reviser pads WHY to 1 with a generic segment despite the draft's
@@ -82,3 +82,14 @@ threshold_notes:
     zero revisions fails every case (0.0) on any dataset. Single-item runs
     (Harbor tasks, execution.mode: case) skip the run-level check and are
     decided by the tag alone. Untagged cases otherwise always pass.
+  classification_signal: |
+    stage 2 of classification (AISDLC-191): every case carries
+    expected_classification (none, or the type the item really is). Two cases
+    added for AISDLC-192: one Initiative described as an RFE (must be flagged
+    "likely an Initiative") and one genuinely ambiguous idea (must not be
+    flagged); every other case must not be flagged either, so the check also
+    measures precision over the whole dataset. With 28 cases, 0.92 allows
+    2 failures. PROVISIONAL: the value and the slack are to be
+    set from the first baseline run with these cases (the datasets straddle
+    the boundary in both directions by design, so a few regular cases may read
+    as the other type to the reviewer); record that run here.

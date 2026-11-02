@@ -1,0 +1,21 @@
+difficulty: hard
+expected_alignment: not_assessed
+expected_classification: none
+expected_feasibility: null
+expected_needs_attention: null
+expected_pass: null
+expected_recommendation: null
+expected_scores:
+  open_to_how: null
+  right_sized: null
+  scope: null
+  what: null
+  why: null
+expected_total: null
+known_issues:
+- 'Genuinely ambiguous (AISDLC-192): one customer''s capability (an RFE reading) or a two-workstream body
+  of work under a programme (an Initiative reading). Stage 2 must not flag it.'
+score_tolerance: 1
+tags:
+- ambiguous
+- classification-boundary

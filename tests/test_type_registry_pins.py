@@ -3105,7 +3105,7 @@ class TestEvalConfigs:
             ctx.ev["thresholds"],
             eval_config(ctx)["thresholds"],
         )
-        assert len(ctx.ev["thresholds"]) == 11
+        assert len(ctx.ev["thresholds"]) == 12  # + classification_signal (AISDLC-192)
         assert ctx.ev["thresholds"]["revision_coverage"] == {"min_pass_rate": 0.92}
 
     def test_shared_two_type_judges(self, ctx):

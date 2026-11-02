@@ -1,4 +1,5 @@
 difficulty: null
+expected_classification: none
 expected_feasibility: null
 expected_pass: null
 expected_recommendation: null

@@ -1,0 +1,14 @@
+prompt: 'Over the next three quarters we want to make GPU capacity a governed, self-service resource across the
+  whole platform: quota and fair-share scheduling for workbenches, serving and training, utilization visibility
+  per team, and chargeback so the finance side stops escalating. It is the serving, workbench and infrastructure
+  teams'' joint programme for the year and it rolls up to our GPU-as-a-service outcome. Please file it as an RFE
+  so it shows up on the roadmap.'
+priority: Major
+clarifying_context: 'Objective: by the end of the third quarter every GPU request on the platform goes through a
+  quota, utilization per team is visible and billed back, and the four capacity escalations a quarter we had last
+  year drop to zero. Problem: three teams each own a piece today (serving, workbenches, training) and nobody can
+  say who holds what; Example Industries and Acme Corp both raised it in their quarterly reviews. Scope: quota and
+  fair-share scheduling across the three workload types, per-team utilization dashboards, a chargeback export; out
+  of scope: autoscaling policy changes and spot capacity. Teams: serving, workbenches, platform infrastructure,
+  with a programme lead. Success: the outcome''s metrics move (average utilization above 60 percent, zero capacity
+  escalations), with quarterly milestones to be broken into epics once this is approved.'

@@ -155,4 +155,5 @@ eval:
     architecture_context_used: { min_pass_rate: 1.0 }
     rfe_quality: { min_mean: 3.5 }
     revision_quality: { min_mean: 3.5 }
-  annotations_extra: []                                 # eval.yaml:41-57 lists no type-specific expected_* field (score_tolerance :53 is prose-only, no consumer)
+    classification_signal: { min_pass_rate: 0.92 }     # AISDLC-192: provisional until the first baseline with the misfiled and ambiguous cases; see eval/fragment.yaml threshold_notes
+  annotations_extra: [expected_classification]                                 # eval.yaml:41-57 lists no type-specific expected_* field (score_tolerance :53 is prose-only, no consumer)

@@ -1,0 +1,9 @@
+prompt: Federate the model registries of our two production clusters so that a model registered in one can be deployed
+  from the other, for the Example Industries multi-region programme.
+priority: Major
+clarifying_context: 'Objective: Example Industries runs two regions and wants one registry view; their programme
+  manager framed it as one deliverable for the second quarter. On our side it is the registry team''s work plus
+  a serving change for cross-cluster pull, and whether that is one capability or a body of work with two workstreams
+  is open. Problem: models are registered twice today and drift; two incidents last quarter came from a stale copy.
+  Scope: registry federation and cross-cluster pull; out of scope: a global catalog user interface. Parent Outcome:
+  none yet.'

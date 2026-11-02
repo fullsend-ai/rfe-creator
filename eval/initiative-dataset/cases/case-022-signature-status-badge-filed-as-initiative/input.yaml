@@ -1,0 +1,9 @@
+prompt: 'Initiative: show the model signature verification status as a badge on the deployed model''s page in the
+  dashboard, with a list filter for unverified models.'
+priority: Major
+clarifying_context: 'Objective: Acme Corp''s platform administrators (a regulated financial-services customer) asked
+  for it in the last support review: once a model is deployed they cannot see whether its signature was verified
+  without reading operator logs. Acceptance criteria: the model list shows a verified, unverified or not-signed
+  badge; the detail page shows the signer identity and the verification time; the list can be filtered to unverified
+  models; an administrator-only setting hides unsigned models from the list. One dashboard team, one release, no
+  other team involved. Parent Outcome: none.'
