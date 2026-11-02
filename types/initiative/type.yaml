@@ -147,7 +147,7 @@ reporting:
     Right-sizing: right_sized
     RS: right_sized
   pdf: { extra_fields: [alignment] }                    # generate_review_pdf.py:106 REPORT_CONFIG.extra_fields (:1537 has_alignment)
-  run_report: { extra_entry_fields: [alignment, feasibility, needs_attention] }   # generate_run_report.py:51 TYPE_CONFIG.extra_entry_fields
+  run_report: { extra_entry_fields: [alignment, feasibility, needs_attention, needs_attention_source, needs_attention_reason] } # + source/reason (AISDLC-191: a misfiled item's note reaches the run report)   # generate_run_report.py:51 TYPE_CONFIG.extra_entry_fields
 eval:
   config: eval-initiative.yaml
   dataset: eval/initiative-dataset/cases                # eval-initiative.yaml:36 dataset.path (§8.2 omits /cases)

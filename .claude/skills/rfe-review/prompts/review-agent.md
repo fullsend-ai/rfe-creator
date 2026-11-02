@@ -16,6 +16,7 @@ Body sections: {SECTIONS_PATH}
 Read the assessment result file at `{ASSESS_PATH}`.
 Read every dimension file listed above — each is also a `<NAME>_PATH` line of this prompt. A blocking dimension's file is always present; a non-blocking dimension's file may be missing when that dimension was not assessed (its condition did not hold, or its agent did not complete) — the review rules say what to record then.
 Read the review rules at `{RULES_PATH}` and the body sections at `{SECTIONS_PATH}`.
+Read the other installed types' descriptions: `python3 scripts/type_registry.py classification --others {TYPE}` (summary, signals, counter-signals and examples per type; empty when there is none).
 
 ## Step 2: Read Schema
 
@@ -33,6 +34,8 @@ don't rely on it.)
 
 The body structure is the section list in `{SECTIONS_PATH}` (read in Step 1), in that order, ending with `## Revision History` ("none" on first pass).
 
+**Misfiled item (design §6 stage 2), decided before you write.** When the rules in `{RULES_PATH}` say the task text reads as one of the other types rather than an {ENTITY}, the review says so in its assessor-feedback section, in one sentence built from the matching description: `likely a <its entity>: <one line of evidence, in your own words>; consider /rfe-create --type <its type>`. Paraphrase; never quote the task text, and keep the reason free of dollar signs and backslashes: Step 4 passes it as a shell argument. Step 4 then records it in its one `frontmatter.py set` call as `needs_attention=true`, `needs_attention_source=classification` (no dimension) and that sentence as `needs_attention_reason`. When the rules give another source precedence (an Initiative's `weak` alignment verdict), keep that source and still put the complete classification sentence in `needs_attention_reason`, after the other explanation and separated by `; `: the sentence is what carries the misfiling across the reassess cycle. Change nothing else: the scores, the recommendation, the type and the labels stay what the rules decide; the review neither relabels nor moves the item.
+
 ## Step 4: Set Frontmatter
 
 Parse the score table from the assessment result file. Determine the recommendation (submit / revise / split / reject) and `needs_attention` by the rules in `{RULES_PATH}`.
@@ -47,7 +50,8 @@ python3 scripts/frontmatter.py set {REVIEWS_DIR}/{ID}-review.md \
     {SCORE_SET}{REVIEW_EXTRA_SET}
 ```
 
-If you set `needs_attention=true`, record its source by the rules in `{RULES_PATH}` in that same command, as two more arguments appended to it (the dimension only for a `feasibility` or `rubric` source): `needs_attention_source=<feasibility/alignment/rubric/agent> needs_attention_dimension=<score field>`. Never set them in a second `frontmatter.py set` call: the score is what marks the review complete, and a reader that runs between the two calls would see the flag without its source and keep it.
+If you set `needs_attention=true`, record its source by the rules in `{RULES_PATH}` in that same command, as two more arguments appended to it (the dimension only for a `feasibility` or `rubric` source): `needs_attention_source=<feasibility/alignment/rubric/classification/agent> needs_attention_dimension=<score field>`. Never set them in a second `frontmatter.py set` call: the score is what marks the review complete, and a reader that runs between the two calls would see the flag without its source and keep it. Every value you pass to `frontmatter.py set` is a shell argument: write reasons in plain words, without dollar signs, backticks, double quotes or backslashes.
+
 
 If first pass ({FIRST_PASS}=true), also set before_score and before_scores.* with the same values:
 

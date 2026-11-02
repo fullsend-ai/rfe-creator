@@ -134,9 +134,17 @@ AISDLC-190): an interactive run whose type came from the legacy default reads
 `Type: <t> — pass --type to override` on a clear match, re-running `resolve --type <t>` when that
 is not the resolved type, or asks one question built from the types' `display.entity`, `summary`
 and `examples`; `--type` skips the step and a headless run never asks (under `--headless` or the
-CI markers the digest answers one `HEADLESS:` line and nothing else). The review launcher
-follows (stage 2, AISDLC-191: the other types' cues enter the review context so a misfiled item
-is named in the review report and the needs-attention note, with no routing). Gate 1 checks the block, with or without jsonschema: the
+CI markers the digest answers one `HEADLESS:` line and nothing else). The review agent is
+its second reader (stage 2, AISDLC-191): it runs `classification --others <type>`, the other
+create-stage types' blocks (allowed in headless runs: it asks nothing), and when the type's
+review rules say the item reads as one of them it flags the item with
+`needs_attention_source=classification` and a reason starting `likely a <entity>: …; consider
+/rfe-create --type <t>`, in the review file, the review report and the run report (which carries
+`needs_attention_source` and `needs_attention_reason` per item since AISDLC-191); scores,
+recommendation, type and labels stay what the rules decide, nothing is routed, relabelled or
+moved, and the flag is never cleared automatically: `preserve_review_state.py` carries it across the
+re-review (the reviser may have reshaped the text into the filed type, so the fresh review would not
+raise it again) and the review report shows the source before the reason. Gate 1 checks the block, with or without jsonschema: the
 known keys only, the required fields present and the list bounds, a non-empty summary, non-blank
 phrases, no phrase repeated anywhere in the block (the signal/counter-signal pair named as such),
 no signal shared by two types, and, once one registered type declares the block, a block on every
@@ -546,7 +554,7 @@ stays byte-identical:
 
 | Field | Values | Written by |
 |---|---|---|
-| `needs_attention_source` | `feasibility`, `alignment`, `rubric`, `agent` | The review agent, whenever it sets `needs_attention=true` (`.claude/skills/rfe-review/prompts/review-agent.md` Step 4, rules in `types/<t>/prompts/review-rules.md`). Scripts that raise the flag themselves (`pipeline_state.py`, `verify_phase.py`, `reconcile_reviews.py`, `submit.py` holds) leave it unset |
+| `needs_attention_source` | `feasibility`, `alignment`, `rubric`, `classification`, `agent` | The review agent, whenever it sets `needs_attention=true` (`.claude/skills/rfe-review/prompts/review-agent.md` Step 4, rules in `types/<t>/prompts/review-rules.md`). Scripts that raise the flag themselves (`pipeline_state.py`, `verify_phase.py`, `reconcile_reviews.py`, `submit.py` holds) leave it unset |
 | `needs_attention_dimension` | one of the type's `schema.review.score_fields` (the schema enum follows the descriptor) | The review agent, when the source is `feasibility` or `rubric`; a prescriptive-HOW feasibility note is `open_to_how` |
 
 Consumer: REASSESS_FIXUP runs `check_revised.py --batch --clear-addressed-attention`, which clears
@@ -556,7 +564,9 @@ a non-empty removed-context companion sits next to the task, the `alignment` ver
 reassessed score of the dimension is the criterion maximum (2; the descriptor declares no
 per-criterion maximum). Feasibility is not re-run on the revised text, so its note describes the
 original wording. An infeasible or indeterminate verdict, an unset or other source is never
-cleared — see N8 in
+cleared. A feasibility flag whose reason also carries a classification sentence is handed over
+to source `classification` (that sentence as the only reason, the dimension removed) instead of
+being cleared — see N8 in
 `docs/state-machine/pipeline-correctness-reference.md`.
 
 ## Generated eval configs (§4.5)

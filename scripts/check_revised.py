@@ -41,6 +41,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import type_registry
 from artifact_utils import (
+    classification_sentence,
     find_review_file,
     read_frontmatter,
     read_ids_file,
@@ -167,11 +168,27 @@ def clear_addressed_attention(review, schema, score_fields, tasks_dir, rfe_id):
     ``needs_attention_source`` / ``needs_attention_dimension``. Idempotent: a cleared review
     no longer carries the flag, so a second call is a no-op. Returns the dimension cleared,
     or None when the review was left untouched.
+
+    When the reason also carries a classification sentence (``classification_sentence``), the
+    flag is not cleared: it is handed over to ``needs_attention_source: classification`` with
+    that sentence as the only reason, ``needs_attention_dimension`` removed and
+    ``needs_attention`` still true; the dimension is still returned as cleared. A second call
+    finds the source no longer feasibility and leaves the review as is.
     """
     data, _ = read_frontmatter(review)
     if not feasibility_flag_addressed(data, score_fields, has_removed_context(tasks_dir, rfe_id)):
         return None
     dimension = data["needs_attention_dimension"]
+    sentence = classification_sentence(data.get("needs_attention_reason"))
+    if sentence is not None:
+        # The feasibility note was addressed, but the reason also carries a classification
+        # sentence (the item reads as another type): that is a human's call, never cleared.
+        # The flag is handed over to the classification source with that sentence alone.
+        data.pop("needs_attention_dimension", None)
+        data["needs_attention_source"] = "classification"
+        data["needs_attention_reason"] = sentence
+        write_frontmatter(review, data, schema)
+        return dimension
     for field in _ATTENTION_SOURCE_FIELDS:
         data.pop(field, None)
     data["needs_attention"] = False

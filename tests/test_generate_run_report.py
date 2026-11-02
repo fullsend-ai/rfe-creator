@@ -2323,3 +2323,43 @@ class TestHierarchyParentIsNotASplitParent:
         assert generate_run_report.split_children_map(art_dir, self._config()) == {
             "RHAISTRAT-50": ["RHAISTRAT-8"]
         }
+
+
+class TestNeedsAttentionNoteOnEntries:
+    """AISDLC-191: the descriptor's extra_entry_fields carry needs_attention_source and
+    needs_attention_reason, so a misfiled item's note reaches the run report; an entry whose
+    review never set them gains no keys."""
+
+    def _item(self, art_dir, rfe_id, extra_fm=""):
+        _write(
+            f"{art_dir}/rfe-tasks/{rfe_id}.md",
+            f"---\nrfe_id: {rfe_id}\ntitle: T\npriority: Major\nstatus: Ready\n---\n\nBody.\n",
+        )
+        _write(
+            f"{art_dir}/rfe-reviews/{rfe_id}-review.md",
+            f"---\nrfe_id: {rfe_id}\nscore: 9\npass: true\nrecommendation: submit\n"
+            f"feasibility: feasible\nauto_revised: false\n{extra_fm}"
+            "scores:\n  what: 2\n  why: 2\n  open_to_how: 2\n  not_a_task: 2\n  right_sized: 2\n"
+            "---\n\nok.\n",
+        )
+
+    def test_a_misfiled_item_carries_source_and_reason(self, art_dir):
+        reason = (
+            "likely an Initiative: a quarter-long objective across three teams; "
+            "consider /rfe-create --type initiative"
+        )
+        self._item(
+            art_dir,
+            "RHAIRFE-9001",
+            f"needs_attention: true\nneeds_attention_source: classification\n"
+            f"needs_attention_reason: '{reason}'\n",
+        )
+        self._item(art_dir, "RHAIRFE-9002", "needs_attention: false\n")
+        report = build_report(["RHAIRFE-9001", "RHAIRFE-9002"], "2026-11-02T13:00:00Z", 5, [], [])
+        by_id = {e["id"]: e for e in report["per_rfe"]}
+        flagged, clean = by_id["RHAIRFE-9001"], by_id["RHAIRFE-9002"]
+        assert flagged["needs_attention"] is True
+        assert flagged["needs_attention_source"] == "classification"
+        assert flagged["needs_attention_reason"] == reason
+        assert clean["needs_attention"] is False
+        assert "needs_attention_source" not in clean and "needs_attention_reason" not in clean

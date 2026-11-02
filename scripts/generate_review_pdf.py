@@ -460,6 +460,7 @@ def main():
                 "auto_revised": review_fm.get("auto_revised", False),
                 "needs_attention": review_fm.get("needs_attention", False),
                 "needs_attention_reason": review_fm.get("needs_attention_reason", ""),
+                "needs_attention_source": review_fm.get("needs_attention_source", "") or "",
                 "recommendation": review_fm.get("recommendation", ""),
                 "alignment": review_fm.get("alignment", ""),
                 "error": error,
@@ -1565,9 +1566,16 @@ def main():
             return ' <span class="badge-tip"><span class="badge-rejected">REVISION REJECTED</span><span class="tip-text">Auto-revision decreased the score — original description kept, changes not submitted.</span></span>'
         return ""
 
+    def attn_text(r):
+        """The reason, prefixed by its source when the review recorded one (a classification
+        flag reads 'classification: likely an Initiative: ...', AISDLC-191)."""
+        reason = r.get("needs_attention_reason", "") or ""
+        source = r.get("needs_attention_source", "") or ""
+        return f"{source}: {reason}" if source and reason else reason
+
     def attn_badge(r):
         if r.get("needs_attention") and not r.get("error"):
-            reason = r.get("needs_attention_reason", "")
+            reason = attn_text(r)
             if reason:
                 return f' <span class="badge-tip"><span class="badge-attention">NEEDS ATTENTION</span><span class="tip-text">{html_escape(reason)}</span></span>'
             return ' <span class="badge-attention">NEEDS ATTENTION</span>'
@@ -1975,7 +1983,7 @@ def main():
             and not r.get("parent_refused")
             and not r.get("is_intermediary")
         ):
-            attn_reason = r.get("needs_attention_reason", "")
+            attn_reason = attn_text(r)
             html += f"""
             <div style="background:#fef9e6;border:2px solid #f39c12;border-radius:6pt;padding:10pt 14pt;margin-bottom:14pt;">
                 <div style="font-size:10pt;font-weight:700;color:#f39c12;">&#x26A0; Needs Attention</div>

@@ -198,7 +198,10 @@ one. Within the block `summary`, `signals` (at least one) and `examples` (one to
 against every installed type's block (stage 1, AISDLC-190): it reads
 `python3 scripts/type_registry.py classification`, the digest of every create-stage type's block,
 so your type takes part in the notice and the question as soon as it is registered; the review
-launcher will hand the other types' cues to the review (stage 2, AISDLC-191).
+agent reads `classification --others <your type>` (stage 2, AISDLC-191) and, when your
+`prompts/review-rules.md` says the item reads as another type, flags it with
+`needs_attention_source=classification` and a `likely a <entity>: …` reason, nothing more: write
+that condition in your review rules from your `counter_signals` (the shipped rules are the model).
 Write it after the template and the create guidance, from the same vocabulary: the summary is the
 one sentence you would give a colleague who asks "is this an X or a Y"; `signals` are what an idea
 of your type typically mentions (an escalation, an acceptance criterion, a quarter-long objective,

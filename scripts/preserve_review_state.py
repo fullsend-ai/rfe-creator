@@ -1,7 +1,8 @@
 """Save and restore cumulative review state across re-assessment cycles.
 
-Saves before_scores, the auto_revised flag, the auto_revised_cycle marker and
-revision history to a JSON state file before re-review, then restores them after
+Saves before_scores, the auto_revised flag, the auto_revised_cycle marker, a
+classification needs-attention flag (AISDLC-191) and revision history to a JSON state file before
+re-review, then restores them after
 the new review file is written. The re-review recreates the review file from
 scratch, so the flag would otherwise fall back to the schema default (false) for
 every re-reviewed item; submit.py derives the auto-revised Jira label from it.
@@ -27,7 +28,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 import type_registry
-from artifact_utils import read_frontmatter, update_frontmatter
+from artifact_utils import classification_sentence, read_frontmatter, update_frontmatter
 
 _TYPES = type_registry.load()
 
@@ -119,6 +120,23 @@ def _cycle_marker(value):
     return None
 
 
+def _classification_flag(data):
+    """The classification flag to save from review frontmatter ``data``, or None.
+
+    A flag sourced to classification is saved with its reason as is. Another source may hold
+    the field while its reason still carries the classification sentence (the restore appends
+    it to a fresh flag of another source, and a later save would otherwise lose it): that
+    sentence is saved as the reason.
+    """
+    reason = data.get("needs_attention_reason")
+    if data.get("needs_attention_source") == "classification":
+        return {"reason": reason}
+    sentence = classification_sentence(reason)
+    if sentence is not None:
+        return {"reason": sentence}
+    return None
+
+
 def save(rfe_id):
     """Save before_scores, the flag, its pass marker and revision history to a state file."""
     rpath = review_path(rfe_id)
@@ -136,6 +154,10 @@ def save(rfe_id):
         # none. Saved as the agent wrote it, never derived.
         "auto_revised_cycle": _cycle_marker(data.get("auto_revised_cycle")),
         "revision_history": extract_revision_history(rpath),
+        # AISDLC-191: a classification flag ("likely an Initiative ...") is a human's call,
+        # never cleared automatically; the re-review reads the revised text, which may no
+        # longer read as the other type, so the flag survives only through this file.
+        "classification_flag": _classification_flag(data),
     }
 
     spath = state_path(rfe_id)
@@ -187,6 +209,27 @@ def restore(rfe_id, keep_state=False):
         current_cycle = _cycle_marker(current.get("auto_revised_cycle"))
         if current_cycle is None or current_cycle < saved_cycle:
             fm_updates["auto_revised_cycle"] = saved_cycle
+    # A saved classification flag is re-raised when the fresh review carries no flag (no
+    # needs_attention, or no source). A fresh review that raised its own classification flag
+    # keeps its own reason. A fresh flag of another source keeps that source and reason, and
+    # the saved classification sentence is appended to the reason (once), so the human's
+    # classification call is not lost behind the other flag.
+    saved_flag = state.get("classification_flag")
+    if isinstance(saved_flag, dict):
+        current, _ = read_frontmatter(rpath)
+        fresh_source = current.get("needs_attention_source")
+        saved_reason = saved_flag.get("reason")
+        if not current.get("needs_attention") or not fresh_source:
+            fm_updates["needs_attention"] = True
+            fm_updates["needs_attention_source"] = "classification"
+            fm_updates["needs_attention_reason"] = saved_reason
+        elif fresh_source != "classification" and isinstance(saved_reason, str) and saved_reason:
+            fresh_reason = current.get("needs_attention_reason")
+            fresh_reason = fresh_reason if isinstance(fresh_reason, str) else ""
+            if classification_sentence(fresh_reason) is None:
+                fm_updates["needs_attention_reason"] = (
+                    f"{fresh_reason}; {saved_reason}" if fresh_reason else saved_reason
+                )
     if fm_updates:
         update_frontmatter(rpath, fm_updates, _schema(rfe_id))
 

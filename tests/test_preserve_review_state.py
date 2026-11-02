@@ -295,3 +295,185 @@ def test_restore_tolerates_a_state_file_without_the_marker(workdir):
 
     data, _ = read_frontmatter(prs.review_path(item_id))
     assert data["auto_revised"] is True and "auto_revised_cycle" not in data
+
+
+# ── AISDLC-191: a classification flag survives the re-review ─────────────────────────────────
+
+
+def _classified_review(id_field, item_id, scores):
+    reason = (
+        "likely an Initiative: a quarter-long objective across teams; "
+        "consider /rfe-create --type initiative"
+    )
+    return _revised_review(id_field, item_id, scores, auto_revised=True).replace(
+        "needs_attention: false\n",
+        f"needs_attention: true\nneeds_attention_source: classification\n"
+        f"needs_attention_reason: '{reason}'\n",
+    )
+
+
+@pytest.mark.parametrize("item_id,id_field,reviews_dir,scores", CASES)
+def test_save_records_a_classification_flag(workdir, item_id, id_field, reviews_dir, scores):
+    _write(f"{reviews_dir}/{item_id}-review.md", _classified_review(id_field, item_id, scores))
+    prs.save(item_id)
+    with open(prs.state_path(item_id)) as f:
+        state = json.load(f)
+    assert state["classification_flag"] == {
+        "reason": "likely an Initiative: a quarter-long objective across teams; "
+        "consider /rfe-create --type initiative"
+    }
+
+
+def test_save_records_no_classification_flag_for_another_source(workdir):
+    item_id, id_field, reviews_dir, scores = CASES[0]
+    review = _revised_review(id_field, item_id, scores, auto_revised=True).replace(
+        "needs_attention: false\n",
+        "needs_attention: true\nneeds_attention_source: feasibility\nneeds_attention_reason: 'x'\n",
+    )
+    _write(f"{reviews_dir}/{item_id}-review.md", review)
+    prs.save(item_id)
+    with open(prs.state_path(item_id)) as f:
+        assert json.load(f)["classification_flag"] is None
+
+
+@pytest.mark.parametrize("item_id,id_field,reviews_dir,scores", CASES)
+def test_restore_re_raises_the_classification_flag_on_a_fresh_review(
+    workdir, item_id, id_field, reviews_dir, scores
+):
+    """The re-review reads the revised text, which the reviser may have reshaped into the
+    filed type, so the fresh review does not raise the flag again; the restore does."""
+    path = f"{reviews_dir}/{item_id}-review.md"
+    _write(path, _classified_review(id_field, item_id, scores))
+    prs.save(item_id)
+    _write(path, _fresh_review(id_field, item_id, scores))
+    prs.restore(item_id)
+    fm, _ = read_frontmatter(path)
+    assert fm["needs_attention"] is True
+    assert fm["needs_attention_source"] == "classification"
+    assert fm["needs_attention_reason"].startswith("likely an Initiative:")
+    assert fm["pass"] is True and fm["recommendation"] == "submit"  # nothing else moved
+
+
+def test_restore_keeps_a_fresh_classification_flag_of_its_own(workdir):
+    item_id, id_field, reviews_dir, scores = CASES[0]
+    path = f"{reviews_dir}/{item_id}-review.md"
+    _write(path, _classified_review(id_field, item_id, scores))
+    prs.save(item_id)
+    fresh = _fresh_review(id_field, item_id, scores).replace(
+        "needs_attention: false\n",
+        "needs_attention: true\nneeds_attention_source: classification\n"
+        "needs_attention_reason: 'likely an Initiative: fresh evidence'\n",
+    )
+    _write(path, fresh)
+    prs.restore(item_id)
+    fm, _ = read_frontmatter(path)
+    assert fm["needs_attention_reason"] == "likely an Initiative: fresh evidence"
+
+
+@pytest.mark.parametrize("restores", [1, 2])
+def test_restore_appends_the_saved_classification_to_a_fresh_flag_of_another_source(
+    workdir, restores
+):
+    """A fresh review that raised its own flag (here alignment) keeps that source and reason;
+    the saved classification sentence joins the reason, once however often restore runs."""
+    item_id, id_field, reviews_dir, scores = CASES[0]
+    path = f"{reviews_dir}/{item_id}-review.md"
+    _write(path, _classified_review(id_field, item_id, scores))
+    prs.save(item_id)
+    fresh = _fresh_review(id_field, item_id, scores).replace(
+        "needs_attention: false\n",
+        "needs_attention: true\nneeds_attention_source: alignment\n"
+        "needs_attention_reason: 'alignment is weak: no outcome named'\n",
+    )
+    _write(path, fresh)
+    for _ in range(restores):
+        prs.restore(item_id, keep_state=True)
+    fm, _ = read_frontmatter(path)
+    assert fm["needs_attention"] is True
+    assert fm["needs_attention_source"] == "alignment"
+    assert "alignment is weak: no outcome named" in fm["needs_attention_reason"]
+    assert "likely an Initiative" in fm["needs_attention_reason"]
+    assert fm["needs_attention_reason"].count("likely an Initiative") == 1
+
+
+def test_restore_tolerates_a_state_file_without_the_classification_key(workdir):
+    item_id, id_field, reviews_dir, scores = CASES[0]
+    path = f"{reviews_dir}/{item_id}-review.md"
+    _write(path, _fresh_review(id_field, item_id, scores))
+    with open(prs.state_path(item_id), "w") as f:
+        json.dump({"before_score": 6, "auto_revised": True, "revision_history": ""}, f)
+    prs.restore(item_id)
+    fm, _ = read_frontmatter(path)
+    assert fm["needs_attention"] is False and "needs_attention_source" not in fm
+
+
+def test_save_recovers_the_classification_sentence_from_another_source(workdir):
+    """A reason of another source that carries the sentence (the restore appended it) saves
+    the sentence alone as the classification flag."""
+    item_id, id_field, reviews_dir, scores = CASES[0]
+    sentence = (
+        "likely an Initiative: a quarter-long objective across teams; "
+        "consider /rfe-create --type initiative"
+    )
+    review = _revised_review(id_field, item_id, scores, auto_revised=True).replace(
+        "needs_attention: false\n",
+        "needs_attention: true\nneeds_attention_source: alignment\n"
+        f"needs_attention_reason: 'alignment is weak: no outcome named; {sentence}'\n",
+    )
+    _write(f"{reviews_dir}/{item_id}-review.md", review)
+    prs.save(item_id)
+    with open(prs.state_path(item_id)) as f:
+        assert json.load(f)["classification_flag"] == {"reason": sentence}
+
+
+def test_classification_flag_survives_two_re_review_cycles(workdir):
+    """Cycle 1 re-reviews with a flag of another source (the sentence is appended to it);
+    cycle 2 re-reviews with no flag at all. The classification flag must be re-raised."""
+    item_id, id_field, reviews_dir, scores = CASES[0]
+    path = f"{reviews_dir}/{item_id}-review.md"
+    sentence = (
+        "likely an Initiative: a quarter-long objective across teams; "
+        "consider /rfe-create --type initiative"
+    )
+    _write(path, _classified_review(id_field, item_id, scores))
+    prs.save(item_id)
+    fresh = _fresh_review(id_field, item_id, scores).replace(
+        "needs_attention: false\n",
+        "needs_attention: true\nneeds_attention_source: feasibility\n"
+        "needs_attention_reason: 'feasibility note'\n",
+    )
+    _write(path, fresh)
+    prs.restore(item_id)
+    fm, _ = read_frontmatter(path)
+    assert fm["needs_attention_source"] == "feasibility"
+    assert fm["needs_attention_reason"] == f"feasibility note; {sentence}"
+
+    prs.save(item_id)
+    _write(path, _fresh_review(id_field, item_id, scores))
+    prs.restore(item_id)
+    fm, _ = read_frontmatter(path)
+    assert fm["needs_attention"] is True
+    assert fm["needs_attention_source"] == "classification"
+    assert fm["needs_attention_reason"] == sentence
+
+
+def test_alignment_reason_carrying_the_sentence_re_raises_classification(workdir):
+    """A first-pass review that kept the alignment source and carried the classification
+    sentence after the alignment explanation: save recovers the sentence, and a fresh
+    unflagged review gets it back as the classification flag, the sentence alone."""
+    item_id, id_field, reviews_dir, scores = CASES[1]
+    path = f"{reviews_dir}/{item_id}-review.md"
+    sentence = "likely an RFE: one customer-facing capability; consider /rfe-create --type rfe"
+    first_pass = _revised_review(id_field, item_id, scores, auto_revised=True).replace(
+        "needs_attention: false\n",
+        "needs_attention: true\nneeds_attention_source: alignment\n"
+        f"needs_attention_reason: 'alignment is weak: no outcome named; {sentence}'\n",
+    )
+    _write(path, first_pass)
+    prs.save(item_id)
+    _write(path, _fresh_review(id_field, item_id, scores))
+    prs.restore(item_id)
+    fm, _ = read_frontmatter(path)
+    assert fm["needs_attention"] is True
+    assert fm["needs_attention_source"] == "classification"
+    assert fm["needs_attention_reason"] == sentence

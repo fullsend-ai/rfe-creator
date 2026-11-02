@@ -60,6 +60,12 @@ order; the first signal present wins:
    option per type. A headless or CI run never asks and stays an RFE run, so a new Initiative
    there still needs `--type initiative`.
 
+A review looks at the same descriptions the other way round: an item that reads as the other
+type (an Initiative filed as an RFE, or an RFE filed as an Initiative) is flagged for attention
+with a note that starts `likely an Initiative:` or `likely an RFE:` and names the command to
+file it under the right type. The review does not move, relabel or retype it; that stays a
+human decision.
+
 ### The `TYPE RESOLVED` line
 
 The first thing every skill prints, before it fetches or writes anything, is one line saying
