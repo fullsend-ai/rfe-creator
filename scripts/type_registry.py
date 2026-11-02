@@ -2014,7 +2014,19 @@ HEADLESS_CLASSIFICATION_LINE = (
 def _cmd_classification(reg, args):
     """Headless runs (``--headless``, or the CI markers in the environment) get the HEADLESS
     line and no digest, so the create body cannot classify where it must not ask: the gate is
-    in code, not in the model's reading of the environment (review on #282)."""
+    in code, not in the model's reading of the environment (review on #282). ``--others
+    <type>`` is stage 2's form (AISDLC-191): the blocks of every create-stage type except
+    ``<type>``, the review agent's context for a misfiled item; it asks nothing, so the
+    headless gate does not apply to it."""
+    others = getattr(args, "others", None)
+    if others is not None:
+        reg.get(others)  # unknown type: the registry's own error, exit 2
+        rows = [r for r in classification_digest(reg) if r["type"] != others]
+        if args.json:
+            _emit(rows, True)
+        else:
+            sys.stdout.write(render_classification_digest(rows))
+        return 0
     if is_headless(reg.env, getattr(reg, "headless", False) or getattr(args, "headless", False)):
         if args.json:
             _emit([], True)
@@ -2150,6 +2162,14 @@ def _build_parser():
         action="store_true",
         help=f"treat the run as headless (also implied by {'/'.join(HEADLESS_MARKER_VARS)}): "
         "prints the HEADLESS line and no digest",
+    )
+    p_classification.add_argument(
+        "--others",
+        metavar="TYPE",
+        default=None,
+        help="print the blocks of every create-stage type except TYPE: the review agent's "
+        "context for a misfiled item (design §6 stage 2); asks nothing, so it is not gated "
+        "by --headless or the CI markers",
     )
     p_classification.set_defaults(func=_cmd_classification)
     p_binding = sub.add_parser(

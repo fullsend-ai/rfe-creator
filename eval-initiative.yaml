@@ -206,7 +206,7 @@ outputs:
       Timestamped run reports from the auto-fix pipeline.
       initiative-run-YYYYMMDD-HHMMSS.yaml: Structured YAML with run_id, started,
         completed timestamps, batch_size, per_initiative list (each with
-        id, recommendation, revision_cycles, alignment, feasibility, needs_attention),
+        id, recommendation, revision_cycles, alignment, feasibility, needs_attention, needs_attention_source, needs_attention_reason),
         before_scores_avg, after_scores_avg,
         results (passed/failed/split/errors/retried/retry_successes).
       initiative-run-YYYYMMDD-HHMMSS-report.html: Human-readable HTML companion

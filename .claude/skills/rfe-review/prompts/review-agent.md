@@ -47,7 +47,9 @@ python3 scripts/frontmatter.py set {REVIEWS_DIR}/{ID}-review.md \
     {SCORE_SET}{REVIEW_EXTRA_SET}
 ```
 
-If you set `needs_attention=true`, record its source by the rules in `{RULES_PATH}` in that same command, as two more arguments appended to it (the dimension only for a `feasibility` or `rubric` source): `needs_attention_source=<feasibility/alignment/rubric/agent> needs_attention_dimension=<score field>`. Never set them in a second `frontmatter.py set` call: the score is what marks the review complete, and a reader that runs between the two calls would see the flag without its source and keep it.
+If you set `needs_attention=true`, record its source by the rules in `{RULES_PATH}` in that same command, as two more arguments appended to it (the dimension only for a `feasibility` or `rubric` source): `needs_attention_source=<feasibility/alignment/rubric/classification/agent> needs_attention_dimension=<score field>`. Never set them in a second `frontmatter.py set` call: the score is what marks the review complete, and a reader that runs between the two calls would see the flag without its source and keep it.
+
+**Misfiled item (design §6 stage 2).** Run `python3 scripts/type_registry.py classification --others {TYPE}`: the other installed types' descriptions (summary, signals, counter-signals, examples; empty when there is none). When the rules in `{RULES_PATH}` say the task text reads as one of those types rather than an {ENTITY}, set `needs_attention=true` with `needs_attention_source=classification` (no dimension) and a `needs_attention_reason` that starts `likely a <that type's entity>: <one line of evidence from the text>; consider /rfe-create --type <that type>`, and say the same in the review body's assessor feedback. Change nothing else: the scores, the recommendation, the type and the labels stay what the rules decide; the review neither relabels nor moves the item.
 
 If first pass ({FIRST_PASS}=true), also set before_score and before_scores.* with the same values:
 

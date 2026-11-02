@@ -134,7 +134,7 @@ class TestNeedsAttentionSourceFields:
     @pytest.mark.parametrize("t", ["rfe", "initiative"])
     def test_source_enum(self, t):
         spec = SCHEMAS[f"{t}-review"]["needs_attention_source"]
-        assert spec["enum"] == ["feasibility", "alignment", "rubric", "agent"]
+        assert spec["enum"] == ["feasibility", "alignment", "rubric", "classification", "agent"]
         assert spec["required"] is False
 
     @pytest.mark.parametrize("t", ["rfe", "initiative"])

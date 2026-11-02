@@ -99,7 +99,9 @@ _FEASIBILITY_ENUM = ["feasible", "infeasible", "indeterminate"]
 # with the flag; check_revised.py --clear-addressed-attention reads it to clear a feasibility
 # flag a passing revision addressed. Scripts that raise the flag themselves leave it unset or
 # write "agent"; an unset source is never cleared.
-_NEEDS_ATTENTION_SOURCE_ENUM = ["feasibility", "alignment", "rubric", "agent"]
+# "classification" (AISDLC-191, design §6 stage 2): the review found the item reads as another
+# registered type; never cleared automatically, a human decides where the item belongs.
+_NEEDS_ATTENTION_SOURCE_ENUM = ["feasibility", "alignment", "rubric", "classification", "agent"]
 
 # The descriptor fields a type must declare to get a task and a review schema. Both shipped
 # types declare them all (validate_types.py gate 1 and tests/test_schemas_golden.py hold that).

@@ -201,6 +201,7 @@
         "feasibility",
         "alignment",
         "rubric",
+        "classification",
         "agent"
       ]
     },
@@ -411,6 +412,7 @@
         "feasibility",
         "alignment",
         "rubric",
+        "classification",
         "agent"
       ]
     },
