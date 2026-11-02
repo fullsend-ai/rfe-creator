@@ -455,3 +455,25 @@ def test_classification_flag_survives_two_re_review_cycles(workdir):
     assert fm["needs_attention"] is True
     assert fm["needs_attention_source"] == "classification"
     assert fm["needs_attention_reason"] == sentence
+
+
+def test_alignment_reason_carrying_the_sentence_re_raises_classification(workdir):
+    """A first-pass review that kept the alignment source and carried the classification
+    sentence after the alignment explanation: save recovers the sentence, and a fresh
+    unflagged review gets it back as the classification flag, the sentence alone."""
+    item_id, id_field, reviews_dir, scores = CASES[1]
+    path = f"{reviews_dir}/{item_id}-review.md"
+    sentence = "likely an RFE: one customer-facing capability; consider /rfe-create --type rfe"
+    first_pass = _revised_review(id_field, item_id, scores, auto_revised=True).replace(
+        "needs_attention: false\n",
+        "needs_attention: true\nneeds_attention_source: alignment\n"
+        f"needs_attention_reason: 'alignment is weak: no outcome named; {sentence}'\n",
+    )
+    _write(path, first_pass)
+    prs.save(item_id)
+    _write(path, _fresh_review(id_field, item_id, scores))
+    prs.restore(item_id)
+    fm, _ = read_frontmatter(path)
+    assert fm["needs_attention"] is True
+    assert fm["needs_attention_source"] == "classification"
+    assert fm["needs_attention_reason"] == sentence

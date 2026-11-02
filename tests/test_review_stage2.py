@@ -101,6 +101,10 @@ class TestReviewPromptStageTwo:
             "Paraphrase; never quote the task text, and keep the reason free of dollar signs "
             "and backslashes: Step 4 passes it as a shell argument." in paragraph
         )
+        assert (
+            "keep that source and still put the complete classification sentence in "
+            "`needs_attention_reason`" in paragraph
+        )
         assert "in its one `frontmatter.py set` call" in paragraph
         assert "`needs_attention_source=classification` (no dimension)" in paragraph
         assert "the review neither relabels nor moves the item" in paragraph
@@ -145,6 +149,9 @@ class TestReviewPromptStageTwo:
             )
         # no score gate on the RFE side: the rubric's not_a_task 0 is a chore, not an Initiative
         assert "neither is required" in rfe and "when `not_a_task` scores 0" not in rfe
+        # a second concern keeps the classification sentence in the reason (reassess cycle)
+        assert "carries both: the alignment explanation first, then `; ` and the complete" in init
+        assert "`classification` is the source" in rfe
         assert (
             "for the Initiative description: `likely an Initiative: <evidence>; "
             "consider /rfe-create --type initiative`" in rfe
