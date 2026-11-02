@@ -3241,6 +3241,7 @@ class TestGrandfathered:
 EXTENSION_POINTS = [
     r"^type$",
     r"^display\.",
+    r"^classification\.",
     r"^identity\.jira\.(project|issue_type|key_prefixes)",
     r"^identity\.(local_prefix|local_id_pattern|id_field)$",
     r"^dirs\.",

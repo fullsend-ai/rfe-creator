@@ -14,6 +14,26 @@ type: initiative
 display: { entity: Initiative, entity_plural: Initiatives }   # split_submit.py:133-134 entity_name/_plural; generate_review_pdf.py:66-67
 kind: work-item                                         # RESERVED (design §3.2); v1 constant, no consumer. inputs/produces omitted = []
 
+classification:                                         # design §6 (AISDLC-189): read by the create body (stage 1, AISDLC-190) and the review launcher (stage 2, AISDLC-191), neither shipped yet; gate 1 checks the block (validate_types.classification_messages + cross rule 7)
+  summary: A scoped body of work a team commits to deliver toward a strategic Outcome — its objective, the problem it answers and its boundaries, not one user-facing capability
+  driver: a team lead or Product Manager answering a strategic goal, usually under a RHAISTRAT Outcome
+  signals:
+    - an objective with a measurable target over a quarter or more
+    - an effort spanning several teams, components or releases
+    - rolls up to a parent Outcome or a strategic theme
+    - explicit scope boundaries, what is in and what is out, for a body of work
+    - several deliverables or workstreams to be broken into epics later
+    - the team's response to a market, platform or competitive direction
+  counter_signals:
+    - one user-facing capability with acceptance criteria
+    - a single customer's request, escalation or commitment
+    - a need that fits one release or one component
+    - an implementation task, a chore or a bug
+  examples:
+    - Deliver GPU utilization observability for the training and inference pools, dashboards and alerting included, so teams can right-size
+    - Shift platform testing left so every component ships with its own scale-up test matrix before the release branch
+    - Federate the platform's model registries so one search spans every registered model
+
 identity:
   tracker: jira                                         # every write goes through jira_utils.py REST (create_issue :172-179)
   jira:

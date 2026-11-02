@@ -12,6 +12,26 @@ type: rfe
 display: { entity: RFE, entity_plural: RFEs }          # split_submit.py:115-116 entity_name/_plural; generate_review_pdf.py:25-26
 kind: work-item                                         # RESERVED (design §3.2); v1 constant, no consumer. inputs/produces omitted = []
 
+classification:                                         # design §6 (AISDLC-189): read by the create body (stage 1, AISDLC-190) and the review launcher (stage 2, AISDLC-191), neither shipped yet; gate 1 checks the block (validate_types.classification_messages + cross rule 7)
+  summary: A product capability a customer or user needs — the WHAT and WHY of one business need, sized to land in a release
+  driver: a Product Manager relaying customers, partners or field evidence
+  signals:
+    - a named customer, partner, segment or field escalation behind the ask
+    - a user cannot do something today, or finds it painful
+    - acceptance criteria from the user's perspective ("the user can ...")
+    - one capability of one product area or component
+    - a need that fits one release or a few sprints
+    - a competitive gap, a customer commitment, a deal or a renewal at stake
+  counter_signals:
+    - a multi-quarter objective or a program spanning several teams
+    - a measurable outcome a team commits to deliver rather than a capability a user asks for
+    - a strategic theme, a portfolio bet or a parent Outcome to roll up to
+    - a list of deliverables or epics to be broken down later
+  examples:
+    - Customers deploying models on KServe need signature verification at serving time so an unsigned model cannot be served
+    - Data scientists need Ray clusters that scale with the workload instead of a fixed node count
+    - Platform engineers need a command-line interface to create and inspect Ray clusters without the dashboard
+
 identity:
   tracker: jira                                         # every write goes through jira_utils.py REST (create_issue :172-179)
   jira:
