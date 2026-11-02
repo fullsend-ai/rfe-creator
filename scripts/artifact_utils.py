@@ -103,6 +103,32 @@ _FEASIBILITY_ENUM = ["feasible", "infeasible", "indeterminate"]
 # registered type; never cleared automatically, a human decides where the item belongs.
 _NEEDS_ATTENTION_SOURCE_ENUM = ["feasibility", "alignment", "rubric", "classification", "agent"]
 
+_CLASSIFICATION_START = "likely a"
+_CLASSIFICATION_END = "consider /rfe-create --type"
+
+
+def classification_sentence(reason):
+    """The classification sentence inside a needs_attention_reason, or None.
+
+    The review agent writes it as ``likely a<n> <entity>: <evidence>; consider /rfe-create
+    --type <type>``, and other flag reasons may be joined to it with ``"; "``. The reason is
+    split on ``"; "``; the sentence runs from the first part starting with ``likely a`` to the
+    first part (that one or a later one) containing ``consider /rfe-create --type``, the parts
+    rejoined with ``"; "`` (the sentence itself holds one ``"; "``). None when the input is not
+    a string or holds no such sentence.
+    """
+    if not isinstance(reason, str):
+        return None
+    parts = reason.split("; ")
+    for start, part in enumerate(parts):
+        if not part.startswith(_CLASSIFICATION_START):
+            continue
+        for end in range(start, len(parts)):
+            if _CLASSIFICATION_END in parts[end]:
+                return "; ".join(parts[start : end + 1])
+    return None
+
+
 # The descriptor fields a type must declare to get a task and a review schema. Both shipped
 # types declare them all (validate_types.py gate 1 and tests/test_schemas_golden.py hold that).
 # A drop-in root (RFE_CREATOR_EXTRA_TYPES, dev/test only) may register a partial descriptor,

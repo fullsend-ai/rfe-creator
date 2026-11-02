@@ -21,6 +21,7 @@ from artifact_utils import (
     append_frontmatter_field,
     apply_defaults,
     auto_approve_qualifies,
+    classification_sentence,
     find_artifact_file_including_archived,
     find_removed_context_yaml,
     find_review_file,
@@ -2342,3 +2343,26 @@ class TestRenameUnderAProjectOverride:
         assert "ValueError: rename_initiative_to_jira_key: invalid Jira key 'KONFLUX-1'" in (
             result.stderr
         )
+
+
+_CLASSIFICATION = (
+    "likely an Initiative: a quarter-long objective across teams; "
+    "consider /rfe-create --type initiative"
+)
+
+
+@pytest.mark.parametrize(
+    "reason,expected",
+    [
+        (_CLASSIFICATION, _CLASSIFICATION),
+        (f"feasibility note; {_CLASSIFICATION}", _CLASSIFICATION),
+        (f"{_CLASSIFICATION}; another note", _CLASSIFICATION),
+        ("feasibility note; likely an RFE: one capability", None),
+        ("feasibility note", None),
+        ("", None),
+        (None, None),
+        (42, None),
+    ],
+)
+def test_classification_sentence(reason, expected):
+    assert classification_sentence(reason) == expected

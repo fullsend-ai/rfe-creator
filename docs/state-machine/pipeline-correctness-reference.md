@@ -893,6 +893,9 @@ with that flag's `needs_attention_dimension` at its maximum, the `feasibility` v
 sits next to the task (see the N8 row for the full list). Without it, a revision that
 fixed the prescriptive HOW feasibility complained about ended the run flagged, with a
 reason describing the pre-revision text. A flag with any other source, or none, is kept.
+`preserve_review_state.save()` recovers the classification sentence (`likely a... ; consider
+/rfe-create --type ...`) from the reason when another source held the field, so a
+classification flag the restore appended to another source's reason survives the next re-review.
 
 ### 5.2 filter_for_revision Includes Split-Recommended IDs
 

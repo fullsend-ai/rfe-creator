@@ -885,6 +885,35 @@ class TestClearAddressedAttention:
         assert "CLEARED_ATTENTION=\n" in result.stdout
         assert review.read_text() == first
 
+    def test_hands_a_feasibility_flag_with_a_classification_sentence_to_classification(
+        self, tmp_path, t
+    ):
+        # The feasibility note was addressed, but the reason also carries the classification
+        # sentence: that flag is a human's call, so it is kept under source classification.
+        sentence = (
+            "likely an Initiative: a quarter-long objective across teams; "
+            "consider /rfe-create --type initiative"
+        )
+        item_id, review = _setup_flagged(
+            tmp_path, t, needs_attention_reason=f"{_FEASIBILITY_REASON}; {sentence}"
+        )
+        result = _clear_run(tmp_path, t, item_id, "--clear-addressed-attention")
+        assert result.returncode == 0, result.stderr
+        assert f"CLEARED_ATTENTION={item_id}\n" in result.stdout
+        fm = _read_frontmatter(review)
+        assert fm["needs_attention"] is True
+        assert fm["needs_attention_source"] == "classification"
+        assert fm["needs_attention_reason"] == sentence
+        assert "needs_attention_dimension" not in fm
+        assert fm["pass"] is True and fm["auto_revised"] is True
+
+        # A second run finds a classification source and leaves the review as it is.
+        first = review.read_text()
+        result = _clear_run(tmp_path, t, item_id, "--clear-addressed-attention")
+        assert result.returncode == 0, result.stderr
+        assert "CLEARED_ATTENTION=\n" in result.stdout
+        assert review.read_text() == first
+
     def test_clears_a_flag_rewritten_after_a_clear(self, tmp_path, t):
         # A late review-agent write can re-raise the feasibility flag after a clear; a second
         # run clears it again when the conditions still hold and keeps it when they do not.

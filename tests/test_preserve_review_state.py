@@ -405,3 +405,53 @@ def test_restore_tolerates_a_state_file_without_the_classification_key(workdir):
     prs.restore(item_id)
     fm, _ = read_frontmatter(path)
     assert fm["needs_attention"] is False and "needs_attention_source" not in fm
+
+
+def test_save_recovers_the_classification_sentence_from_another_source(workdir):
+    """A reason of another source that carries the sentence (the restore appended it) saves
+    the sentence alone as the classification flag."""
+    item_id, id_field, reviews_dir, scores = CASES[0]
+    sentence = (
+        "likely an Initiative: a quarter-long objective across teams; "
+        "consider /rfe-create --type initiative"
+    )
+    review = _revised_review(id_field, item_id, scores, auto_revised=True).replace(
+        "needs_attention: false\n",
+        "needs_attention: true\nneeds_attention_source: alignment\n"
+        f"needs_attention_reason: 'alignment is weak: no outcome named; {sentence}'\n",
+    )
+    _write(f"{reviews_dir}/{item_id}-review.md", review)
+    prs.save(item_id)
+    with open(prs.state_path(item_id)) as f:
+        assert json.load(f)["classification_flag"] == {"reason": sentence}
+
+
+def test_classification_flag_survives_two_re_review_cycles(workdir):
+    """Cycle 1 re-reviews with a flag of another source (the sentence is appended to it);
+    cycle 2 re-reviews with no flag at all. The classification flag must be re-raised."""
+    item_id, id_field, reviews_dir, scores = CASES[0]
+    path = f"{reviews_dir}/{item_id}-review.md"
+    sentence = (
+        "likely an Initiative: a quarter-long objective across teams; "
+        "consider /rfe-create --type initiative"
+    )
+    _write(path, _classified_review(id_field, item_id, scores))
+    prs.save(item_id)
+    fresh = _fresh_review(id_field, item_id, scores).replace(
+        "needs_attention: false\n",
+        "needs_attention: true\nneeds_attention_source: feasibility\n"
+        "needs_attention_reason: 'feasibility note'\n",
+    )
+    _write(path, fresh)
+    prs.restore(item_id)
+    fm, _ = read_frontmatter(path)
+    assert fm["needs_attention_source"] == "feasibility"
+    assert fm["needs_attention_reason"] == f"feasibility note; {sentence}"
+
+    prs.save(item_id)
+    _write(path, _fresh_review(id_field, item_id, scores))
+    prs.restore(item_id)
+    fm, _ = read_frontmatter(path)
+    assert fm["needs_attention"] is True
+    assert fm["needs_attention_source"] == "classification"
+    assert fm["needs_attention_reason"] == sentence

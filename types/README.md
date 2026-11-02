@@ -564,7 +564,9 @@ a non-empty removed-context companion sits next to the task, the `alignment` ver
 reassessed score of the dimension is the criterion maximum (2; the descriptor declares no
 per-criterion maximum). Feasibility is not re-run on the revised text, so its note describes the
 original wording. An infeasible or indeterminate verdict, an unset or other source is never
-cleared — see N8 in
+cleared. A feasibility flag whose reason also carries a classification sentence is handed over
+to source `classification` (that sentence as the only reason, the dimension removed) instead of
+being cleared — see N8 in
 `docs/state-machine/pipeline-correctness-reference.md`.
 
 ## Generated eval configs (§4.5)
