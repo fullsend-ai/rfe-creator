@@ -108,6 +108,10 @@ class TestReviewPromptStageTwo:
         assert "in its one `frontmatter.py set` call" in paragraph
         assert "`needs_attention_source=classification` (no dimension)" in paragraph
         assert "the review neither relabels nor moves the item" in paragraph
+        assert (
+            "Judge the substance of the task text, not its sections: every task file follows "
+            "this type's template, so its headings are no evidence either way." in paragraph
+        )
         assert text.count("Misfiled item (design §6 stage 2)") == 1
         # the source enumeration the agent copies into frontmatter.py set names the new value
         assert "needs_attention_source=<feasibility/alignment/rubric/classification/agent>" in text
@@ -143,12 +147,20 @@ class TestReviewPromptStageTwo:
                 in paragraph
             )
             assert "whatever the scores say" in paragraph
+            # the first baseline (2026-11-03) read the template's headings as evidence of the type
+            assert "Judge the substance of the text, not its shape" in paragraph
+            assert "however its sections are titled" in paragraph
             assert (
                 "`classification` first when it applies (its reason carries the filing advice)"
                 in text
             )
         # no score gate on the RFE side: the rubric's not_a_task 0 is a chore, not an Initiative
         assert "neither is required" in rfe and "when `not_a_task` scores 0" not in rfe
+        # a split on a programme is the misfiled case, not a set of RFEs (baseline 2026-11-03)
+        [rfe_paragraph] = [
+            ln for ln in rfe.splitlines() if ln.startswith("A misfiled item (design §6 stage 2):")
+        ]
+        assert "is this case, not a set of RFEs" in rfe_paragraph
         # a second concern keeps the classification sentence in the reason (reassess cycle)
         assert "carries both: the alignment explanation first, then `; ` and the complete" in init
         assert "`classification` is the source" in rfe

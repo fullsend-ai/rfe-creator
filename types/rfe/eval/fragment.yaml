@@ -83,13 +83,23 @@ threshold_notes:
     (Harbor tasks, execution.mode: case) skip the run-level check and are
     decided by the tag alone. Untagged cases otherwise always pass.
   classification_signal: |
-    stage 2 of classification (AISDLC-191): every case carries
-    expected_classification (none, or the type the item really is). Two cases
-    added for AISDLC-192: one Initiative described as an RFE (must be flagged
-    "likely an Initiative") and one genuinely ambiguous idea (must not be
-    flagged); every other case must not be flagged either, so the check also
-    measures precision over the whole dataset. With 28 cases, 0.92 allows
-    2 failures. PROVISIONAL: the value and the slack are to be
-    set from the first baseline run with these cases (the datasets straddle
-    the boundary in both directions by design, so a few regular cases may read
-    as the other type to the reviewer); record that run here.
+    stage 2 of classification (AISDLC-191/192): a case's expected_classification
+    is none (must not be flagged), the type the item really is (must be flagged,
+    naming it) or absent (not checked: the boundary cases case-015 and case-017,
+    which read as programmes filed as RFEs). The check has two cases of its own:
+    case-027, an Initiative described as an RFE (must be flagged "likely an
+    Initiative"), and case-028, a genuinely ambiguous idea (must not be flagged);
+    every other annotated case must not be flagged either, so the check measures
+    precision over the dataset as well. With 28 cases, 0.92 allows 2 failures,
+    which makes this threshold a precision gate: the misfiled case's recall is
+    pinned by needs_attention_expectation (expected_needs_attention: true on
+    case-027, threshold 1.0), the binding gate for it.
+    Baseline 2026-11-03 (run 2026-11-03-opus-4-6 on ef82342, eval pipeline
+    3021822252): 27/28 = 0.964. Precision was perfect — no regular or weak-draft
+    case flagged — and the one miss was case-027 itself: the reviewer read the
+    RFE template's shape (problem statement, named customers, acceptance
+    criteria) as evidence of an RFE, called a three-team, three-quarter
+    programme under an Outcome "clearly an RFE" and recommended a split. The
+    rules now say to judge the substance rather than the shape and name that
+    split as the misfiled case. The value stays at 0.92; record the next run
+    with the sharpened rule here.

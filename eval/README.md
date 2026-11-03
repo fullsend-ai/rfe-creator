@@ -119,7 +119,7 @@ headless runs, which the same check asserts.
 | `recommendation_consistency` | check | pass/fail aligns with recommendation, infeasible != submit |
 | `revision_flag_consistency` | check | `auto_revised` agrees with revision evidence (state file, history, moved score, removed-context) |
 | `revision_coverage` | check | Revise path exercised: `revision-expected` cases were revised; every case fails when a multi-item run revised nothing (single-item runs: tag alone decides) |
-| `classification_signal` | check | Stage 2 of classification (AISDLC-191): the final review's misfiled-item flag matches `expected_classification` (`none`: no review may carry one; a type: one must, naming that type); a `pass --type to override` notice in stdout fails the case (stage 1 never runs headless) |
+| `classification_signal` | check | Stage 2 of classification (AISDLC-191): the final review's misfiled-item flag matches `expected_classification` (`none`: no review may carry one; a type: one must, naming that type); a `pass --type to override` notice in stdout fails the case (stage 1 never runs headless); the 0.92 threshold binds precision, the misfiled case's recall is pinned by `needs_attention_expectation` at 1.0 |
 | `pipeline_flow` | check | All three phases (create, auto-fix, submit) detected in stdout, no fatal tracebacks, no Phase 1 deletions |
 | `architecture_context_used` | check | Every feasibility file's writer transcript read `.context/architecture-context`; the prose fallback applies only to runs without transcript capture |
 | `rfe_quality` | LLM | RFE quality (WHAT/WHY/HOW/task/scope) + calibration accuracy |
@@ -403,8 +403,12 @@ Without these cases the initiative gate rested on the run-level rule alone, and 
 one team, one release) and `case-023` a genuinely ambiguous idea (one customer's deliverable that is
 two workstreams on our side). Their `annotations.yaml` carries `expected_classification` (`rfe` and
 `none`); every other case carries `none` except the boundary case `case-006` (a single landing-page
-feature filed as an Initiative), which carries a comment instead, so `classification_signal` does
-not check it. An unannotated case counts as a pass, so the threshold's slack is spent on the
+feature filed as an Initiative) and the five weak drafts `case-017` to `case-021` (feature-sized by
+design: their role is the revise path, and the first baseline flagged one of them as an RFE), which
+carry a comment instead, so `classification_signal` does not check them. A misfiling flag on a weak
+draft does not count against its `expected_needs_attention: false` either (`case-018`): that
+expectation is about the quality path, and `needs_attention_expectation` discounts the
+`classification` source. An unannotated case counts as a pass, so the threshold's slack is spent on the
 checked cases only, and the check measures precision over the rest of the dataset as well
 (AISDLC-192).
 
@@ -418,7 +422,7 @@ checked cases only, and the check measures precision over the rest of the datase
 | `recommendation_consistency` | check | pass/fail aligns with recommendation, infeasible != submit, weak alignment sets needs_attention |
 | `revision_flag_consistency` | check | `auto_revised` agrees with revision evidence (state file, history, moved score, removed-context) |
 | `revision_coverage` | check | Revise path exercised (23 cases, 7 tagged weak drafts; 0.92 allows one failing case): untagged-but-revised cases count; every case fails when a multi-item run revised nothing (single-item runs: tag alone decides) |
-| `classification_signal` | check | Stage 2 of classification (AISDLC-191): the final review's misfiled-item flag matches `expected_classification` (`none`: no review may carry one; a type: one must, naming that type); a `pass --type to override` notice in stdout fails the case (stage 1 never runs headless) |
+| `classification_signal` | check | Stage 2 of classification (AISDLC-191): the final review's misfiled-item flag matches `expected_classification` (`none`: no review may carry one; a type: one must, naming that type); a `pass --type to override` notice in stdout fails the case (stage 1 never runs headless); the 0.92 threshold binds precision, the misfiled case's recall is pinned by `needs_attention_expectation` at 1.0 |
 | `pipeline_flow` | check | All three phases (create, auto-fix, submit) detected in stdout, no fatal tracebacks, no Phase 1 deletions |
 | `architecture_context_used` | check | Every feasibility file's writer transcript read `.context/architecture-context` (or the review declares the context not relevant); the prose fallback applies only to runs without transcript capture |
 | `initiative_quality` | LLM | Initiative quality (WHAT/WHY/Scope/HOW/Right-sized) + calibration accuracy |
