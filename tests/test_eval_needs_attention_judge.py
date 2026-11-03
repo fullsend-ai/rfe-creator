@@ -33,9 +33,11 @@ def _run(outputs, config_path=EVAL_YAML):
     return ns["_check"](outputs=outputs)
 
 
-def _review(item_id, needs_attention):
-    fm = yaml.safe_dump({"initiative_id": item_id, "needs_attention": needs_attention})
-    return f"---\n{fm}---\n\n## Review\n"
+def _review(item_id, needs_attention, source=None):
+    fm = {"initiative_id": item_id, "needs_attention": needs_attention}
+    if source is not None:
+        fm["needs_attention_source"] = source
+    return f"---\n{yaml.safe_dump(fm)}---\n\n## Review\n"
 
 
 def _outputs(expected, *flags):
@@ -95,3 +97,24 @@ def test_no_annotation_is_not_checked():
 def test_no_reviews_with_an_expectation_fails():
     passed, _ = _run({"files": {}, "annotations": {"expected_needs_attention": False}})
     assert passed is False
+
+
+def test_a_classification_flag_does_not_count_against_an_expected_false():
+    """AISDLC-192 baseline: a weak draft flagged as misfiled (stage 2) still clears its own
+    quality flag; classification_signal judges the filing, this judge the quality path."""
+    files = {f"{REVIEWS}/INIT-0-review.md": _review("INIT-0", True, source="classification")}
+    passed, msg = _run({"files": files, "annotations": {"expected_needs_attention": False}})
+    assert passed is True and "as expected" in msg
+
+
+def test_other_sources_still_count_against_an_expected_false():
+    for source in ("feasibility", "alignment", "rubric", "agent"):
+        files = {f"{REVIEWS}/INIT-0-review.md": _review("INIT-0", True, source=source)}
+        passed, msg = _run({"files": files, "annotations": {"expected_needs_attention": False}})
+        assert passed is False and "expected False" in msg, source
+
+
+def test_a_classification_flag_still_satisfies_an_expected_true():
+    files = {f"{REVIEWS}/INIT-0-review.md": _review("INIT-0", True, source="classification")}
+    passed, _ = _run({"files": files, "annotations": {"expected_needs_attention": True}})
+    assert passed is True

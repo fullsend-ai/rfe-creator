@@ -1,6 +1,6 @@
 difficulty: hard
 expected_alignment: not_assessed
-expected_classification: none
+# expected_classification deliberately absent: a weak draft is feature-sized by design (its role is the revise path), so a stage-2 flag is legitimate and classification_signal does not check it (an absent annotation passes).
 expected_feasibility: null
 expected_needs_attention: false
 expected_pass: false

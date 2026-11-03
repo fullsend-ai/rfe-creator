@@ -492,7 +492,10 @@ judges:
       Compare each final review's needs_attention with the case's
       expected_needs_attention annotation (the flag at the end of the run,
       after any revision). A case without the annotation, or with a null
-      one, is not checked.
+      one, is not checked. A flag whose source is `classification` (stage 2
+      of classification: the item reads as another type) does not count
+      against an expected `false`: that expectation is about the item's own
+      quality path, and `classification_signal` judges the filing.
     check: |
       import yaml
 
@@ -520,6 +523,8 @@ judges:
           if not isinstance(fm, dict):
               continue
           actual = fm.get("needs_attention") is True
+          if actual and expected is False and fm.get("needs_attention_source") == "classification":
+              actual = False  # a misfiling flag is stage 2's call, judged by classification_signal
           if actual != expected:
               errors.append(f"{fname}: needs_attention={actual}, expected {expected}")
       return (

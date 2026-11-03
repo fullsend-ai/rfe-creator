@@ -108,13 +108,25 @@ threshold_notes:
     execution.mode: case) skip the run-level check and are decided by the
     tag alone. Untagged cases otherwise always pass.
   classification_signal: |
-    stage 2 of classification (AISDLC-191): every case carries
-    expected_classification (none, or the type the item really is). Two cases
-    added for AISDLC-192: one RFE described as an Initiative (must be flagged
-    "likely an RFE") and one genuinely ambiguous idea (must not be
-    flagged); every other case must not be flagged either, so the check also
-    measures precision over the whole dataset. With 23 cases, 0.92 allows
-    1 failure. PROVISIONAL: the value and the slack are to be
-    set from the first baseline run with these cases (the datasets straddle
-    the boundary in both directions by design, so a few regular cases may read
-    as the other type to the reviewer); record that run here.
+    stage 2 of classification (AISDLC-191/192): a case's expected_classification
+    is none (must not be flagged), the type the item really is (must be flagged,
+    naming it) or absent (not checked: the boundary case case-006 and the five
+    weak drafts case-017 to case-021, feature-sized by design). The check has
+    two cases of its own: case-022, an RFE described as an Initiative (must be
+    flagged "likely an RFE"), and case-023, a genuinely ambiguous idea (must not
+    be flagged); every other annotated case must not be flagged either, so the
+    check measures precision over the derived cases as well. With 23 cases, 0.92
+    allows 1 failure, which makes this threshold a precision gate: the misfiled
+    case's recall is pinned by needs_attention_expectation
+    (expected_needs_attention: true on case-022, threshold 1.0), the binding
+    gate for it; a classification flag on a weak draft does not count against
+    that judge's expected false (case-018).
+    Baseline 2026-11-03 (run 2026-11-03-opus-4-6 on ef82342, eval pipeline
+    3021822422): 21/23 = 0.913, two misses. case-021, a weak draft, was flagged
+    "likely an RFE: a single capability in one product area" — a fair reading
+    of a feature-sized draft, which is why the weak drafts are no longer
+    annotated. case-022 was not flagged: the reviewer took the Initiative
+    template's framing (objective, scope boundaries) as evidence of an
+    Initiative although the text names one dashboard team and one release. The
+    rules now say to judge the substance rather than the shape. The value stays
+    at 0.92; record the next run with the sharpened rule here.
