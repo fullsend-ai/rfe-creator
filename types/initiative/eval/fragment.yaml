@@ -129,5 +129,8 @@ threshold_notes:
     annotated. case-022 was not flagged: the reviewer took the Initiative
     template's framing (objective, scope boundaries) as evidence of an
     Initiative although the text names one dashboard team and one release. The
-    rules now say to judge the substance rather than the shape. The value stays
-    at 0.92; record the next run with the sharpened rule here.
+    rules now say to judge the substance rather than the shape. Second run with the sharpened rule, 2026-11-03 (run 2026-11-03-opus-4-6 on
+    54a1e63, eval pipeline 3022414926): 23/23. case-022 was flagged "likely an
+    RFE: one user-facing capability ..." under source classification and no
+    other case was flagged, the weak drafts included; needs_attention_expectation
+    1.0. The value stays at 0.92.
