@@ -100,3 +100,42 @@ def test_a_headless_run_must_not_show_the_create_notice():
     )
     passed, msg = _run(_outputs("none", _review("RFE-0"), stdout=stdout))
     assert passed is False and "headless" in msg
+
+
+def test_the_rule_quoted_with_a_placeholder_is_not_the_notice():
+    stdout = "Rule: print `Type: <t> \u2014 pass --type to override` only when interactive\n"
+    assert _run(_outputs("none", _review("RFE-0"), stdout=stdout))[0] is True
+
+
+def test_the_notice_must_stand_on_its_own_line():
+    stdout = "TYPE RESOLVED: rfe\n  Type: initiative \u2014 pass --type to override\n"
+    passed, msg = _run(_outputs("none", _review("RFE-0"), stdout=stdout))
+    assert passed is False and "headless" in msg
+
+
+def test_an_unannotated_case_passes_even_with_the_notice_in_stdout():
+    stdout = "Type: initiative \u2014 pass --type to override\n"
+    passed, msg = _run(_outputs("ABSENT", _review("RFE-0"), stdout=stdout))
+    assert passed is True and "no expected_classification" in msg
+
+
+UNTERMINATED = "---\nrfe_id: RFE-9\nneeds_attention: true\n"
+
+
+def test_none_fails_when_a_review_frontmatter_is_unreadable():
+    passed, msg = _run(_outputs("none", UNTERMINATED))
+    assert passed is False and "unreadable" in msg
+    for bad in ("no frontmatter at all", "---\n: [unclosed\n---\n", "---\n- a\n- b\n---\n"):
+        passed, msg = _run(_outputs("none", _review("RFE-0"), bad))
+        assert passed is False and "unreadable" in msg
+
+
+def test_a_type_fails_as_unreadable_not_as_missing_flag():
+    passed, msg = _run(_outputs("initiative", _review("RFE-0"), UNTERMINATED))
+    assert passed is False and "unreadable" in msg and "no review flagged" not in msg
+
+
+def test_a_hit_for_the_expected_type_passes_despite_an_unreadable_review():
+    outputs = _outputs("initiative", _review("RFE-0", "classification", SENTENCE), UNTERMINATED)
+    passed, msg = _run(outputs)
+    assert passed is True and "likely initiative" in msg

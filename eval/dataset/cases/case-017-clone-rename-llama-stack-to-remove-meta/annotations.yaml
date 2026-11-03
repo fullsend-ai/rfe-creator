@@ -1,5 +1,5 @@
 difficulty: null
-expected_classification: none
+# Boundary case: a cross-repository rename programme filed as an RFE straddles the RFE/Initiative boundary, so a stage-2 flag is defensible either way and classification_signal does not check it (an absent annotation passes).
 expected_feasibility: null
 expected_pass: null
 expected_recommendation: null

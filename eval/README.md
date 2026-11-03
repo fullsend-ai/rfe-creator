@@ -100,8 +100,12 @@ The 0.92 value was calibrated on two live 5-case runs on 2026-09-07 (claude-opus
 `case-027` is an Initiative described as an RFE (a multi-quarter, three-team programme under an
 Outcome, asked to be filed as an RFE) and `case-028` a genuinely ambiguous idea (one customer-facing
 capability that touches four components). Their `annotations.yaml` carries `expected_classification`
-(`initiative` and `none`); every other case carries `none`, so the `classification_signal` check
-measures precision over the whole dataset as well (AISDLC-192). The two cases exercise stage 2 of
+(`initiative` and `none`); every other case carries `none` except the boundary cases `case-015`
+and `case-017`, which straddle the RFE/Initiative boundary (a GA-readiness programme and a
+cross-repository rename programme, both filed as RFEs) and carry a comment instead, so
+`classification_signal` does not check them. An unannotated case counts as a pass, so the
+threshold's slack is spent on the checked cases only, and the check measures precision over the
+rest of the dataset as well (AISDLC-192). The two cases exercise stage 2 of
 classification (AISDLC-191); stage 1 (the create body's notice or question) never runs in these
 headless runs, which the same check asserts.
 
@@ -366,7 +370,7 @@ Automated evaluation of the `rfe-speedrun --type initiative` pipeline using the 
 
 ## How it works
 
-The evaluation runs the `rfe-speedrun` skill with `--type initiative` headlessly against 23 test cases: 16 derived from real RHOAIENG Jira initiatives (the project Initiatives lived in until 2026-10-28) (two of them, `case-007` and `case-013`, retargeted into weak drafts) and five deliberately weak drafts. Each test case provides an objective (prompt + clarifying context), and the pipeline creates, reviews (with assessment, feasibility, and strategic alignment), auto-fixes, and (dry-run) submits Initiatives.
+The evaluation runs the `rfe-speedrun` skill with `--type initiative` headlessly against 23 test cases: 16 derived from real RHOAIENG Jira initiatives (the project Initiatives lived in until 2026-10-28) (two of them, `case-007` and `case-013`, retargeted into weak drafts), 5 deliberately weak drafts and 2 classification cases (see [Misfiled and ambiguous cases](#misfiled-and-ambiguous-cases-1)). Each test case provides an objective (prompt + clarifying context), and the pipeline creates, reviews (with assessment, feasibility, and strategic alignment), auto-fixes, and (dry-run) submits Initiatives.
 
 ### Configuration
 
@@ -398,8 +402,11 @@ Without these cases the initiative gate rested on the run-level rule alone, and 
 `case-022` is an RFE described as an Initiative (one customer's capability with acceptance criteria,
 one team, one release) and `case-023` a genuinely ambiguous idea (one customer's deliverable that is
 two workstreams on our side). Their `annotations.yaml` carries `expected_classification` (`rfe` and
-`none`); every other case carries `none`, so the `classification_signal` check measures precision
-over the whole dataset as well (AISDLC-192).
+`none`); every other case carries `none` except the boundary case `case-006` (a single landing-page
+feature filed as an Initiative), which carries a comment instead, so `classification_signal` does
+not check it. An unannotated case counts as a pass, so the threshold's slack is spent on the
+checked cases only, and the check measures precision over the rest of the dataset as well
+(AISDLC-192).
 
 ### Judges
 
