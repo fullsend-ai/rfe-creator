@@ -519,10 +519,13 @@ judges:
       )
       if expected_classification.lower() == "none":
           expected_classification = ""
-      # The classification sentence alone, as the review rules build it; a concern
-      # appended after it (separated by "; ") makes the reason carry more than the filing.
+      # The classification sentence alone, as the review rules build it. The evidence may
+      # itself contain semicolons, so the pattern anchors on the tail: with the greedy
+      # ".+" the last "; consider /rfe-create --type <type>" clause has to end the reason,
+      # so a concern appended after it (separated by "; ") makes the reason carry more
+      # than the filing and does not match.
       sentence_only = re.compile(
-          r"likely an? [^;]+; consider /rfe-create --type [a-z][a-z0-9_-]+[.\s]*"
+          r"likely an? .+; consider /rfe-create --type [a-z][a-z0-9_-]+[.\s]*", re.S
       )
       names_expected = (
           re.compile(rf"--type {re.escape(expected_classification)}(?![a-z0-9_-])")
