@@ -152,6 +152,20 @@ def test_a_quality_concern_behind_the_classification_sentence_fails_an_expected_
     assert passed is False and "expected False" in msg
 
 
+def test_semicolons_inside_the_evidence_keep_the_sentence_discounted():
+    evidence = "likely an RFE: one team; one release; one capability"
+    reason = evidence + "; consider /rfe-create --type rfe"
+    passed, msg = _flagged(False, "classification", reason)
+    assert passed is True and "as expected" in msg
+
+
+def test_a_concern_behind_a_semicolon_laden_sentence_still_fails_an_expected_false():
+    evidence = "likely an RFE: one team; one release; one capability"
+    reason = evidence + "; consider /rfe-create --type rfe; WHY scored 0/2"
+    passed, msg = _flagged(False, "classification", reason)
+    assert passed is False and "expected False" in msg
+
+
 def test_a_classification_source_without_the_sentence_fails_an_expected_false():
     for reason in (None, "", "WHY scored 0/2", "looks like an RFE"):
         assert _flagged(False, "classification", reason)[0] is False, reason
