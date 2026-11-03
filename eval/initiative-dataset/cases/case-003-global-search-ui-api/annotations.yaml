@@ -1,5 +1,6 @@
 difficulty: null
 expected_alignment: not_assessed
+expected_classification: none
 expected_feasibility: null
 expected_pass: null
 expected_recommendation: null

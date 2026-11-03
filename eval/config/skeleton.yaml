@@ -526,6 +526,72 @@ judges:
           len(errors) == 0,
           "; ".join(errors[:5]) if errors else f"{len(reviews)} reviews: needs_attention={expected} as expected",
       )
+  - name: classification_signal
+    description: |
+      Stage 2 of classification (design section 6, AISDLC-191/192): compare the
+      final review's misfiled-item flag with the case's expected_classification
+      annotation. `none` means no review may carry a classification flag (the
+      regular cases and the genuinely ambiguous ones: precision); a type name
+      means some review must carry one whose reason names that type
+      (`consider /rfe-create --type <type>`). A case without the annotation is
+      not checked. Stage 1 never runs headless: a `pass --type to override`
+      notice in the run's stdout fails the case.
+    check: |
+      import re
+
+      import yaml
+
+      ann = outputs.get("annotations")
+      expected = ann.get("expected_classification") if isinstance(ann, dict) else None
+      if expected is None or str(expected).strip() == "":
+          return (True, "no expected_classification annotation")
+      expected = str(expected).strip()
+      # The notice line the create body prints, not the rule that quotes it (the
+      # skill text writes it with a `<t>` placeholder, which must not match).
+      stdout = outputs.get("stdout", "") or ""
+      if re.search(r"^\s*Type: [a-z][a-z0-9_-]+ — pass --type to override", stdout, re.M):
+          return (False, "the create step classified the idea in a headless run")
+      files = outputs.get("files", {})
+      reviews = {k: v for k, v in files.items() if k.endswith("-review.md")}
+      if not reviews:
+          return (False, "No review files to check")
+      flagged = []
+      unreadable = []
+      for fname, content in sorted(reviews.items()):
+          if not content.startswith("---"):
+              unreadable.append(fname)
+              continue
+          end = content.find("\n---", 3)
+          if end == -1:
+              unreadable.append(fname)
+              continue
+          try:
+              fm = yaml.safe_load(content[3:end]) or {}
+          except yaml.YAMLError:
+              unreadable.append(fname)
+              continue
+          if not isinstance(fm, dict):
+              unreadable.append(fname)
+              continue
+          reason = str(fm.get("needs_attention_reason") or "")
+          if fm.get("needs_attention_source") == "classification" or "consider /rfe-create --type" in reason:
+              flagged.append((fname, fm.get("needs_attention_source"), reason))
+      if expected == "none":
+          if flagged:
+              fname, source, reason = flagged[0]
+              return (False, f"{fname}: flagged as misfiled (source={source}): {reason[:160]}")
+          if unreadable:
+              return (False, f"{unreadable[0]}: review frontmatter unreadable, classification state unknown")
+          return (True, f"{len(reviews)} reviews, none flagged as misfiled")
+      hits = [f for f in flagged if f"--type {expected}" in f[2]]
+      if hits:
+          return (True, f"{hits[0][0]}: flagged, likely {expected}")
+      if unreadable:
+          return (False, f"{unreadable[0]}: review frontmatter unreadable, classification state unknown")
+      if flagged:
+          return (False, f"{flagged[0][0]}: flagged but names another type: {flagged[0][2][:160]}")
+      return (False, f"no review flagged the item as a misfiled {expected}")
+
   - name: revision_coverage
     description: |
       Verify the run exercised the revise/reassess path. When every draft passes

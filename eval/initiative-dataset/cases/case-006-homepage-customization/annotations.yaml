@@ -1,5 +1,6 @@
 difficulty: null
 expected_alignment: not_assessed
+# Boundary case: a single landing-page feature filed as an Initiative straddles the RFE/Initiative boundary, so a stage-2 flag is defensible either way and classification_signal does not check it (an absent annotation passes).
 expected_feasibility: null
 expected_pass: null
 expected_recommendation: null

@@ -1,0 +1,23 @@
+difficulty: hard
+expected_classification: initiative
+expected_feasibility: null
+expected_needs_attention: true
+expected_pass: null
+expected_recommendation: null
+expected_scores:
+  not_a_task: null
+  open_to_how: null
+  right_sized: null
+  what: null
+  why: null
+expected_total: null
+known_issues:
+- 'An Initiative at the RFE door (AISDLC-192): a multi-quarter, three-team programme under an Outcome,
+  asked to be filed as an RFE. Stage 2 (AISDLC-191) should flag it ''likely an Initiative'' with needs_attention_source
+  classification; the rubric may still score it as a business need and right_sized may call for a split.
+  The classification flag, not the scores, is what this case checks.'
+score_tolerance: 1
+tags:
+- misfiled
+- classification-expected
+- initiative-shaped

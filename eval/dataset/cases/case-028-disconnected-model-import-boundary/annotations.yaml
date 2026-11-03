@@ -1,0 +1,22 @@
+difficulty: hard
+expected_classification: none
+expected_feasibility: null
+expected_needs_attention: null
+expected_pass: null
+expected_recommendation: null
+expected_scores:
+  not_a_task: null
+  open_to_how: null
+  right_sized: null
+  what: null
+  why: null
+expected_total: null
+known_issues:
+- 'Genuinely ambiguous (AISDLC-192): reads as an RFE (one customer-facing capability, two named customers,
+  a renewal) and as an Initiative (four components, a possible programme). Stage 2 must not flag it: a
+  classification flag needs the other type''s signals to match clearly. If the baseline shows the reviewer
+  flagging it, the rule''s bar is too low.'
+score_tolerance: 1
+tags:
+- ambiguous
+- classification-boundary

@@ -41,7 +41,7 @@ Each run produces:
 
 ## How it works
 
-The evaluation runs the `rfe-speedrun` skill headlessly against 26 test cases: 20 derived from real RHAIRFE Jira issues plus 6 deliberately weak drafts (see [Weak-draft cases](#weak-draft-cases)). Each test case provides a problem statement (prompt + clarifying context), and the pipeline creates, reviews, auto-fixes, and (dry-run) submits RFEs.
+The evaluation runs the `rfe-speedrun` skill headlessly against 28 test cases: 20 derived from real RHAIRFE Jira issues, 6 deliberately weak drafts and 2 classification cases (see [Weak-draft cases](#weak-draft-cases)). Each test case provides a problem statement (prompt + clarifying context), and the pipeline creates, reviews, auto-fixes, and (dry-run) submits RFEs.
 
 ### How it was generated
 
@@ -59,7 +59,7 @@ The evaluation runs the `rfe-speedrun` skill headlessly against 26 test cases: 2
 
 ### Dataset
 
-`eval/dataset/cases/` contains 26 test cases, each with:
+`eval/dataset/cases/` contains 28 test cases, each with:
 
 | File | Purpose |
 |------|---------|
@@ -83,7 +83,7 @@ Cases `case-021` through `case-026` are deliberately weak drafts (`difficulty: h
 
 Without these cases every draft passed first review at 8-10, so the revise/reassess path was never exercised: `revision_quality` scored the decision not to revise 4-5 and `revision_flag_consistency` passed vacuously.
 
-The `revision_coverage` threshold (`min_pass_rate: 0.92`) tolerates 2 failing cases out of 26: 4 of 6 weak drafts revised leaves 2 failing cases, 24/26 = 0.923 (pass); 3 of 6 leaves 3, 23/26 = 0.885 (fail). That 2-failure slack is shared by every way a case can fail this check:
+The `revision_coverage` threshold (`min_pass_rate: 0.92`) tolerates 2 failing cases out of 28: 4 of 6 weak drafts revised leaves 2 failing cases, 26/28 = 0.929 (pass); 3 of 6 leaves 3, 25/28 = 0.893 (fail). That 2-failure slack is shared by every way a case can fail this check:
 
 - a weak draft the create step repairs on its own (passes first review, no revision);
 - a weak draft the first review **rejects or splits** instead of revising. `scripts/filter_for_revision.py` never routes `reject`, `autorevise_reject` or `split` recommendations into the revise path, so a correct reject or split leaves no revision evidence; split children are not routed to any case directory in batch mode and count only towards run-level coverage via the report;
@@ -95,6 +95,20 @@ The 0.92 value was calibrated on two live 5-case runs on 2026-09-07 (claude-opus
 
 **Cycle-2 coverage.** `case-026` (RFE) and initiative `case-021` were authored to pair an unfixable WHY with one fixable zero so that the re-review would still fail and reassess cycle 2 would launch a second revise agent. The 2026-09-21 calibration runs showed otherwise: `case-026` failed first review at 5/10 (WHY 0, `not_a_task` 0) and one revision took it to 9/10, the reviser padding WHY to 1 with a generic segment despite the draft's do-not-pad anchor; initiative `case-021` had its dictated stack opened by the create step, failed on WHY alone at 8/10 and passed at 9/10 after one revision. Both stay as ordinary `revision-expected` drafts, which is what `revision_coverage` needs; an "unfixable WHY" cannot be engineered reliably. Second-revision coverage comes from drafts whose first revision does not pass, and the same runs supplied it: RFE-024 reached cycle 2 in both rfe runs (Revise, Reassess, Re-review, Revise, Reassess, Re-review) and RFE-021 in one; INIT-012 reached cycle 2, stayed at 5/10 and was flagged at COLLECT (`COLLECT reconcile: restored=1 flagged=1`) — the first live proof of #194's second revision (AISDLC-45) and of the #192 flag path (AISDLC-33). The second launch is read from the run's transcript and the Revision History, not from a judge: `generate_run_report.py` sets `revision_cycles` to 1 only when `auto_revised` is true and the score moved, never higher, and a history entry count is not a stable signal (agents write one bullet per criterion, not per cycle).
 
+#### Misfiled and ambiguous cases
+
+`case-027` is an Initiative described as an RFE (a multi-quarter, three-team programme under an
+Outcome, asked to be filed as an RFE) and `case-028` a genuinely ambiguous idea (one customer-facing
+capability that touches four components). Their `annotations.yaml` carries `expected_classification`
+(`initiative` and `none`); every other case carries `none` except the boundary cases `case-015`
+and `case-017`, which straddle the RFE/Initiative boundary (a GA-readiness programme and a
+cross-repository rename programme, both filed as RFEs) and carry a comment instead, so
+`classification_signal` does not check them. An unannotated case counts as a pass, so the
+threshold's slack is spent on the checked cases only, and the check measures precision over the
+rest of the dataset as well (AISDLC-192). The two cases exercise stage 2 of
+classification (AISDLC-191); stage 1 (the create body's notice or question) never runs in these
+headless runs, which the same check asserts.
+
 ### Judges
 
 | Judge | Type | What it checks |
@@ -105,6 +119,7 @@ The 0.92 value was calibrated on two live 5-case runs on 2026-09-07 (claude-opus
 | `recommendation_consistency` | check | pass/fail aligns with recommendation, infeasible != submit |
 | `revision_flag_consistency` | check | `auto_revised` agrees with revision evidence (state file, history, moved score, removed-context) |
 | `revision_coverage` | check | Revise path exercised: `revision-expected` cases were revised; every case fails when a multi-item run revised nothing (single-item runs: tag alone decides) |
+| `classification_signal` | check | Stage 2 of classification (AISDLC-191): the final review's misfiled-item flag matches `expected_classification` (`none`: no review may carry one; a type: one must, naming that type); a `pass --type to override` notice in stdout fails the case (stage 1 never runs headless) |
 | `pipeline_flow` | check | All three phases (create, auto-fix, submit) detected in stdout, no fatal tracebacks, no Phase 1 deletions |
 | `architecture_context_used` | check | Every feasibility file's writer transcript read `.context/architecture-context`; the prose fallback applies only to runs without transcript capture |
 | `rfe_quality` | LLM | RFE quality (WHAT/WHY/HOW/task/scope) + calibration accuracy |
@@ -355,7 +370,7 @@ Automated evaluation of the `rfe-speedrun --type initiative` pipeline using the 
 
 ## How it works
 
-The evaluation runs the `rfe-speedrun` skill with `--type initiative` headlessly against 21 test cases: 16 derived from real RHOAIENG Jira initiatives (the project Initiatives lived in until 2026-10-28) (two of them, `case-007` and `case-013`, retargeted into weak drafts) and five deliberately weak drafts. Each test case provides an objective (prompt + clarifying context), and the pipeline creates, reviews (with assessment, feasibility, and strategic alignment), auto-fixes, and (dry-run) submits Initiatives.
+The evaluation runs the `rfe-speedrun` skill with `--type initiative` headlessly against 23 test cases: 16 derived from real RHOAIENG Jira initiatives (the project Initiatives lived in until 2026-10-28) (two of them, `case-007` and `case-013`, retargeted into weak drafts), 5 deliberately weak drafts and 2 classification cases (see [Misfiled and ambiguous cases](#misfiled-and-ambiguous-cases-1)). Each test case provides an objective (prompt + clarifying context), and the pipeline creates, reviews (with assessment, feasibility, and strategic alignment), auto-fixes, and (dry-run) submits Initiatives.
 
 ### Configuration
 
@@ -367,7 +382,7 @@ The evaluation runs the `rfe-speedrun` skill with `--type initiative` headlessly
 
 ### Dataset
 
-`eval/initiative-dataset/cases/` contains 21 test cases, each with:
+`eval/initiative-dataset/cases/` contains 23 test cases, each with:
 
 | File | Purpose |
 |------|---------|
@@ -382,6 +397,17 @@ Cases `case-007`, `case-013` and `case-017` through `case-021` are deliberately 
 
 Without these cases the initiative gate rested on the run-level rule alone, and passed only because `case-012` happened to be revised while the pipeline dropped the requester context; once #188 forwarded that context, a full run revised nothing and `revision_coverage` scored 0.0.
 
+#### Misfiled and ambiguous cases
+
+`case-022` is an RFE described as an Initiative (one customer's capability with acceptance criteria,
+one team, one release) and `case-023` a genuinely ambiguous idea (one customer's deliverable that is
+two workstreams on our side). Their `annotations.yaml` carries `expected_classification` (`rfe` and
+`none`); every other case carries `none` except the boundary case `case-006` (a single landing-page
+feature filed as an Initiative), which carries a comment instead, so `classification_signal` does
+not check it. An unannotated case counts as a pass, so the threshold's slack is spent on the
+checked cases only, and the check measures precision over the rest of the dataset as well
+(AISDLC-192).
+
 ### Judges
 
 | Judge | Type | What it checks |
@@ -391,7 +417,8 @@ Without these cases the initiative gate rested on the run-level rule alone, and 
 | `run_report_exists` | check | Initiative run report YAML with required fields |
 | `recommendation_consistency` | check | pass/fail aligns with recommendation, infeasible != submit, weak alignment sets needs_attention |
 | `revision_flag_consistency` | check | `auto_revised` agrees with revision evidence (state file, history, moved score, removed-context) |
-| `revision_coverage` | check | Revise path exercised (21 cases, 7 tagged weak drafts; 0.92 allows one failing case): untagged-but-revised cases count; every case fails when a multi-item run revised nothing (single-item runs: tag alone decides) |
+| `revision_coverage` | check | Revise path exercised (23 cases, 7 tagged weak drafts; 0.92 allows one failing case): untagged-but-revised cases count; every case fails when a multi-item run revised nothing (single-item runs: tag alone decides) |
+| `classification_signal` | check | Stage 2 of classification (AISDLC-191): the final review's misfiled-item flag matches `expected_classification` (`none`: no review may carry one; a type: one must, naming that type); a `pass --type to override` notice in stdout fails the case (stage 1 never runs headless) |
 | `pipeline_flow` | check | All three phases (create, auto-fix, submit) detected in stdout, no fatal tracebacks, no Phase 1 deletions |
 | `architecture_context_used` | check | Every feasibility file's writer transcript read `.context/architecture-context` (or the review declares the context not relevant); the prose fallback applies only to runs without transcript capture |
 | `initiative_quality` | LLM | Initiative quality (WHAT/WHY/Scope/HOW/Right-sized) + calibration accuracy |

@@ -256,7 +256,7 @@ class TestDerivedValues:
             "id, recommendation, revision_cycles, needs_attention, "
             "needs_attention_source, needs_attention_reason"
         )
-        assert d["annotations_extra"] == ""
+        assert d["annotations_extra"] == "- expected_classification (nullable)"
         assert d["review_extra_fields"] == ""
         assert d["checks.extra_enum_fields"] == ""
         assert d["checks.extra_rules"] == ""
@@ -268,7 +268,8 @@ class TestDerivedValues:
         frag = _fragment("initiative")
         d = gen.derived_values(REG.get("initiative"), gen.flatten(frag))
         assert d["annotations_extra"] == (
-            "- expected_alignment (nullable string: strong/partial/weak/not_assessed)"
+            "- expected_alignment (nullable string: strong/partial/weak/not_assessed)\n"
+            "- expected_classification (nullable)"
         )
         assert d["review_extra_fields"] == "alignment (strong/partial/weak/not_assessed),"
         assert d["checks.extra_enum_fields"].split("\n") == [

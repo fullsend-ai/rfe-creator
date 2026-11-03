@@ -1,0 +1,9 @@
+prompt: Customers running disconnected clusters need a supported way to bring a model and its serving runtime into
+  the cluster without internet access and serve it, across workbenches, serving and the model catalog.
+priority: Critical
+clarifying_context: 'Two named customers have it in their renewal conditions: Acme Corp (a defence integrator) and
+  Example Industries (a sovereign cloud). From their side it is one thing: a documented, supported path to load
+  a model and its runtime image into an air-gapped cluster and serve it. On our side it touches the catalog, the
+  registry, image mirroring and the serving operator, so it may be one capability or a programme across four teams;
+  we have not decided and would like the review to tell us. Success: an admin follows one procedure and a model
+  served offline matches what was imported, with a verified signature.'

@@ -1,0 +1,24 @@
+difficulty: hard
+expected_alignment: not_assessed
+expected_classification: rfe
+expected_feasibility: null
+expected_needs_attention: true
+expected_pass: null
+expected_recommendation: null
+expected_scores:
+  open_to_how: null
+  right_sized: null
+  scope: null
+  what: null
+  why: null
+expected_total: null
+known_issues:
+- 'An RFE at the Initiative door (AISDLC-192): one customer''s capability with acceptance criteria, one
+  team, one release, no Outcome. Stage 2 (AISDLC-191) should flag it ''likely an RFE'' with needs_attention_source
+  classification; the rubric will probably score it well. The flag, not the scores, is what this case
+  checks.'
+score_tolerance: 1
+tags:
+- misfiled
+- classification-expected
+- rfe-shaped

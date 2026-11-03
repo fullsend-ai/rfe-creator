@@ -1,4 +1,5 @@
 difficulty: hard
+expected_classification: none
 expected_feasibility: null
 expected_pass: false
 expected_recommendation: revise

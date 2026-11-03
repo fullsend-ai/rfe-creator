@@ -83,11 +83,11 @@ revision:
     prescriptive choices.
 threshold_notes:
   revision_coverage: |
-    with 21 cases of which 7 are tagged revision-expected (case-007, case-013
+    with 23 cases of which 7 are tagged revision-expected (case-007, case-013
     and case-017 to case-021, each carrying a gap the create step cannot
     repair: a circular WHY, a dictated technology stack, or no boundaries),
-    6 of 7 revised leaves 1 failure -> 20/21 = 0.952 (pass); 5 of 7 revised
-    leaves 2 failures -> 19/21 = 0.905 (fail). case-021 (a circular WHY next
+    6 of 7 revised leaves 1 failure -> 22/23 = 0.957 (pass); 5 of 7 revised
+    leaves 2 failures -> 21/23 = 0.913 (fail). case-021 (a circular WHY next
     to a dictated vendor stack) calibrated on 2026-09-21 as a one-revision
     pass: the create step drafted the stack open, first review 8/10 on WHY 0
     alone, revised once to 9/10. Second-revision coverage (AISDLC-45) comes
@@ -107,3 +107,14 @@ threshold_notes:
     every case on any dataset. Single-item runs (Harbor tasks,
     execution.mode: case) skip the run-level check and are decided by the
     tag alone. Untagged cases otherwise always pass.
+  classification_signal: |
+    stage 2 of classification (AISDLC-191): every case carries
+    expected_classification (none, or the type the item really is). Two cases
+    added for AISDLC-192: one RFE described as an Initiative (must be flagged
+    "likely an RFE") and one genuinely ambiguous idea (must not be
+    flagged); every other case must not be flagged either, so the check also
+    measures precision over the whole dataset. With 23 cases, 0.92 allows
+    1 failure. PROVISIONAL: the value and the slack are to be
+    set from the first baseline run with these cases (the datasets straddle
+    the boundary in both directions by design, so a few regular cases may read
+    as the other type to the reviewer); record that run here.
