@@ -456,6 +456,57 @@ class TestFeasibilityLabelExecutor:
         assert "rfe-creator-feasibility-fail" not in issue["fields"]["labels"]
 
 
+class TestClearedAttentionLabelExecutor:
+    """The executor takes a cleared needs-attention label off through swap_labels(), in
+    both branches that publish a review: Label only (the live case: the author's edit
+    changed nothing the pipeline rewrites) and Update."""
+
+    LABELS = ["rfe-creator-needs-attention", "rfe-creator-feasibility-pass"]
+
+    def _seed(self, art_dir, jira, *, body_changed):
+        original_body = "## Problem\n\nOriginal content.\n"
+        body = "## Problem\n\nUpdated content.\n" if body_changed else original_body
+        jira.create("RHAIRFE-1234", "Test RFE", original_body, labels=list(self.LABELS))
+        _write(f"{art_dir}/rfe-originals/RHAIRFE-1234.md", original_body)
+        _write(
+            f"{art_dir}/rfe-tasks/RHAIRFE-1234.md",
+            f"---\nrfe_id: RHAIRFE-1234\ntitle: Test RFE\n"
+            f"priority: Major\nstatus: Ready\n"
+            f"original_labels:\n- rfe-creator-needs-attention\n- rfe-creator-feasibility-pass\n"
+            f"---\n{body}",
+        )
+        review = FEAS_REVIEW_TEMPLATE.format(rfe_id="RHAIRFE-1234", verdict="feasible")
+        if body_changed:
+            review = review.replace("auto_revised: false", "auto_revised: true")
+        _write(f"{art_dir}/rfe-reviews/RHAIRFE-1234-review.md", review)
+
+    @pytest.mark.parametrize("body_changed", [False, True], ids=["label-only", "update"])
+    def test_cleared_label_comes_off(self, art_dir, jira, body_changed):
+        self._seed(art_dir, jira, body_changed=body_changed)
+        r = _run_submit(art_dir, jira.url)
+        assert r.returncode == 0, r.stderr
+        labels = jira.get("RHAIRFE-1234")["fields"]["labels"]
+        assert "rfe-creator-needs-attention" not in labels
+        assert "rfe-creator-feasibility-pass" in labels
+        assert "rfe-creator-autofix-rubric-pass" in labels
+
+    def test_a_still_flagged_item_keeps_the_label(self, art_dir, jira):
+        self._seed(art_dir, jira, body_changed=False)
+        review_path = f"{art_dir}/rfe-reviews/RHAIRFE-1234-review.md"
+        review = (
+            open(review_path, encoding="utf-8")
+            .read()
+            .replace(
+                "needs_attention: false",
+                "needs_attention: true\nneeds_attention_reason: WHY scored 0/2",
+            )
+        )
+        _write(review_path, review)
+        r = _run_submit(art_dir, jira.url)
+        assert r.returncode == 0, r.stderr
+        assert "rfe-creator-needs-attention" in jira.get("RHAIRFE-1234")["fields"]["labels"]
+
+
 # The two switches that arm the interrupted-revision hold (AISDLC-279): --auto-approve
 # implies it, so the RFE production job's command stream is unchanged; --hold-interrupted
 # alone is the non-interactive run that does not auto-approve (the Initiative jobs).

@@ -462,6 +462,7 @@ if no review file existed yet (e.g., assess_failed before any review agent ran).
 | L8 | (none) | split-original | Parent closed after split | Phase 3 of split_submit | add_labels() | split_submit.py:319 |
 | L9 | (none) | split-result | Split child created | Always for children | create_issue() with label | split_submit.py:195 |
 | L10 | (none) | ignore | Human manually applies | N/A | Manual Jira action | N/A |
+| L11 | needs-attention | (removed) | A later review clears the flag | needs_attention=false, no `error`, label in original_labels (Label only and Update entries; the reject path publishes no verdict) | swap_labels() | submit.py `_cleared_attention_label` |
 
 ### 2.7 Snapshot State Transitions
 
