@@ -1153,7 +1153,11 @@ thresholds:
   # criteria) as evidence of an RFE, called a three-team, three-quarter
   # programme under an Outcome "clearly an RFE" and recommended a split. The
   # rules now say to judge the substance rather than the shape and name that
-  # split as the misfiled case. The value stays at 0.92; record the next run
-  # with the sharpened rule here.
+  # split as the misfiled case. Second run with the sharpened rule, 2026-11-03 (run 2026-11-03-opus-4-6 on
+  # be79aef, eval pipeline 3023147047): 28/28. case-027 was flagged "likely an
+  # Initiative: names several teams in a joint programme ..." under source
+  # classification (the split stays recommended, as the rules require) and no
+  # other case was flagged; needs_attention_expectation 1.0. The value stays at
+  # 0.92.
   classification_signal:
     min_pass_rate: 0.92
