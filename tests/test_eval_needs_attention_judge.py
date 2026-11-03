@@ -33,10 +33,12 @@ def _run(outputs, config_path=EVAL_YAML):
     return ns["_check"](outputs=outputs)
 
 
-def _review(item_id, needs_attention, source=None):
+def _review(item_id, needs_attention, source=None, reason=None):
     fm = {"initiative_id": item_id, "needs_attention": needs_attention}
     if source is not None:
         fm["needs_attention_source"] = source
+    if reason is not None:
+        fm["needs_attention_reason"] = reason
     return f"---\n{yaml.safe_dump(fm)}---\n\n## Review\n"
 
 
@@ -102,7 +104,8 @@ def test_no_reviews_with_an_expectation_fails():
 def test_a_classification_flag_does_not_count_against_an_expected_false():
     """AISDLC-192 baseline: a weak draft flagged as misfiled (stage 2) still clears its own
     quality flag; classification_signal judges the filing, this judge the quality path."""
-    files = {f"{REVIEWS}/INIT-0-review.md": _review("INIT-0", True, source="classification")}
+    review = _review("INIT-0", True, source="classification", reason=CLASSIFICATION_SENTENCE)
+    files = {f"{REVIEWS}/INIT-0-review.md": review}
     passed, msg = _run({"files": files, "annotations": {"expected_needs_attention": False}})
     assert passed is True and "as expected" in msg
 
@@ -118,3 +121,68 @@ def test_a_classification_flag_still_satisfies_an_expected_true():
     files = {f"{REVIEWS}/INIT-0-review.md": _review("INIT-0", True, source="classification")}
     passed, _ = _run({"files": files, "annotations": {"expected_needs_attention": True}})
     assert passed is True
+
+
+CLASSIFICATION_SENTENCE = (
+    "likely an RFE: one team, one release, one capability; consider /rfe-create --type rfe"
+)
+
+
+def _flagged(expected_needs_attention, source, reason, expected_classification=None):
+    files = {f"{REVIEWS}/INIT-0-review.md": _review("INIT-0", True, source=source, reason=reason)}
+    annotations = {"expected_needs_attention": expected_needs_attention}
+    if expected_classification is not None:
+        annotations["expected_classification"] = expected_classification
+    return _run({"files": files, "annotations": annotations})
+
+
+def test_the_bare_classification_sentence_is_discounted_for_an_expected_false():
+    for reason in (
+        CLASSIFICATION_SENTENCE,
+        CLASSIFICATION_SENTENCE + ".",
+        CLASSIFICATION_SENTENCE + " \n",
+    ):
+        passed, msg = _flagged(False, "classification", reason)
+        assert passed is True and "as expected" in msg, reason
+
+
+def test_a_quality_concern_behind_the_classification_sentence_fails_an_expected_false():
+    reason = CLASSIFICATION_SENTENCE + "; WHY scored 0/2"
+    passed, msg = _flagged(False, "classification", reason)
+    assert passed is False and "expected False" in msg
+
+
+def test_a_classification_source_without_the_sentence_fails_an_expected_false():
+    for reason in (None, "", "WHY scored 0/2", "looks like an RFE"):
+        assert _flagged(False, "classification", reason)[0] is False, reason
+
+
+def test_a_type_name_expected_true_rejects_an_unrelated_flag():
+    passed, msg = _flagged(True, "feasibility", "component does not exist", "rfe")
+    assert passed is False and "flagged, but not as a misfiled rfe" in msg
+
+
+def test_a_type_name_expected_true_accepts_the_classification_flag_naming_it():
+    assert _flagged(True, "classification", CLASSIFICATION_SENTENCE, "rfe")[0] is True
+
+
+def test_a_type_name_expected_true_rejects_a_flag_naming_another_type():
+    reason = "likely an Initiative: three teams; consider /rfe-create --type initiative"
+    assert _flagged(True, "classification", reason, "rfe")[0] is False
+
+
+def test_a_type_name_expected_true_still_fails_an_unset_flag():
+    files = {f"{REVIEWS}/INIT-0-review.md": _review("INIT-0", False)}
+    outputs = {
+        "files": files,
+        "annotations": {"expected_needs_attention": True, "expected_classification": "rfe"},
+    }
+    assert _run(outputs)[0] is False
+
+
+def test_expected_true_without_a_type_keeps_the_plain_boolean():
+    for expected_classification in (None, "none", "", "  "):
+        passed, _ = _flagged(
+            True, "feasibility", "component does not exist", expected_classification
+        )
+        assert passed is True, expected_classification
