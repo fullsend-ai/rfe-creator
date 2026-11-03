@@ -961,6 +961,99 @@ class TestFeasibilityLabelOnSubmit:
         assert "rfe-creator-feasibility" not in stdout
 
 
+class TestClearedAttentionLabel:
+    """A needs-attention label the review being published no longer stands behind comes
+    off. The first live clear (2026-11-03): three items flagged for a missing business
+    justification, answered by their author, reviewed clean and approved with the stale
+    flag still on, because the builder only ever added. Conditional like the feasibility
+    flip: only a label the item actually carries, and only on a review that is a verdict
+    on the flag."""
+
+    ATTN = "rfe-creator-needs-attention"
+
+    def _task(self, rfe_id, original_labels=(), body="## Problem\n\nContent here.\n"):
+        labels_yaml = "\n".join(f"- {label}" for label in original_labels)
+        labels_block = (
+            f"original_labels:\n{labels_yaml}\n" if labels_yaml else "original_labels: []\n"
+        )
+        return (
+            f"---\nrfe_id: {rfe_id}\ntitle: Test RFE\n"
+            f"priority: Major\nstatus: Ready\n"
+            f"{labels_block}---\n\n{body}"
+        )
+
+    def _seed(self, art_dir, review, original_labels=(ATTN,), body_changed=False):
+        task = self._task("RHAIRFE-1234", original_labels)
+        _write(f"{art_dir}/rfe-tasks/RHAIRFE-1234.md", task)
+        original = (
+            self._task("RHAIRFE-1234", original_labels, body="## Problem\n\nBefore.\n")
+            if body_changed
+            else task
+        )
+        _write(f"{art_dir}/rfe-originals/RHAIRFE-1234.md", original)
+        _write(f"{art_dir}/rfe-reviews/RHAIRFE-1234-review.md", review)
+
+    def test_label_only_path_takes_the_cleared_label_off(self, art_dir):
+        """The live case: same body, the author's edit was reviewed clean."""
+        self._seed(art_dir, _feas_review("RHAIRFE-1234", "feasible"))
+        stdout, stderr, rc = _run_submit(art_dir)
+        assert rc == 0, stderr
+        assert "Label only" in stdout
+        assert f"RHAIRFE-1234: Would remove labels: {self.ATTN}\n" in stdout
+        assert "rfe-creator-autofix-rubric-pass" in stdout
+
+    def test_update_path_takes_the_cleared_label_off(self, art_dir):
+        review = _feas_review("RHAIRFE-1234", "feasible").replace(
+            "auto_revised: false", "auto_revised: true"
+        )
+        self._seed(art_dir, review, body_changed=True)
+        stdout, stderr, rc = _run_submit(art_dir)
+        assert rc == 0, stderr
+        assert "Update RHAIRFE-1234" in stdout
+        assert f"Would remove: {self.ATTN}" in stdout
+
+    def test_a_review_that_still_flags_keeps_the_label(self, art_dir):
+        review = _feas_review("RHAIRFE-1234", "feasible").replace(
+            "needs_attention: false",
+            "needs_attention: true\nneeds_attention_reason: WHY scored 0/2",
+        )
+        self._seed(art_dir, review)
+        stdout, stderr, rc = _run_submit(art_dir)
+        assert rc == 0, stderr
+        assert "Would remove labels" not in stdout
+        assert f"Would add labels: {self.ATTN}" in stdout
+
+    def test_an_item_without_the_label_sees_no_removal(self, art_dir):
+        self._seed(art_dir, _feas_review("RHAIRFE-1234", "feasible"), original_labels=())
+        stdout, stderr, rc = _run_submit(art_dir)
+        assert rc == 0, stderr
+        assert "Would remove labels" not in stdout
+
+    def test_an_error_stub_is_no_verdict_on_the_flag(self, art_dir):
+        """Same rule as the feasibility labels: a review carrying an error flips nothing."""
+        review = _error_review("RHAIRFE-1234", "assess_stalled").replace(
+            "needs_attention: true", "needs_attention: false"
+        )
+        self._seed(art_dir, review)
+        stdout, stderr, rc = _run_submit(art_dir)
+        assert rc == 0, stderr
+        assert "Would remove labels" not in stdout
+
+    def test_helper_is_conditional_on_the_label_and_the_review(self):
+        from submit import _cleared_attention_label
+
+        cfg = {"label_prefix": "rfe-creator"}
+        clean = {"needs_attention": False}
+        assert _cleared_attention_label(cfg, clean, [self.ATTN, "other"]) == [self.ATTN]
+        assert _cleared_attention_label(cfg, clean, ["other"]) == []
+        assert _cleared_attention_label(cfg, clean, None) == []
+        assert _cleared_attention_label(cfg, {"needs_attention": True}, [self.ATTN]) == []
+        assert (
+            _cleared_attention_label(cfg, {**clean, "error": "assess_stalled"}, [self.ATTN]) == []
+        )
+        assert _cleared_attention_label(cfg, None, [self.ATTN]) == []
+
+
 class TestSplitRefusal:
     """Tests for submit.py handling split_submit.py exit code 2."""
 

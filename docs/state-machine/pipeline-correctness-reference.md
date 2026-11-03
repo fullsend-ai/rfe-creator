@@ -193,7 +193,7 @@ applies to issues that have never appeared in any snapshot.
 | `rfe-creator-auto-created` | submit.py, split_submit.py | Never | Provenance: ticket was created (not updated) by pipeline |
 | `rfe-creator-auto-revised` | submit.py, split_submit.py | Never (prevented via check_revised.py) | Content was modified by automation |
 | `rfe-creator-autofix-rubric-pass` | submit.py, split_submit.py | submit.py (on re-review regression) | RFE passed rubric; JQL filter to skip re-processing |
-| `rfe-creator-needs-attention` | submit.py, split_submit.py | Never (by pipeline) | Human escalation flag |
+| `rfe-creator-needs-attention` | submit.py, split_submit.py | submit.py, when a later review clears the flag (needs_attention false, no error, label in original_labels; Label-only and Update entries, see L11). Not the reject path. | Human escalation flag |
 | `rfe-creator-split-original` | split_submit.py Phase 3 | Never | Parent ticket was decomposed into children |
 | `rfe-creator-split-result` | split_submit.py Phase 2 | Never | Child ticket created from split |
 | `rfe-creator-feasibility-pass` | submit.py, split_submit.py | submit.py (on verdict change or reject, when present in `original_labels`) | Technical feasibility verdict was `feasible` |
@@ -462,6 +462,7 @@ if no review file existed yet (e.g., assess_failed before any review agent ran).
 | L8 | (none) | split-original | Parent closed after split | Phase 3 of split_submit | add_labels() | split_submit.py:319 |
 | L9 | (none) | split-result | Split child created | Always for children | create_issue() with label | split_submit.py:195 |
 | L10 | (none) | ignore | Human manually applies | N/A | Manual Jira action | N/A |
+| L11 | needs-attention | (removed) | A later review clears the flag | needs_attention=false, no `error`, label in original_labels (Label only and Update entries; the reject path publishes no verdict) | swap_labels() | submit.py `_cleared_attention_label` |
 
 ### 2.7 Snapshot State Transitions
 
@@ -845,7 +846,7 @@ failures that may not surface until production runs.
 - **Split submit transition fallback:** Logs WARNING and skips closure gracefully if no "Closed" transition exists on the parent ticket.
 - **Label-only path still sets `status=Submitted`** (`submit.py:507-509`).
 - **Auto-approve gate (`artifact_utils.auto_approve_qualifies`, #251):** under `--auto-approve` an item (or a split child at creation) is transitioned to the type's approved status only when its review has no `error`, `pass: true`, `feasibility: feasible` and `recommendation: submit` (an absent recommendation counts as `submit`, as the plan loop assumes). A `split` recommendation blocks the transition: a split-recommended item that reaches Phase 2 was not split in this run (a run aborted before SPLIT, or a skipped split), so it gets its labels only — no rubric-pass label (L4) and no transition — the plan prints `Note: split recommended but not split in this run: not auto-approved`, and it is left for the next run or a human. `needs_attention` stays advisory (label, not transition). Pinned by `TestApprovedTransition` (`tests/test_submit.py`, `tests/test_submit_integration.py`), `TestAutoApprove` (`tests/test_initiative_submit.py`) and `TestAutoApproveQualifies` (`tests/test_artifact_utils.py`).
-- **Pipeline-removed labels:** `rfe-creator-autofix-rubric-pass` (on re-review regression to reject) and the three `rfe-creator-feasibility-*` labels (on verdict change or reject). All use the same conditional guard: `label in original_labels`. No other automation labels are ever removed by the pipeline.
+- **Pipeline-removed labels:** `rfe-creator-autofix-rubric-pass` (on re-review regression to reject), the three `rfe-creator-feasibility-*` labels (on verdict change or reject), and `rfe-creator-needs-attention` (when a later review clears the flag, L11). All use the same conditional guard: `label in original_labels`. The auto-created, auto-revised, split-original and split-result labels are never removed by the pipeline.
 - **Conflict check compares `rfe-originals/{ID}.md` against live Jira** via `normalize_for_compare()`. Stale (conflict) → skip, NOT marked processed.
 - **Submit error (E8) also sets `needs_attention=true`** as side effect, not just `error` field.
 - **Content preservation filtering:** `submit.py` only posts `genuine`/`unclassified` removed-context blocks to Jira; `reworded`/`non-substantive` silently dropped (see 1.19).

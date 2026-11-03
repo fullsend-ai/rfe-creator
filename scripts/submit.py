@@ -417,6 +417,26 @@ def _stale_verdict_labels(cfg, original_labels):
     return [label for label in stale if label and label in original_labels]
 
 
+def _cleared_attention_label(cfg, review_data, original_labels):
+    """The needs-attention label to take off an item that carries it in Jira when the
+    review being published no longer flags it.
+
+    The flag is advisory and the label is its only trace on the issue, so a label the
+    review no longer stands behind misleads whoever reads the ticket. Until this existed
+    the label builder only ever added: the first live clear (2026-11-03) saw three items
+    flagged for a missing business justification, answered by their author, reviewed
+    clean, given the rubric-pass label and transitioned to Approved -- with the stale
+    flag still on them. Conditional removal, like feasibility_label_changes: only a label
+    actually in original_labels. A review that still flags the item keeps it; a review
+    carrying an ``error`` is an error stub or a stall marker, not a verdict on the flag
+    (the rule _feasibility_verdict applies to the feasibility labels), and no review at
+    all is no verdict either. The reject path is untouched: it publishes no verdict."""
+    if not review_data or review_data.get("error") or review_data.get("needs_attention", False):
+        return []
+    label = f"{cfg['label_prefix']}-needs-attention"
+    return [label] if label in (original_labels or []) else []
+
+
 def _is_stall_escalation(error):
     """True for the review errors the pipeline's wave stall guard leaves on an item it gave
     up on (docs/wave-stall-guard.md): ``split_not_attempted: wave stalled ...`` and the
@@ -1950,15 +1970,16 @@ def main():
                     no_change_labels = _build_labels(
                         item_id, review_data, is_existing, rec, original_labels
                     )
-                    feas_remove = []
+                    no_change_remove = []
                     if review_data:
-                        _, feas_remove = feasibility_label_changes(
+                        _, no_change_remove = feasibility_label_changes(
                             _feasibility_verdict(review_data),
                             is_reject=False,
                             original_labels=original_labels,
                             feasibility_labels=cfg["feasibility_labels"],
                         )
-                    has_work = no_change_labels or feas_remove
+                    no_change_remove += _cleared_attention_label(cfg, review_data, original_labels)
+                    has_work = no_change_labels or no_change_remove
                     plan.append(
                         {
                             id_field: item_id,
@@ -1968,7 +1989,7 @@ def main():
                             "size": size,
                             "action": "Label only" if has_work else "SKIP",
                             "labels": no_change_labels,
-                            "remove_labels": feas_remove,
+                            "remove_labels": no_change_remove,
                             "skip_reason": None if has_work else "no changes",
                             "task_path": task_path,
                             "jira_key": jira_key,
@@ -2165,6 +2186,7 @@ def main():
                     original_labels=original_labels,
                     feasibility_labels=cfg["feasibility_labels"],
                 )
+            strip_labels += _cleared_attention_label(cfg, review_data, original_labels)
 
         action = f"Update {item_id}" if is_existing else "Create"
         plan.append(
