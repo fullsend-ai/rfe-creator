@@ -117,9 +117,10 @@ threshold_notes:
     be flagged); every other annotated case must not be flagged either, so the
     check measures precision over the derived cases as well. With 23 cases, 0.92
     allows 1 failure, which makes this threshold a precision gate: the misfiled
-    case's recall is pinned by needs_attention_expectation
-    (expected_needs_attention: true on case-022, threshold 1.0), the binding
-    gate for it; a classification flag on a weak draft does not count against
+    case's recall is pinned by needs_attention_expectation at 1.0, which on a
+    case whose expected_classification names a type accepts only the
+    classification flag naming that type (expected_needs_attention: true on
+    case-022); a classification flag on a weak draft does not count against
     that judge's expected false (case-018).
     Baseline 2026-11-03 (run 2026-11-03-opus-4-6 on ef82342, eval pipeline
     3021822422): 21/23 = 0.913, two misses. case-021, a weak draft, was flagged

@@ -494,15 +494,42 @@ judges:
       after any revision). A case without the annotation, or with a null
       one, is not checked. A flag whose source is `classification` (stage 2
       of classification: the item reads as another type) does not count
-      against an expected `false`: that expectation is about the item's own
-      quality path, and `classification_signal` judges the filing.
+      against an expected `false` unless its reason carries another concern
+      after the classification sentence (`likely a <entity>: <evidence>;
+      consider /rfe-create --type <type>` alone is discounted, the same
+      sentence followed by `; <another concern>` is not): the expectation is
+      about the item's own quality path, and `classification_signal` judges
+      the filing. On an expected `true` where the case's
+      expected_classification names a type (present, not `none`), only a
+      flag whose reason names `--type <that type>` satisfies it: a flag for
+      another reason (feasibility, rubric) fails, so the misfiled case's
+      recall is not satisfied by an unrelated concern. Without
+      expected_classification, or with `none`, the plain boolean applies.
     check: |
+      import re
+
       import yaml
 
       ann = outputs.get("annotations")
       expected = ann.get("expected_needs_attention") if isinstance(ann, dict) else None
       if not isinstance(expected, bool):
           return (True, "no expected_needs_attention annotation")
+      expected_classification = ann.get("expected_classification")
+      expected_classification = (
+          str(expected_classification).strip() if expected_classification is not None else ""
+      )
+      if expected_classification.lower() == "none":
+          expected_classification = ""
+      # The classification sentence alone, as the review rules build it; a concern
+      # appended after it (separated by "; ") makes the reason carry more than the filing.
+      sentence_only = re.compile(
+          r"likely an? [^;]+; consider /rfe-create --type [a-z][a-z0-9_-]+[.\s]*"
+      )
+      names_expected = (
+          re.compile(rf"--type {re.escape(expected_classification)}(?![a-z0-9_-])")
+          if expected_classification
+          else None
+      )
       files = outputs.get("files", {})
       reviews = {k: v for k, v in files.items() if k.endswith("-review.md")}
       if not reviews:
@@ -523,8 +550,14 @@ judges:
           if not isinstance(fm, dict):
               continue
           actual = fm.get("needs_attention") is True
-          if actual and expected is False and fm.get("needs_attention_source") == "classification":
-              actual = False  # a misfiling flag is stage 2's call, judged by classification_signal
+          reason = str(fm.get("needs_attention_reason") or "").strip()
+          if actual and expected is False:
+              if fm.get("needs_attention_source") == "classification" and sentence_only.fullmatch(reason):
+                  actual = False  # the filing alone is stage 2's call, judged by classification_signal
+          elif actual and expected is True and names_expected is not None:
+              if not names_expected.search(reason):
+                  errors.append(f"{fname}: flagged, but not as a misfiled {expected_classification}")
+                  continue
           if actual != expected:
               errors.append(f"{fname}: needs_attention={actual}, expected {expected}")
       return (

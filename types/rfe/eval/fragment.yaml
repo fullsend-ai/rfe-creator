@@ -92,8 +92,9 @@ threshold_notes:
     every other annotated case must not be flagged either, so the check measures
     precision over the dataset as well. With 28 cases, 0.92 allows 2 failures,
     which makes this threshold a precision gate: the misfiled case's recall is
-    pinned by needs_attention_expectation (expected_needs_attention: true on
-    case-027, threshold 1.0), the binding gate for it.
+    pinned by needs_attention_expectation at 1.0, which on a case whose
+    expected_classification names a type accepts only the classification flag
+    naming that type (expected_needs_attention: true on case-027).
     Baseline 2026-11-03 (run 2026-11-03-opus-4-6 on ef82342, eval pipeline
     3021822252): 27/28 = 0.964. Precision was perfect — no regular or weak-draft
     case flagged — and the one miss was case-027 itself: the reviewer read the
