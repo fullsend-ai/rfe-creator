@@ -139,7 +139,7 @@ the last two rows are the ones a human sets or clears.
 | Created by the pipeline | `rfe-creator-auto-created` | `initiative-auto-created` |
 | Description revised by the pipeline | `rfe-creator-auto-revised` | `initiative-auto-revised` |
 | Passed review; a later batch run re-checks it only if its description changed in Jira | `rfe-creator-autofix-rubric-pass` | `initiative-autofix-rubric-pass` |
-| Needs a human; comes off again when a later review no longer flags the item (after you answered the note, say) | `rfe-creator-needs-attention` | `initiative-needs-attention` |
+| Needs a human; comes off again when a later review no longer flags the item (after you answered the note, say) and that review is published, by `/rfe-submit` or the submit phase of a batch run | `rfe-creator-needs-attention` | `initiative-needs-attention` |
 | Parent that was split | `rfe-creator-split-original` | `initiative-split-original` |
 | Child produced by a split | `rfe-creator-split-result` | `initiative-split-result` |
 | Split bookkeeping on a child | `rfe-creator-split-child-<parent>-<child>-<fingerprint>` | `initiative-split-child-<parent>-<child>-<fingerprint>` |
