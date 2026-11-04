@@ -63,8 +63,11 @@ order; the first signal present wins:
 A review looks at the same descriptions the other way round: an item that reads as the other
 type (an Initiative filed as an RFE, or an RFE filed as an Initiative) is flagged for attention
 with a note that starts `likely an Initiative:` or `likely an RFE:` and names the command to
-file it under the right type. The review does not move, relabel or retype it; that stays a
-human decision.
+file it under the right type. It judges the substance of the text, not its shape: every file
+follows its type's template, so the headings prove nothing, while the teams, the time span and
+the distinct deliverables the text names do. One team, one release and one capability is an
+RFE however it is laid out; several teams over several quarters under an Outcome is an
+Initiative. The review does not move, relabel or retype it; that stays a human decision.
 
 ### The `TYPE RESOLVED` line
 
@@ -136,7 +139,7 @@ the last two rows are the ones a human sets or clears.
 | Created by the pipeline | `rfe-creator-auto-created` | `initiative-auto-created` |
 | Description revised by the pipeline | `rfe-creator-auto-revised` | `initiative-auto-revised` |
 | Passed review; a later batch run re-checks it only if its description changed in Jira | `rfe-creator-autofix-rubric-pass` | `initiative-autofix-rubric-pass` |
-| Needs a human | `rfe-creator-needs-attention` | `initiative-needs-attention` |
+| Needs a human; comes off again when a later review no longer flags the item (after you answered the note, say) | `rfe-creator-needs-attention` | `initiative-needs-attention` |
 | Parent that was split | `rfe-creator-split-original` | `initiative-split-original` |
 | Child produced by a split | `rfe-creator-split-result` | `initiative-split-result` |
 | Split bookkeeping on a child | `rfe-creator-split-child-<parent>-<child>-<fingerprint>` | `initiative-split-child-<parent>-<child>-<fingerprint>` |
@@ -153,6 +156,10 @@ How to tell:
 - The folder: an RFE lands in `artifacts/rfe-tasks/RFE-NNN.md`, an Initiative in
   `artifacts/initiatives/INIT-NNN.md`.
 - The ticket: an RFE is created in RHAIRFE, an Initiative in RHAISTRAT.
+- The review: an item that reads as the other type comes back flagged for attention with a
+  note that starts `likely an Initiative:` or `likely an RFE:`, the evidence in one line, and
+  the `/rfe-create --type ...` command to file it under the right type. The scores and the
+  recommendation are unchanged; the note is advice, not a verdict.
 
 What to do:
 
@@ -164,7 +171,9 @@ What to do:
   or just the key: `RHAISTRAT-12345` resolves to Initiative on its own, and the conflict error
   above tells you when a `--type` and a key disagree.
 - Once a ticket exists in Jira under the wrong project, no skill moves it: close it in Jira and
-  file it again with the right `--type`.
+  file it again with the right `--type`. That is also the answer to the review's `likely an
+  Initiative:` or `likely an RFE:` note on an existing ticket; if you disagree with the note,
+  leave the ticket where it is and clear the needs-attention label, the review will not move it.
 
 ## Worked example: file an Initiative
 
@@ -194,9 +203,11 @@ strategic alignment when a RHAISTRAT parent is set, and revises the file itself 
 it can fix (up to two passes). It writes `artifacts/initiative-reviews/INIT-001-review.md` with
 the score, a `recommendation` (`submit`, `revise`, `split`, `reject`, or `autorevise_reject` when
 a revision scored lower than the text it replaced), `feasibility`, `alignment` and
-`needs_attention`, and ends by telling you one of three things: the item is ready for
+`needs_attention`, and ends by telling you one of four things: the item is ready for
 `/rfe-submit --type initiative`; edit the file and re-run `/rfe-review --type initiative INIT-001`;
-or run `/rfe-split --type initiative INIT-001` because the item is too big.
+run `/rfe-split --type initiative INIT-001` because the item is too big; or the item reads as an
+RFE (`likely an RFE: ...`), so file it with `/rfe-create --type rfe` instead and delete the
+Initiative file.
 
 ### 3. Submit
 
