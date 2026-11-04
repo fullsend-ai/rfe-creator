@@ -203,11 +203,12 @@ strategic alignment when a RHAISTRAT parent is set, and revises the file itself 
 it can fix (up to two passes). It writes `artifacts/initiative-reviews/INIT-001-review.md` with
 the score, a `recommendation` (`submit`, `revise`, `split`, `reject`, or `autorevise_reject` when
 a revision scored lower than the text it replaced), `feasibility`, `alignment` and
-`needs_attention`, and ends by telling you one of four things: the item is ready for
+`needs_attention`, and ends by telling you one of three things: the item is ready for
 `/rfe-submit --type initiative`; edit the file and re-run `/rfe-review --type initiative INIT-001`;
-run `/rfe-split --type initiative INIT-001` because the item is too big; or the item reads as an
-RFE (`likely an RFE: ...`), so file it with `/rfe-create --type rfe` instead and delete the
-Initiative file.
+or run `/rfe-split --type initiative INIT-001` because the item is too big. Whichever it says,
+read `needs_attention` and its reason in the review file first: a reason that starts
+`likely an RFE:` means the item reads as an RFE, whatever it scored, and the right move is
+`/rfe-create --type rfe` with the same text, deleting the Initiative file.
 
 ### 3. Submit
 
