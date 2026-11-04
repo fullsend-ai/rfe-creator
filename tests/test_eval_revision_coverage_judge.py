@@ -284,7 +284,19 @@ def test_zero_revision_run_with_unlocated_dataset_passes():
     # unknown, so the tag alone decides.
     passed, msg = _run(_unrevised_batch_files(), UNTAGGED)
     assert passed is True
-    assert "dataset annotations not found for the run's cases" in msg
+    assert "run-level rule skipped, no case_dir in the record: tag decides" in msg
+
+
+def test_zero_revision_run_with_a_dataset_dir_that_is_not_found_passes(tmp_path):
+    case_dir, _ = _batch(tmp_path, WITH_TAGGED)
+    passed, msg = _run(
+        _unrevised_batch_files(), UNTAGGED, case_dir=case_dir, dataset_dir="no/such/dataset"
+    )
+    assert passed is True
+    assert (
+        "run-level rule skipped, dataset dir no/such/dataset not found from the working"
+        " directory or the run's ancestors: tag decides"
+    ) in msg
 
 
 def test_zero_revision_run_with_a_foreign_dataset_passes(tmp_path):
@@ -301,7 +313,7 @@ def test_zero_revision_run_with_a_foreign_dataset_passes(tmp_path):
         dataset_dir=dataset,
     )
     assert passed is True
-    assert "dataset annotations not found for the run's cases" in msg
+    assert "run-level rule skipped, dataset describes none of the run's cases: tag decides" in msg
 
 
 def test_dataset_dir_resolves_against_an_ancestor_of_the_run(tmp_path, monkeypatch):
@@ -317,26 +329,63 @@ def test_dataset_dir_resolves_against_an_ancestor_of_the_run(tmp_path, monkeypat
     assert "never exercised" in msg
 
 
-def test_sibling_annotations_that_do_not_parse_are_skipped(tmp_path):
-    cases = {"case-001-first": UNTAGGED, "case-002-bad": UNTAGGED, "case-021-weak": TAGGED}
+def test_unreadable_tagged_sibling_annotations_fail_a_zero_revision_run(tmp_path):
+    # A damaged annotations.yaml may be the tagged case's: the run may hold a
+    # tagged case, so the run-level rule applies and names the file.
+    cases = {"case-001-first": UNTAGGED, "case-021-weak": TAGGED}
     case_dir, dataset = _batch(tmp_path, cases)
-    (dataset / "case-002-bad" / "annotations.yaml").write_text("tags: [\n", encoding="utf-8")
+    (dataset / "case-021-weak" / "annotations.yaml").write_text("tags: [\n", encoding="utf-8")
     passed, msg = _run(_unrevised_batch_files(), UNTAGGED, case_dir=case_dir, dataset_dir=dataset)
     assert passed is False
     assert "never exercised" in msg
+    assert "sibling annotations unreadable: case-021-weak/annotations.yaml" in msg
+
+
+def test_undecodable_tagged_sibling_annotations_fail_a_zero_revision_run(tmp_path):
+    cases = {"case-001-first": UNTAGGED, "case-021-weak": TAGGED}
+    case_dir, dataset = _batch(tmp_path, cases)
+    (dataset / "case-021-weak" / "annotations.yaml").write_bytes(b"\xff\xfe")
+    passed, msg = _run(_unrevised_batch_files(), UNTAGGED, case_dir=case_dir, dataset_dir=dataset)
+    assert passed is False
+    assert "never exercised" in msg
+    assert "case-021-weak/annotations.yaml" in msg
+
+
+def test_undecodable_sibling_annotations_do_not_raise_when_something_was_revised(tmp_path):
+    cases = {"case-001-first": UNTAGGED, "case-021-weak": TAGGED}
+    case_dir, dataset = _batch(tmp_path, cases)
+    (dataset / "case-021-weak" / "annotations.yaml").write_bytes(b"\xff\xfe")
+    files = {**_unrevised_batch_files(report=False), **_other_revised()}
+    passed, msg = _run(files, UNTAGGED, case_dir=case_dir, dataset_dir=dataset)
+    assert passed is True
+
+
+def test_sibling_without_annotations_file_counts_as_untagged(tmp_path):
+    # The harness treats a case without annotations.yaml as untagged: the quick
+    # pair with one file deleted still passes.
+    case_dir, dataset = _batch(tmp_path, QUICK_PAIR)
+    (dataset / "case-002-second" / "annotations.yaml").unlink()
+    passed, msg = _run(_unrevised_batch_files(), UNTAGGED, case_dir=case_dir, dataset_dir=dataset)
+    assert passed is True
+    assert "no revision-expected case in the run" in msg
 
 
 def test_malformed_run_context_does_not_raise(tmp_path):
     record = {"files": _unrevised_batch_files(), "annotations": UNTAGGED}
     check = _load_check()
-    for case_dir, arguments in (
-        ("/nonexistent/run/cases/case-001", {"dataset_dir": "eval/dataset/cases"}),
-        (str(tmp_path / "cases" / "case-001"), {"dataset_dir": 7}),
-        (["not", "a", "path"], {"dataset_dir": str(tmp_path)}),
-        (str(tmp_path / "cases" / "case-001"), None),
+    for case_dir, arguments, reason in (
+        (
+            "/nonexistent/run/cases/case-001",
+            {"dataset_dir": "eval/dataset/cases"},
+            "the run's cases directory is not readable",
+        ),
+        (str(tmp_path / "cases" / "case-001"), {"dataset_dir": 7}, "arguments.dataset_dir unset"),
+        (["not", "a", "path"], {"dataset_dir": str(tmp_path)}, "no case_dir in the record"),
+        (str(tmp_path / "cases" / "case-001"), None, "arguments.dataset_dir unset"),
     ):
         passed, msg = check({**record, "case_dir": case_dir}, arguments)
-        assert passed is True and "tag decides" in msg
+        assert passed is True
+        assert f"run-level rule skipped, {reason}: tag decides" in msg
 
 
 @pytest.mark.parametrize("dataset", ["eval/dataset/cases", "eval/initiative-dataset/cases"])

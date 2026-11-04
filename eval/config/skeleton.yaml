@@ -840,27 +840,36 @@ judges:
       # is configured with (arguments.dataset_dir, relative to the project
       # root: tried against the working directory, then against each ancestor
       # of the run, which lives under the project). True: a tagged case is in
-      # the run. False: none is (quick mode's first two cases, a --cases
-      # subset). None: the dataset describes none of the run's cases (a
-      # Jira-sourced batch, whose generated cases live elsewhere) or could not
-      # be located. On False and None the tag alone decides below; a tagged
-      # case still fails on its own evidence, and on any shipped dataset three
-      # of them failing breach the 0.92 gate (test_threshold_arithmetic), so a
-      # broken revise path stays visible without the run-level rule.
+      # the run, or a sibling's annotations exist but cannot be read (the run
+      # may hold a tagged case, so the rule applies and a damaged dataset fails
+      # loudly on a zero-revision run). False: at least one sibling was read,
+      # none is tagged and none is unreadable (quick mode's first two cases, a
+      # --cases subset). None: the dataset describes none of the run's cases (a
+      # Jira-sourced batch, whose generated cases live elsewhere) or the run
+      # context or dataset could not be located. A sibling without an
+      # annotations.yaml is not described by the dataset: untagged, as the
+      # harness treats it. Returns (verdict, note); the note names the reason
+      # on None and the unreadable files on an unreadable True. On False and
+      # None the tag alone decides below; a tagged case still fails on its own
+      # evidence, and on any shipped dataset three of them failing breach the
+      # 0.92 gate (test_threshold_arithmetic), so a broken revise path stays
+      # visible without the run-level rule.
       def run_holds_tagged_case():
           if tagged:
-              return True
+              return (True, "")
           case_dir = outputs.get("case_dir")
+          if not isinstance(case_dir, str) or not case_dir:
+              return (None, "no case_dir in the record")
           dataset_dir = arguments.get("dataset_dir") if isinstance(arguments, dict) else None
-          if not isinstance(case_dir, str) or not isinstance(dataset_dir, str) or not dataset_dir:
-              return None
+          if not isinstance(dataset_dir, str) or not dataset_dir:
+              return (None, "arguments.dataset_dir unset")
           cases_root = os.path.dirname(case_dir)
           try:
               siblings = sorted(
                   e for e in os.listdir(cases_root) if os.path.isdir(os.path.join(cases_root, e))
               )
           except OSError:
-              return None
+              return (None, "the run's cases directory is not readable")
           roots = [dataset_dir]
           probe = cases_root
           for _ in range(8):
@@ -871,24 +880,39 @@ judges:
               roots.append(os.path.join(probe, dataset_dir))
           root = next((r for r in roots if os.path.isdir(r)), None)
           if root is None:
-              return None
+              return (
+                  None,
+                  f"dataset dir {dataset_dir} not found from the working directory"
+                  " or the run's ancestors",
+              )
           seen = False
+          unreadable = []
           for sibling in siblings:
+              path = os.path.join(root, sibling, "annotations.yaml")
               try:
-                  with open(os.path.join(root, sibling, "annotations.yaml")) as f:
+                  with open(path, encoding="utf-8") as f:
                       ann = yaml.safe_load(f) or {}
-              except (OSError, yaml.YAMLError):
+              except (FileNotFoundError, NotADirectoryError):
+                  continue
+              except (OSError, ValueError, yaml.YAMLError):
+                  unreadable.append(f"{sibling}/annotations.yaml")
                   continue
               seen = True
               sibling_tags = ann.get("tags") if isinstance(ann, dict) else None
               if isinstance(sibling_tags, list) and TAG in [str(t) for t in sibling_tags]:
-                  return True
-          return False if seen else None
+                  return (True, "")
+          if unreadable:
+              return (True, "sibling annotations unreadable: " + ", ".join(unreadable))
+          if seen:
+              return (False, "")
+          return (None, "dataset describes none of the run's cases")
 
-      run_tagged = run_holds_tagged_case()
+      run_tagged, run_note = run_holds_tagged_case()
       if not single_item_run:
           if run_tagged is None:
-              coverage += " (dataset annotations not found for the run's cases: tag decides)"
+              coverage += f" (run-level rule skipped, {run_note}: tag decides)"
+          elif run_tagged and run_note:
+              coverage += f" ({run_note})"
           elif not run_tagged:
               coverage += " (no revision-expected case in the run: tag decides)"
 
