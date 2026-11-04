@@ -76,11 +76,44 @@ def _entry(item_id, before=8, after=8, cycles=0, auto_revised=False):
     }
 
 
-def _run(files, annotations=None):
+def _run(files, annotations=None, *, case_dir=None, dataset_dir=None):
+    """Score one case. ``case_dir`` is the case's directory in the run (the harness
+    record's ``case_dir``); ``dataset_dir`` the judge's ``arguments.dataset_dir``."""
     record = {"files": files}
     if annotations is not None:
         record["annotations"] = annotations
-    return _load_check()(record, {})
+    if case_dir is not None:
+        record["case_dir"] = str(case_dir)
+    arguments = {"dataset_dir": str(dataset_dir)} if dataset_dir is not None else {}
+    return _load_check()(record, arguments)
+
+
+# Two shapes of run: quick mode (the first two dataset cases, both untagged) and a
+# batch holding one revision-expected draft.
+QUICK_PAIR = {"case-001-first": UNTAGGED, "case-002-second": UNTAGGED}
+WITH_TAGGED = {"case-001-first": UNTAGGED, "case-021-weak": TAGGED}
+
+
+def _batch(tmp_path, cases, dataset="eval/dataset/cases"):
+    """A project under ``tmp_path``: a dataset holding ``cases`` (name -> annotations)
+    and a run whose ``cases/`` has one directory per case, as collect.py leaves it.
+    Returns (the first case's run directory, the absolute dataset directory)."""
+    dataset_dir = tmp_path / dataset
+    run_cases = tmp_path / "eval" / "runs" / "rfe-speedrun" / "2026-01-01-test" / "cases"
+    for name, ann in cases.items():
+        (dataset_dir / name).mkdir(parents=True)
+        (dataset_dir / name / "annotations.yaml").write_text(yaml.safe_dump(ann), encoding="utf-8")
+        (run_cases / name).mkdir(parents=True)
+    return run_cases / next(iter(cases)), dataset_dir
+
+
+def _unrevised_batch_files(report=True):
+    """One unrevised review, plus (by default) a report listing two unrevised items."""
+    review = _review("RFE-1", auto_revised=False, score=9, before_score=9)
+    files = {f"{RFE_REVIEWS}/RFE-1-review.md": review}
+    if report:
+        files[REPORT] = _report(_entry("RFE-1", 9, 9), _entry("RFE-2", 10, 10))
+    return files
 
 
 # A run in which some OTHER item was revised, so the run-level gate is open and
@@ -215,33 +248,114 @@ def test_tagged_cases_are_annotated_as_weak_drafts():
 
 
 # --- Run-level gate: zero revisions anywhere fails every case ----------------
+# ... of a run that holds a revision-expected case. The run's cases are the
+# directories next to this one's in the run; their tags come from the dataset
+# named by arguments.dataset_dir.
 
 
-def test_zero_revision_run_fails_untagged_case():
-    passed, msg = _run(
-        {
-            f"{RFE_REVIEWS}/RFE-1-review.md": _review(
-                "RFE-1", auto_revised=False, score=9, before_score=9
-            ),
-            REPORT: _report(_entry("RFE-1", 9, 9), _entry("RFE-2", 10, 10)),
-        },
-        UNTAGGED,
-    )
+def test_zero_revision_run_fails_untagged_case(tmp_path):
+    case_dir, dataset = _batch(tmp_path, WITH_TAGGED)
+    passed, msg = _run(_unrevised_batch_files(), UNTAGGED, case_dir=case_dir, dataset_dir=dataset)
     assert passed is False
     assert "never exercised" in msg and "0/2" in msg
 
 
-def test_zero_revision_run_without_report_fails():
+def test_zero_revision_run_without_report_fails(tmp_path):
+    case_dir, dataset = _batch(tmp_path, WITH_TAGGED)
     passed, msg = _run(
-        {
-            f"{RFE_REVIEWS}/RFE-1-review.md": _review(
-                "RFE-1", auto_revised=False, score=9, before_score=9
-            )
-        },
-        UNTAGGED,
+        _unrevised_batch_files(report=False), UNTAGGED, case_dir=case_dir, dataset_dir=dataset
     )
     assert passed is False
     assert "never exercised" in msg
+
+
+def test_zero_revision_run_without_a_tagged_case_passes(tmp_path):
+    # Quick mode: the first two dataset cases, both untagged, nothing revised. Such
+    # a run proves nothing about the revise path; the first quick-mode run through
+    # the fullsend job (2026-11-04) scored 0.0 here for that reason alone.
+    case_dir, dataset = _batch(tmp_path, QUICK_PAIR)
+    passed, msg = _run(_unrevised_batch_files(), UNTAGGED, case_dir=case_dir, dataset_dir=dataset)
+    assert passed is True
+    assert "not revised (untagged)" in msg and "no revision-expected case in the run" in msg
+
+
+def test_zero_revision_run_with_unlocated_dataset_passes():
+    # No case_dir in the record and no dataset_dir argument: the run's tags are
+    # unknown, so the tag alone decides.
+    passed, msg = _run(_unrevised_batch_files(), UNTAGGED)
+    assert passed is True
+    assert "dataset annotations not found for the run's cases" in msg
+
+
+def test_zero_revision_run_with_a_foreign_dataset_passes(tmp_path):
+    # EVAL_SOURCE=jira: the generated cases live outside the configured dataset,
+    # which then describes none of the run's cases.
+    _, dataset = _batch(tmp_path, WITH_TAGGED)
+    foreign = tmp_path / "eval" / "runs" / "rfe-speedrun" / "jira-run" / "cases"
+    for name in ("case-001-rhairfe-1", "case-002-rhairfe-2"):
+        (foreign / name).mkdir(parents=True)
+    passed, msg = _run(
+        _unrevised_batch_files(),
+        UNTAGGED,
+        case_dir=foreign / "case-001-rhairfe-1",
+        dataset_dir=dataset,
+    )
+    assert passed is True
+    assert "dataset annotations not found for the run's cases" in msg
+
+
+def test_dataset_dir_resolves_against_an_ancestor_of_the_run(tmp_path, monkeypatch):
+    # arguments.dataset_dir is project-relative. The run lives under the project,
+    # so the root is found by walking up from the case when the working directory
+    # is elsewhere (here: one where eval/dataset/cases does not exist).
+    case_dir, _ = _batch(tmp_path, WITH_TAGGED)
+    monkeypatch.chdir(tmp_path / "eval")
+    passed, msg = _run(
+        _unrevised_batch_files(), UNTAGGED, case_dir=case_dir, dataset_dir="eval/dataset/cases"
+    )
+    assert passed is False
+    assert "never exercised" in msg
+
+
+def test_sibling_annotations_that_do_not_parse_are_skipped(tmp_path):
+    cases = {"case-001-first": UNTAGGED, "case-002-bad": UNTAGGED, "case-021-weak": TAGGED}
+    case_dir, dataset = _batch(tmp_path, cases)
+    (dataset / "case-002-bad" / "annotations.yaml").write_text("tags: [\n", encoding="utf-8")
+    passed, msg = _run(_unrevised_batch_files(), UNTAGGED, case_dir=case_dir, dataset_dir=dataset)
+    assert passed is False
+    assert "never exercised" in msg
+
+
+def test_malformed_run_context_does_not_raise(tmp_path):
+    record = {"files": _unrevised_batch_files(), "annotations": UNTAGGED}
+    check = _load_check()
+    for case_dir, arguments in (
+        ("/nonexistent/run/cases/case-001", {"dataset_dir": "eval/dataset/cases"}),
+        (str(tmp_path / "cases" / "case-001"), {"dataset_dir": 7}),
+        (["not", "a", "path"], {"dataset_dir": str(tmp_path)}),
+        (str(tmp_path / "cases" / "case-001"), None),
+    ):
+        passed, msg = check({**record, "case_dir": case_dir}, arguments)
+        assert passed is True and "tag decides" in msg
+
+
+@pytest.mark.parametrize("dataset", ["eval/dataset/cases", "eval/initiative-dataset/cases"])
+def test_quick_mode_pair_of_the_shipped_datasets_passes_unrevised(tmp_path, dataset):
+    # rfe-creator-eval's QUICK_MODE runs the first two case directories of the
+    # dataset; neither shipped dataset tags them, so a quick run that revised
+    # nothing must pass this judge.
+    cases = sorted(p.name for p in (Path(REPO_ROOT) / dataset).iterdir() if p.is_dir())[:2]
+    run_cases = tmp_path / "cases"
+    for name in cases:
+        (run_cases / name).mkdir(parents=True)
+    passed, msg = _run(
+        _unrevised_batch_files(),
+        UNTAGGED,
+        case_dir=run_cases / cases[0],
+        dataset_dir=Path(REPO_ROOT) / dataset,
+    )
+    assert passed is True
+    assert "no revision-expected case in the run" in msg
 
 
 def test_untagged_case_passes_when_another_item_was_revised():

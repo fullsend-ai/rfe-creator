@@ -78,10 +78,12 @@ threshold_notes:
     and any case without a review file each consume one failure. Calibrated on
     two live 5-case runs (2026-09-07): drafts weak only by wording were
     repaired at create time in 4 of 5; drafts with an in-character "no
-    customer evidence, do not pad" anchor were revised in 5 of 5. A multi-item run with
-    zero revisions fails every case (0.0) on any dataset. Single-item runs
-    (Harbor tasks, execution.mode: case) skip the run-level check and are
-    decided by the tag alone. Untagged cases otherwise always pass.
+    customer evidence, do not pad" anchor were revised in 5 of 5. A multi-item run that
+    holds a tagged case and revised nothing fails every case (0.0). Single-item runs
+    (Harbor tasks, execution.mode: case) and runs without a tagged case (quick
+    mode's first two cases, a --cases subset, a Jira-sourced batch) skip the
+    run-level check and are decided by the tag alone. Untagged cases otherwise
+    always pass.
   classification_signal: |
     stage 2 of classification (AISDLC-191/192): a case's expected_classification
     is none (must not be flagged), the type the item really is (must be flagged,
