@@ -2977,13 +2977,18 @@ def _stop_guard_fullsend_result(status):
     else:
         speedrun = ""
     remaining = pipeline + speedrun
+    # The model-facing text names the file through the variable, never the
+    # resolved value: the path comes from the environment, and nothing it
+    # contains should read as an instruction. The real path stays in the
+    # fingerprint and the stderr warnings (the job log).
     reason = (
-        f"fullsend expects the result file {path} and it does not exist: the run is not over. "
-        "Ending the turn without it makes fullsend fail validation, skip the post-script and "
-        "discard everything this run produced. "
+        "fullsend expects the result file $FULLSEND_OUTPUT_DIR/agent-result.json and it "
+        "does not exist: the run is not over. Ending the turn without it makes fullsend fail "
+        "validation, skip the post-script and discard everything this run produced. "
         + remaining
-        + f"Then write {path} as the prompt's Output section describes (valid JSON, no fences) "
-        f"and validate it with `fullsend-check-output {shlex.quote(path)}`. "
+        + "Then write $FULLSEND_OUTPUT_DIR/agent-result.json as the prompt's Output section "
+        "describes (valid JSON, no fences) and validate it with "
+        '`fullsend-check-output "$FULLSEND_OUTPUT_DIR/agent-result.json"`. '
         "Do not stop before the file exists."
     )
     print(json.dumps({"decision": "block", "reason": reason}))
