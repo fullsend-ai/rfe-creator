@@ -410,6 +410,8 @@ def test_case_order_alone_is_enough_when_the_cases_directory_is_unreadable(tmp_p
         pytest.param("x: [\n", id="yaml-error"),
         pytest.param("case_id: case-021-weak\n", id="not-a-list"),
         pytest.param("- 5\n- ''\n- ..\n- ../case-021-weak\n- {case_id: [x]}\n", id="unusable-ids"),
+        # A NUL cannot name a directory: open() raises ValueError, not FileNotFoundError.
+        pytest.param('- "case-021\\u0000weak"\n', id="nul-id"),
         pytest.param(b"\xff\xfe", id="invalid-bytes"),
     ],
 )

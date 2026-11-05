@@ -884,7 +884,9 @@ judges:
           except OSError:
               siblings = None
           # The run's roster, when the harness left it: a list of {case_id} (or
-          # plain ids). Ids are directory names; anything else is ignored.
+          # plain ids). Ids are directory names; anything else is ignored, a NUL
+          # included: open() raises ValueError on it, which the loop below would
+          # otherwise read as an unreadable sibling and fail an untagged run on.
           listed = set()
           try:
               with open(os.path.join(os.path.dirname(cases_root), "case_order.yaml"), encoding="utf-8") as f:
@@ -893,7 +895,11 @@ judges:
               order = None
           for entry in order if isinstance(order, list) else []:
               cid = entry.get("case_id") if isinstance(entry, dict) else entry
-              if isinstance(cid, str) and cid not in ("", ".", "..") and "/" not in cid and os.sep not in cid:
+              if (
+                  isinstance(cid, str)
+                  and cid not in ("", ".", "..")
+                  and not any(ch in cid for ch in ("/", os.sep, "\x00"))
+              ):
                   listed.add(cid)
           if siblings is None and not listed:
               return (None, "the run's cases directory is not readable")
