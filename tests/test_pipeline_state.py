@@ -270,18 +270,48 @@ class TestInit:
         with open("tmp/speedrun-config.yaml", "w") as f:
             f.write("type: rfe\nheadless: true\nphase: submit\n")
         decision, _ = self._stop_guard(monkeypatch, fullsend_dir=out)
-        assert "phase `submit`" in decision["reason"]
+        assert "tmp/speedrun-config.yaml records phase `submit`" in decision["reason"]
+        assert "If that speedrun is this session's task" in decision["reason"]
         assert (
             "Phase 3 (Submit) and Phase 4 (Summary) of /rfe-speedrun are still owed"
-            in (decision["reason"])
+            in decision["reason"]
         )
         assert "without re-running Step 0 or Phase 1" in decision["reason"]
+        assert "If it is not, finish the task you were given" in decision["reason"]
+        # autofix: Phase 2's completion check and retries come before Submit (qodo on #297).
+        with open("tmp/speedrun-config.yaml", "w") as f:
+            f.write("phase: autofix\n")
+        decision, _ = self._stop_guard(monkeypatch, fullsend_dir=out)
+        assert "the rest of Phase 2 (run scripts/check_autofix_complete.py" in decision["reason"]
+        assert "retry auto-fix for any MISSING_IDS" in decision["reason"]
+        assert "Phase 3 (Submit) and Phase 4 (Summary)" in decision["reason"]
         # Any type prefix: the initiative speedrun keeps its config under its own name.
         os.remove("tmp/speedrun-config.yaml")
         with open("tmp/initiative-speedrun-config.yaml", "w") as f:
             f.write("phase: 'summary'\n")
         decision, _ = self._stop_guard(monkeypatch, fullsend_dir=out)
+        assert "tmp/initiative-speedrun-config.yaml records phase `summary`" in decision["reason"]
         assert "Phase 4 (Summary) of /rfe-speedrun are still owed" in decision["reason"]
+        # Two configs: the guard cannot tell whose, so it names no phases.
+        with open("tmp/speedrun-config.yaml", "w") as f:
+            f.write("phase: submit\n")
+        decision, _ = self._stop_guard(monkeypatch, fullsend_dir=out)
+        assert "Several speedrun configs exist" in decision["reason"]
+        assert "Phase 3" not in decision["reason"]
+
+    def test_stop_guard_holds_a_fullsend_run_whose_state_cannot_be_read(self, tmp_dir, monkeypatch):
+        # The pipeline banner fails open on an unreadable state; the result file is
+        # owed regardless, with wording that assumes nothing about the pipeline.
+        out, result = self._result_path(tmp_dir)
+        with open(ps.STATE_FILE, "w") as f:
+            f.write("phase: [unterminated\n")
+        decision, err = self._stop_guard(monkeypatch, fullsend_dir=out)
+        assert decision["decision"] == "block"
+        assert f"The pipeline state file {ps.STATE_FILE} cannot be read" in decision["reason"]
+        assert "pipeline is DONE" not in decision["reason"]
+        assert err == ""
+        result.write_text("{}")
+        assert self._stop_guard(monkeypatch, fullsend_dir=out)[0] is None
 
     def test_stop_guard_holds_a_fullsend_run_that_never_started_the_pipeline(
         self, tmp_dir, monkeypatch

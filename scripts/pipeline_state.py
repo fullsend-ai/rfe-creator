@@ -2897,25 +2897,27 @@ def _fullsend_result_path():
     return os.path.join(out_dir, "agent-result.json")
 
 
-def _stop_guard_fullsend_result(state):
+def _stop_guard_fullsend_result(state, status):
     """Block the Stop while a fullsend run's result file is missing.
 
-    Called once the pipeline is DONE or never started: the auto-fix pipeline
-    owes nothing more, but the task does: for /rfe-speedrun the submit and
-    summary phases (``phase`` in tmp/speedrun-config.yaml) and, for every
-    prompt, the result file itself. Both iterations of job 17766180996 ended
-    their turn on the submit skill's report without writing it. The block
-    tells the model what remains and not to restart the pipeline; the escape
-    hatch (STOP_GUARD_MAX_BLOCKS blocks with the file still missing and the
-    speedrun phase unchanged) releases a model that cannot comply.
+    Called when the pipeline banner has nothing to say: the pipeline is DONE
+    (``status`` "done"), never started ("absent") or its state cannot be read
+    ("unreadable"). The task may still owe work: for /rfe-speedrun the rest of
+    Phase 2 (the completion check and its retries), the submit and summary
+    phases (``phase`` in tmp/speedrun-config.yaml) and, for every prompt, the
+    result file itself. Both iterations of job 17766180996 ended their turn on
+    the submit skill's report without writing it. The block tells the model
+    what remains and not to restart the pipeline; the speedrun guidance is
+    conditional, since a speedrun config left in the checkout may belong to an
+    earlier task. The escape hatch (STOP_GUARD_MAX_BLOCKS blocks with the
+    file still missing and the speedrun phase unchanged) releases a model
+    that cannot comply.
     """
     path = _fullsend_result_path()
     if path is None or os.path.exists(path):
         return
-    speedrun_phase = _speedrun_phase()
-    fingerprint = "|".join(
-        ["fullsend-result", path, str(state.get("phase") if state else None), str(speedrun_phase)]
-    )
+    config_name, speedrun_phase = _speedrun_phase()
+    fingerprint = "|".join(["fullsend-result", path, status, str(config_name), str(speedrun_phase)])
     count = _stop_guard_count(fingerprint, _stop_guard_event_key())
     if count is None:
         print(
@@ -2932,24 +2934,43 @@ def _stop_guard_fullsend_result(state):
             file=sys.stderr,
         )
         return
-    if speedrun_phase in ("autofix", "submit", "summary"):
-        owed = {
-            "autofix": "Phase 3 (Submit) and Phase 4 (Summary) of /rfe-speedrun",
-            "submit": "Phase 3 (Submit) and Phase 4 (Summary) of /rfe-speedrun",
-            "summary": "Phase 4 (Summary) of /rfe-speedrun",
-        }[speedrun_phase]
-        remaining = (
-            f"The speedrun config records phase `{speedrun_phase}`, so {owed} are still owed: "
-            "resume there, following the skill's SKILL.md, without re-running Step 0 or Phase 1 "
-            "(the auto-fix pipeline is DONE and must not be restarted). "
+    if status == "unreadable":
+        pipeline = (
+            f"The pipeline state file {STATE_FILE} cannot be read, so whether the auto-fix "
+            "pipeline finished is unknown: check its artifacts (the run report under "
+            "artifacts/) and finish the task if it is not finished. "
         )
-    elif state is None:
-        remaining = (
+    elif status == "absent":
+        pipeline = (
             "No pipeline state exists: if the task was skipped, say so in the result file "
             "(action skipped); otherwise run the task first. "
         )
     else:
-        remaining = "The auto-fix pipeline is DONE; nothing else of it is owed. "
+        pipeline = "The auto-fix pipeline is DONE; nothing else of it is owed. "
+    owed = {
+        "autofix": (
+            "the rest of Phase 2 (run scripts/check_autofix_complete.py with the type flag and "
+            "retry auto-fix for any MISSING_IDS, as the skill's Phase 2 says, then record "
+            "phase=submit), Phase 3 (Submit) and Phase 4 (Summary) of /rfe-speedrun"
+        ),
+        "submit": "Phase 3 (Submit) and Phase 4 (Summary) of /rfe-speedrun",
+        "summary": "Phase 4 (Summary) of /rfe-speedrun",
+    }
+    if config_name == "ambiguous":
+        speedrun = (
+            "Several speedrun configs exist under tmp/; if this session's task is a speedrun, "
+            "read its own config's `phase` and finish the phases after it. "
+        )
+    elif speedrun_phase in owed:
+        speedrun = (
+            f"The speedrun config tmp/{config_name} records phase `{speedrun_phase}`. If that "
+            f"speedrun is this session's task, {owed[speedrun_phase]} are still owed: resume "
+            "there, following the skill's SKILL.md, without re-running Step 0 or Phase 1 "
+            "(the pipeline must not be restarted). If it is not, finish the task you were given. "
+        )
+    else:
+        speedrun = ""
+    remaining = pipeline + speedrun
     reason = (
         f"fullsend expects the result file {path} and it does not exist: the run is not over. "
         "Ending the turn without it makes fullsend fail validation, skip the post-script and "
@@ -2962,21 +2983,26 @@ def _stop_guard_fullsend_result(state):
 
 
 def _speedrun_phase():
-    """``phase`` of the speedrun config, for any type prefix, or None."""
+    """``(config file name, phase)`` of the speedrun config under tmp/, for any
+    type prefix; ``(None, None)`` without one and ``("ambiguous", None)`` when
+    several exist, since the guard cannot tell which is this session's."""
     try:
         names = sorted(n for n in os.listdir("tmp") if n.endswith("speedrun-config.yaml"))
     except OSError:
-        return None
+        return None, None
+    if len(names) > 1:
+        return "ambiguous", None
     for name in names:
         try:
             with open(os.path.join("tmp", name), encoding="utf-8") as f:
                 for line in f:
                     key, sep, value = line.partition(":")
                     if sep and key.strip() == "phase":
-                        return value.strip().strip("\"'") or None
+                        return name, (value.strip().strip("\"'") or None)
         except (OSError, UnicodeDecodeError):
             continue
-    return None
+        return name, None
+    return None, None
 
 
 def cmd_stop_guard(args):
@@ -3009,16 +3035,20 @@ def cmd_stop_guard(args):
     """
     if not os.environ.get("RFE_CREATOR_ENABLE_CONTEXT_HOOK"):
         return
-    state = None
+    state, status = None, "absent"
     if os.path.exists(STATE_FILE):
         try:
             state = _load_state()
         except (SystemExit, Exception):  # noqa: BLE001 - a hook must fail open
-            return
-        if not isinstance(state, dict):
-            return
-    if state is None or state.get("phase") == "DONE":
-        _stop_guard_fullsend_result(state)
+            state = None
+        if isinstance(state, dict):
+            status = "done" if state.get("phase") == "DONE" else "running"
+        else:
+            # The pipeline banner fails open on a state it cannot read; the
+            # result file is owed regardless, with wording that assumes nothing.
+            state, status = None, "unreadable"
+    if status != "running":
+        _stop_guard_fullsend_result(state, status)
         return
     fingerprint = _stop_guard_fingerprint(state)
     count = _stop_guard_count(fingerprint, _stop_guard_event_key())
