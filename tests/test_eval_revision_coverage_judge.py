@@ -107,6 +107,15 @@ def _batch(tmp_path, cases, dataset="eval/dataset/cases"):
     return run_cases / next(iter(cases)), dataset_dir
 
 
+def _case_order(case_dir, ids):
+    """The run's case_order.yaml next to its cases/, as execute.py copies it."""
+    run_root = Path(case_dir).parent.parent
+    run_root.mkdir(parents=True, exist_ok=True)
+    (run_root / "case_order.yaml").write_text(
+        yaml.safe_dump([{"case_id": i, "entry_count": 1} for i in ids]), encoding="utf-8"
+    )
+
+
 def _unrevised_batch_files(report=True):
     """One unrevised review, plus (by default) a report listing two unrevised items."""
     review = _review("RFE-1", auto_revised=False, score=9, before_score=9)
@@ -352,12 +361,72 @@ def test_undecodable_tagged_sibling_annotations_fail_a_zero_revision_run(tmp_pat
 
 
 def test_undecodable_sibling_annotations_do_not_raise_when_something_was_revised(tmp_path):
+    # A two-item report with one revised item: the run-level rule does not fire,
+    # the case passes, and the unreadable file is still named in the message.
     cases = {"case-001-first": UNTAGGED, "case-021-weak": TAGGED}
     case_dir, dataset = _batch(tmp_path, cases)
     (dataset / "case-021-weak" / "annotations.yaml").write_bytes(b"\xff\xfe")
-    files = {**_unrevised_batch_files(report=False), **_other_revised()}
+    files = {
+        **_unrevised_batch_files(report=False),
+        REPORT: _report(_entry("RFE-1", 9, 9), _entry("RFE-9", 6, 8, cycles=1, auto_revised=True)),
+    }
     passed, msg = _run(files, UNTAGGED, case_dir=case_dir, dataset_dir=dataset)
     assert passed is True
+    assert "not revised (untagged)" in msg and "run coverage 1/2" in msg
+    assert "(sibling annotations unreadable: case-021-weak/annotations.yaml)" in msg
+
+
+# --- The run's roster: case_order.yaml, then the case directories -------------
+
+
+def test_tagged_case_without_a_directory_counts_through_case_order(tmp_path):
+    # A tagged case that left no artifact has no cases/ directory (collect.py
+    # makes one only for a case with a matched or lost file); the case_order.yaml
+    # execute.py copies into the run still lists it.
+    case_dir, dataset = _batch(tmp_path, QUICK_PAIR)
+    (dataset / "case-021-weak").mkdir()
+    (dataset / "case-021-weak" / "annotations.yaml").write_text(
+        yaml.safe_dump(TAGGED), encoding="utf-8"
+    )
+    _case_order(case_dir, ["case-001-first", "case-002-second", "case-021-weak"])
+    passed, msg = _run(_unrevised_batch_files(), UNTAGGED, case_dir=case_dir, dataset_dir=dataset)
+    assert passed is False
+    assert "never exercised" in msg
+
+
+def test_case_order_alone_is_enough_when_the_cases_directory_is_unreadable(tmp_path):
+    case_dir, dataset = _batch(tmp_path, WITH_TAGGED)
+    _case_order(case_dir, list(WITH_TAGGED))
+    missing = case_dir.parent.parent / "elsewhere" / "cases" / "case-001-first"
+    _case_order(missing, list(WITH_TAGGED))
+    passed, msg = _run(_unrevised_batch_files(), UNTAGGED, case_dir=missing, dataset_dir=dataset)
+    assert passed is False
+    assert "never exercised" in msg
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        pytest.param("x: [\n", id="yaml-error"),
+        pytest.param("case_id: case-021-weak\n", id="not-a-list"),
+        pytest.param("- 5\n- ''\n- ..\n- ../case-021-weak\n- {case_id: [x]}\n", id="unusable-ids"),
+        pytest.param(b"\xff\xfe", id="invalid-bytes"),
+    ],
+)
+def test_unusable_case_order_falls_back_to_the_directories(tmp_path, content):
+    case_dir, dataset = _batch(tmp_path, QUICK_PAIR)
+    (dataset / "case-021-weak").mkdir()
+    (dataset / "case-021-weak" / "annotations.yaml").write_text(
+        yaml.safe_dump(TAGGED), encoding="utf-8"
+    )
+    order = case_dir.parent.parent / "case_order.yaml"
+    if isinstance(content, bytes):
+        order.write_bytes(content)
+    else:
+        order.write_text(content, encoding="utf-8")
+    passed, msg = _run(_unrevised_batch_files(), UNTAGGED, case_dir=case_dir, dataset_dir=dataset)
+    assert passed is True
+    assert "no revision-expected case in the run" in msg
 
 
 def test_sibling_without_annotations_file_counts_as_untagged(tmp_path):

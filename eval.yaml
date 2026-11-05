@@ -645,8 +645,10 @@ judges:
       holds no tagged case (quick mode's first two cases, a --cases subset, a
       Jira-sourced batch) proves nothing about the revise path by revising
       nothing, so there, as in a single-item run (Harbor task, execution.mode:
-      case), the tag alone decides. The run's cases are the directories next to
-      this case's; their tags are read from the dataset in arguments.dataset_dir.
+      case), the tag alone decides. The run's cases are the entries of the
+      case_order.yaml the harness copies into the run (batch mode) together
+      with the directories next to this case's, so a case that left no artifact
+      still counts; their tags are read from the dataset in arguments.dataset_dir.
       Reads shared artifacts and dataset annotations only, so the identical
       check runs on both pipelines.
     arguments:
@@ -834,8 +836,11 @@ judges:
       tagged = TAG in tags
 
       # Whether any case of the run promised a revision. The run's cases are
-      # the directories next to this one's (collect.py makes one per case, even
-      # when its artifacts were lost); their tags live in the dataset the judge
+      # the entries of the run's case_order.yaml (execute.py copies it from the
+      # workspace in batch mode: every case the run was given, artifacts or
+      # not) together with the directories next to this one's (collect.py
+      # makes one per case that left an artifact, even a lost one); their tags
+      # live in the dataset the judge
       # is configured with (arguments.dataset_dir, relative to the project
       # root: tried against the working directory, then against each ancestor
       # of the run, which lives under the project). True: a tagged case is in
@@ -864,11 +869,26 @@ judges:
               return (None, "arguments.dataset_dir unset")
           cases_root = os.path.dirname(case_dir)
           try:
-              siblings = sorted(
+              siblings = {
                   e for e in os.listdir(cases_root) if os.path.isdir(os.path.join(cases_root, e))
-              )
+              }
           except OSError:
+              siblings = None
+          # The run's roster, when the harness left it: a list of {case_id} (or
+          # plain ids). Ids are directory names; anything else is ignored.
+          listed = set()
+          try:
+              with open(os.path.join(os.path.dirname(cases_root), "case_order.yaml"), encoding="utf-8") as f:
+                  order = yaml.safe_load(f)
+          except (OSError, ValueError, yaml.YAMLError):
+              order = None
+          for entry in order if isinstance(order, list) else []:
+              cid = entry.get("case_id") if isinstance(entry, dict) else entry
+              if isinstance(cid, str) and cid not in ("", ".", "..") and "/" not in cid and os.sep not in cid:
+                  listed.add(cid)
+          if siblings is None and not listed:
               return (None, "the run's cases directory is not readable")
+          siblings = sorted((siblings or set()) | listed)
           roots = [dataset_dir]
           probe = cases_root
           for _ in range(8):
