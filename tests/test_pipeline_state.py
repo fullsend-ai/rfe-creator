@@ -341,6 +341,14 @@ class TestInit:
         assert decision["decision"] == "block"
         assert "No pipeline state exists" in decision["reason"]
         assert "action skipped" in decision["reason"]
+        # A completed standalone skill (/rfe-create leaves artifacts and no pipeline
+        # state) must not be told to run again: that would create duplicate items.
+        assert (
+            "do not run it again: write the result file from what it produced"
+            in (decision["reason"])
+        )
+        assert "only if nothing of it has been done yet" in decision["reason"]
+        assert "run the task first" not in decision["reason"]
         result.write_text("{}")
         assert self._stop_guard(monkeypatch, fullsend_dir=out)[0] is None
 

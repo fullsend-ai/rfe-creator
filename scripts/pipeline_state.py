@@ -2941,9 +2941,15 @@ def _stop_guard_fullsend_result(status):
             "artifacts/) and finish the task if it is not finished. "
         )
     elif status == "absent":
+        # Standalone skills (/rfe-create, /rfe-review, /rfe-split, /rfe-submit)
+        # finish without a pipeline state; telling the model to "run the task"
+        # here would run /rfe-create twice and create duplicate items.
         pipeline = (
-            "No pipeline state exists: if the task was skipped, say so in the result file "
-            "(action skipped); otherwise run the task first. "
+            "No pipeline state exists. If the task already ran (a standalone skill such as "
+            "/rfe-create or /rfe-review leaves its artifacts under artifacts/ and no pipeline "
+            "state), do not run it again: write the result file from what it produced. If "
+            "the task was skipped, say so in the result file (action skipped). Run or resume "
+            "the task only if nothing of it has been done yet. "
         )
     else:
         pipeline = "The auto-fix pipeline is DONE; nothing else of it is owed. "
