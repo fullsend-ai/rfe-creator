@@ -2897,7 +2897,7 @@ def _fullsend_result_path():
     return os.path.join(out_dir, "agent-result.json")
 
 
-def _stop_guard_fullsend_result(state, status):
+def _stop_guard_fullsend_result(status):
     """Block the Stop while a fullsend run's result file is missing.
 
     Called when the pipeline banner has nothing to say: the pipeline is DONE
@@ -2982,27 +2982,28 @@ def _stop_guard_fullsend_result(state, status):
     print(json.dumps({"decision": "block", "reason": reason}))
 
 
+# The speedrun config's name is `<STATE_PREFIX>speedrun-config.yaml`, the prefix
+# a type's `pipeline.state_prefix` ("" for rfe, "initiative-"): lowercase
+# letters, digits and dashes. Only such a name is read and quoted in the Stop
+# reason; anything else under tmp/ is not this skill's file.
+_SPEEDRUN_CONFIG_RE = re.compile(r"^[a-z0-9-]*speedrun-config\.yaml$")
+
+
 def _speedrun_phase():
     """``(config file name, phase)`` of the speedrun config under tmp/, for any
     type prefix; ``(None, None)`` without one and ``("ambiguous", None)`` when
     several exist, since the guard cannot tell which is this session's."""
     try:
-        names = sorted(n for n in os.listdir("tmp") if n.endswith("speedrun-config.yaml"))
+        names = sorted(n for n in os.listdir("tmp") if _SPEEDRUN_CONFIG_RE.match(n))
     except OSError:
+        return None, None
+    if not names:
         return None, None
     if len(names) > 1:
         return "ambiguous", None
-    for name in names:
-        try:
-            with open(os.path.join("tmp", name), encoding="utf-8") as f:
-                for line in f:
-                    key, sep, value = line.partition(":")
-                    if sep and key.strip() == "phase":
-                        return name, (value.strip().strip("\"'") or None)
-        except (OSError, UnicodeDecodeError):
-            continue
-        return name, None
-    return None, None
+    data = _read_yaml_file(os.path.join("tmp", names[0]))
+    phase = data.get("phase") if isinstance(data, dict) else None
+    return names[0], (str(phase) if phase not in (None, "") else None)
 
 
 def cmd_stop_guard(args):
@@ -3048,7 +3049,7 @@ def cmd_stop_guard(args):
             # result file is owed regardless, with wording that assumes nothing.
             state, status = None, "unreadable"
     if status != "running":
-        _stop_guard_fullsend_result(state, status)
+        _stop_guard_fullsend_result(status)
         return
     fingerprint = _stop_guard_fingerprint(state)
     count = _stop_guard_count(fingerprint, _stop_guard_event_key())
