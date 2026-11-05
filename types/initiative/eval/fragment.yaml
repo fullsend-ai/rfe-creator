@@ -103,10 +103,11 @@ threshold_notes:
     2026-09-15 — always case-012, whose sparse draft failed first review
     while the pipeline dropped the requester context); once #188 forwarded
     that context the same case drafted at 7, the run revised nothing and
-    every case scored 0.0. A multi-item run with zero revisions still fails
-    every case on any dataset. Single-item runs (Harbor tasks,
-    execution.mode: case) skip the run-level check and are decided by the
-    tag alone. Untagged cases otherwise always pass.
+    every case scored 0.0. A multi-item run that holds a tagged case and revised
+    nothing still fails every case. Single-item runs (Harbor tasks,
+    execution.mode: case) and runs without a tagged case (quick mode's first
+    two cases, a --cases subset, a Jira-sourced batch) skip the run-level check
+    and are decided by the tag alone. Untagged cases otherwise always pass.
   classification_signal: |
     stage 2 of classification (AISDLC-191/192): a case's expected_classification
     is none (must not be flagged), the type the item really is (must be flagged,

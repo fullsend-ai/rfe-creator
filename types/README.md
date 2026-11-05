@@ -76,8 +76,8 @@ itself is fine — `resolve()` follows the link).
    eval configs" below).
 5. Meet the provider floor (§3.4): a ≥16-case anonymized eval dataset with at least one sparse or
    adversarial case **and at least four `revision-expected`-tagged weak-draft cases** (the
-   `revision_coverage` gate fails every case of a multi-item run that revised nothing, so an untagged
-   dataset passes only by accident; author each tagged draft with an in-character "no data yet, do
+   `revision_coverage` gate fails every case of a multi-item run that holds a tagged case and revised
+   nothing, and never fires on a dataset without one, which then passes vacuously; author each tagged draft with an in-character "no data yet, do
    not pad" evidence or scope gap the create step cannot repair, annotate `expected_pass: false` /
    `expected_recommendation: revise`, and record the 0.92-against-tagged-count arithmetic in the
    fragment's `threshold_notes.revision_coverage` — `eval/README.md` "Weak-draft cases"), populated

@@ -83,8 +83,8 @@ write the committed config ("Generated eval configs" in `types/README.md`). Then
 floor (design §3.4): a ≥16-case anonymized eval dataset with at least one sparse or adversarial
 case and at least four `revision-expected`-tagged weak-draft cases (each an honest evidence or
 scope gap the create step cannot repair, so the first review fails and the revise path runs — see
-"Weak-draft cases" in `eval/README.md`; without them the `revision_coverage` gate passes only by
-accident), populated `expected_*` annotations, explicit `eval.thresholds`, the committed eval
+"Weak-draft cases" in `eval/README.md`; without them the `revision_coverage` gate never fires and
+passes vacuously), populated `expected_*` annotations, explicit `eval.thresholds`, the committed eval
 config, one QUICK_MODE run on the PR with `type=<name>`, and a seed for the tracker emulator.
 
 Rules that are easy to trip:

@@ -433,7 +433,15 @@ class TestShippedConfigs:
             for t in TYPES
         }
         for name in ("revision_flag_consistency", "revision_coverage"):
-            assert configs["rfe"][name] == configs["initiative"][name], name
+            rfe = {k: v for k, v in configs["rfe"][name].items() if k != "arguments"}
+            init = {k: v for k, v in configs["initiative"][name].items() if k != "arguments"}
+            assert rfe == init, name
+        # The one typed key of a shared judge: the dataset the run's cases come
+        # from, where revision_coverage reads the sibling cases' tags.
+        for t in TYPES:
+            assert configs[t]["revision_coverage"]["arguments"] == {
+                "dataset_dir": REG.get(t).get("eval.dataset")
+            }, t
 
     def test_check_mode_on_the_repo_passes(self, capsys):
         assert gen.main(["--check"]) == 0
