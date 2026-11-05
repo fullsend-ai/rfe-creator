@@ -72,6 +72,9 @@ prompt.
 ## Output
 
 Write `$FULLSEND_OUTPUT_DIR/agent-result.json`. Valid JSON, no markdown fences.
+This is the last step of every run, after the skill's own report and after any
+sub-skill's (the submit skill ends with a report of its own; the run is not over
+there). The Stop hook returns you here until the file exists.
 
 ```json
 {

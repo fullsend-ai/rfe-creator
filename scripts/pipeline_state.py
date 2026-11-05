@@ -2883,6 +2883,102 @@ def _stop_guard_count(fingerprint, event_key=""):
     return count
 
 
+def _fullsend_result_path():
+    """The result file a fullsend run owes, or None outside fullsend.
+
+    fullsend exports FULLSEND_OUTPUT_DIR to the agent and validates
+    ``agent-result.json`` there after the agent exits (the validation loop of
+    .fullsend/rfe-creator/rfe-creator.yaml). An unset or blank variable is a
+    plain Claude Code session, which owes nothing.
+    """
+    out_dir = os.environ.get("FULLSEND_OUTPUT_DIR", "").strip()
+    if not out_dir:
+        return None
+    return os.path.join(out_dir, "agent-result.json")
+
+
+def _stop_guard_fullsend_result(state):
+    """Block the Stop while a fullsend run's result file is missing.
+
+    Called once the pipeline is DONE or never started: the auto-fix pipeline
+    owes nothing more, but the task does: for /rfe-speedrun the submit and
+    summary phases (``phase`` in tmp/speedrun-config.yaml) and, for every
+    prompt, the result file itself. Both iterations of job 17766180996 ended
+    their turn on the submit skill's report without writing it. The block
+    tells the model what remains and not to restart the pipeline; the escape
+    hatch (STOP_GUARD_MAX_BLOCKS blocks with the file still missing and the
+    speedrun phase unchanged) releases a model that cannot comply.
+    """
+    path = _fullsend_result_path()
+    if path is None or os.path.exists(path):
+        return
+    speedrun_phase = _speedrun_phase()
+    fingerprint = "|".join(
+        ["fullsend-result", path, str(state.get("phase") if state else None), str(speedrun_phase)]
+    )
+    count = _stop_guard_count(fingerprint, _stop_guard_event_key())
+    if count is None:
+        print(
+            "[PIPELINE STOP GUARD] cannot keep the block counter "
+            f"({STOP_GUARD_FILE}); allowing the stop. {path} is MISSING: fullsend will "
+            "fail validation and discard the run.",
+            file=sys.stderr,
+        )
+        return
+    if count > STOP_GUARD_MAX_BLOCKS:
+        print(
+            f"[PIPELINE STOP GUARD] {path} still missing across {count - 1} blocked stops; "
+            "allowing the stop. fullsend will fail validation and discard the run.",
+            file=sys.stderr,
+        )
+        return
+    if speedrun_phase in ("autofix", "submit", "summary"):
+        owed = {
+            "autofix": "Phase 3 (Submit) and Phase 4 (Summary) of /rfe-speedrun",
+            "submit": "Phase 3 (Submit) and Phase 4 (Summary) of /rfe-speedrun",
+            "summary": "Phase 4 (Summary) of /rfe-speedrun",
+        }[speedrun_phase]
+        remaining = (
+            f"The speedrun config records phase `{speedrun_phase}`, so {owed} are still owed: "
+            "resume there, following the skill's SKILL.md, without re-running Step 0 or Phase 1 "
+            "(the auto-fix pipeline is DONE and must not be restarted). "
+        )
+    elif state is None:
+        remaining = (
+            "No pipeline state exists: if the task was skipped, say so in the result file "
+            "(action skipped); otherwise run the task first. "
+        )
+    else:
+        remaining = "The auto-fix pipeline is DONE; nothing else of it is owed. "
+    reason = (
+        f"fullsend expects the result file {path} and it does not exist: the run is not over. "
+        "Ending the turn without it makes fullsend fail validation, skip the post-script and "
+        "discard everything this run produced. "
+        + remaining
+        + f"Then write {path} as the prompt's Output section describes (valid JSON, no fences) "
+        f"and validate it with `fullsend-check-output {path}`. Do not stop before the file exists."
+    )
+    print(json.dumps({"decision": "block", "reason": reason}))
+
+
+def _speedrun_phase():
+    """``phase`` of the speedrun config, for any type prefix, or None."""
+    try:
+        names = sorted(n for n in os.listdir("tmp") if n.endswith("speedrun-config.yaml"))
+    except OSError:
+        return None
+    for name in names:
+        try:
+            with open(os.path.join("tmp", name), encoding="utf-8") as f:
+                for line in f:
+                    key, sep, value = line.partition(":")
+                    if sep and key.strip() == "phase":
+                        return value.strip().strip("\"'") or None
+        except (OSError, UnicodeDecodeError):
+            continue
+    return None
+
+
 def cmd_stop_guard(args):
     """Entry point for the Stop hook — keep the orchestrator in the dispatch loop.
 
@@ -2894,6 +2990,15 @@ def cmd_stop_guard(args):
     ``{"decision": "block", "reason": <the recovery banner>}``, which Claude
     Code shows to the model as the reason to continue.
 
+    Under fullsend the run also owes the result file the harness validates
+    (``$FULLSEND_OUTPUT_DIR/agent-result.json``, see
+    .fullsend/rfe-creator/prompt.md "Output"): with the pipeline DONE or never
+    started, a Stop while that file is missing is blocked too, with the reason
+    naming what the task still owes. Without it fullsend fails validation,
+    skips the post-script and discards the run (rfe-creator-eval job
+    17766180996, 2026-11-05: both iterations ended on the submit skill's own
+    report). Its escape hatch counts blocks under its own fingerprint.
+
     Fails open: no state file, an unreadable one, the gate variable unset, or
     any error lets the stop through. Escape hatch: when STOP_GUARD_MAX_BLOCKS
     consecutive blocks see the same phase, batch, state file and wave
@@ -2904,13 +3009,16 @@ def cmd_stop_guard(args):
     """
     if not os.environ.get("RFE_CREATOR_ENABLE_CONTEXT_HOOK"):
         return
-    if not os.path.exists(STATE_FILE):
-        return
-    try:
-        state = _load_state()
-    except (SystemExit, Exception):  # noqa: BLE001 - a hook must fail open
-        return
-    if not isinstance(state, dict) or state.get("phase") == "DONE":
+    state = None
+    if os.path.exists(STATE_FILE):
+        try:
+            state = _load_state()
+        except (SystemExit, Exception):  # noqa: BLE001 - a hook must fail open
+            return
+        if not isinstance(state, dict):
+            return
+    if state is None or state.get("phase") == "DONE":
+        _stop_guard_fullsend_result(state)
         return
     fingerprint = _stop_guard_fingerprint(state)
     count = _stop_guard_count(fingerprint, _stop_guard_event_key())

@@ -194,7 +194,7 @@ class TestInit:
     # ── Stop hook guard ──────────────────────────────────────────────────
 
     @staticmethod
-    def _stop_guard(monkeypatch, gate=True, stdin=None):
+    def _stop_guard(monkeypatch, gate=True, stdin=None, fullsend_dir=None):
         import io
         import json
         from contextlib import redirect_stderr, redirect_stdout
@@ -203,6 +203,11 @@ class TestInit:
             monkeypatch.setenv("RFE_CREATOR_ENABLE_CONTEXT_HOOK", "1")
         else:
             monkeypatch.delenv("RFE_CREATOR_ENABLE_CONTEXT_HOOK", raising=False)
+        # FULLSEND_OUTPUT_DIR marks a fullsend run, which owes agent-result.json there.
+        if fullsend_dir is None:
+            monkeypatch.delenv("FULLSEND_OUTPUT_DIR", raising=False)
+        else:
+            monkeypatch.setenv("FULLSEND_OUTPUT_DIR", str(fullsend_dir))
         # The hook's stdin: the Stop event JSON, or nothing (an empty payload
         # yields no event key and every call counts).
         monkeypatch.setattr(ps.sys, "stdin", io.StringIO(json.dumps(stdin) if stdin else ""))
@@ -230,6 +235,89 @@ class TestInit:
         ps._save_state(make_state(phase="DONE"))
         decision, err = self._stop_guard(monkeypatch)
         assert decision is None and err == ""
+
+    # ── Under fullsend the run also owes $FULLSEND_OUTPUT_DIR/agent-result.json ──
+
+    def _result_path(self, tmp_dir):
+        out = tmp_dir / "fs-output"
+        out.mkdir()
+        return out, out / "agent-result.json"
+
+    def test_stop_guard_holds_a_done_fullsend_run_until_the_result_file_exists(
+        self, tmp_dir, monkeypatch
+    ):
+        """Job 17766180996 (2026-11-05): the pipeline DONE, both iterations ended on
+        the submit skill's report without writing the result file, fullsend failed
+        validation and discarded the run."""
+        out, result = self._result_path(tmp_dir)
+        ps._save_state(make_state(phase="DONE"))
+        decision, err = self._stop_guard(monkeypatch, fullsend_dir=out)
+        assert decision["decision"] == "block"
+        assert (
+            f"fullsend expects the result file {result} and it does not exist" in decision["reason"]
+        )
+        assert "The auto-fix pipeline is DONE; nothing else of it is owed." in decision["reason"]
+        assert f"fullsend-check-output {result}" in decision["reason"]
+        assert "Do not stop before the file exists" in decision["reason"]
+        assert err == ""
+        result.write_text("{}")
+        decision, err = self._stop_guard(monkeypatch, fullsend_dir=out)
+        assert decision is None and err == ""
+
+    def test_stop_guard_names_the_speedrun_phases_still_owed(self, tmp_dir, monkeypatch):
+        out, _ = self._result_path(tmp_dir)
+        ps._save_state(make_state(phase="DONE"))
+        with open("tmp/speedrun-config.yaml", "w") as f:
+            f.write("type: rfe\nheadless: true\nphase: submit\n")
+        decision, _ = self._stop_guard(monkeypatch, fullsend_dir=out)
+        assert "phase `submit`" in decision["reason"]
+        assert (
+            "Phase 3 (Submit) and Phase 4 (Summary) of /rfe-speedrun are still owed"
+            in (decision["reason"])
+        )
+        assert "without re-running Step 0 or Phase 1" in decision["reason"]
+        # Any type prefix: the initiative speedrun keeps its config under its own name.
+        os.remove("tmp/speedrun-config.yaml")
+        with open("tmp/initiative-speedrun-config.yaml", "w") as f:
+            f.write("phase: 'summary'\n")
+        decision, _ = self._stop_guard(monkeypatch, fullsend_dir=out)
+        assert "Phase 4 (Summary) of /rfe-speedrun are still owed" in decision["reason"]
+
+    def test_stop_guard_holds_a_fullsend_run_that_never_started_the_pipeline(
+        self, tmp_dir, monkeypatch
+    ):
+        out, result = self._result_path(tmp_dir)
+        decision, _ = self._stop_guard(monkeypatch, fullsend_dir=out)
+        assert decision["decision"] == "block"
+        assert "No pipeline state exists" in decision["reason"]
+        assert "action skipped" in decision["reason"]
+        result.write_text("{}")
+        assert self._stop_guard(monkeypatch, fullsend_dir=out)[0] is None
+
+    def test_stop_guard_pipeline_banner_wins_while_the_pipeline_runs(self, tmp_dir, monkeypatch):
+        out, _ = self._result_path(tmp_dir)
+        ps._save_state(make_state(phase="REVISE", batch=1, total_batches=1))
+        decision, _ = self._stop_guard(monkeypatch, fullsend_dir=out)
+        assert "phase REVISE, not DONE" in decision["reason"]
+        assert "fullsend expects" not in decision["reason"]
+
+    def test_stop_guard_fullsend_check_is_opt_in_and_needs_a_directory(self, tmp_dir, monkeypatch):
+        out, _ = self._result_path(tmp_dir)
+        ps._save_state(make_state(phase="DONE"))
+        assert self._stop_guard(monkeypatch, gate=False, fullsend_dir=out)[0] is None
+        assert self._stop_guard(monkeypatch, fullsend_dir="")[0] is None
+        assert self._stop_guard(monkeypatch, fullsend_dir="   ")[0] is None
+
+    def test_stop_guard_fullsend_escape_hatch(self, tmp_dir, monkeypatch):
+        out, result = self._result_path(tmp_dir)
+        ps._save_state(make_state(phase="DONE"))
+        for _ in range(ps.STOP_GUARD_MAX_BLOCKS):
+            decision, err = self._stop_guard(monkeypatch, fullsend_dir=out)
+            assert decision["decision"] == "block" and err == ""
+        decision, err = self._stop_guard(monkeypatch, fullsend_dir=out)
+        assert decision is None
+        assert f"{result} still missing across {ps.STOP_GUARD_MAX_BLOCKS} blocked stops" in err
+        assert "discard the run" in err
 
     def test_stop_guard_blocks_mid_pipeline_with_recovery_banner(self, tmp_dir, monkeypatch):
         """The 2026-09-29 shape: the orchestrator ends its turn at REVISE after a
