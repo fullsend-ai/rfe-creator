@@ -102,6 +102,11 @@ is not followed by a second one. The second iteration gets what is left of the e
 enough to write the result file after a completed pipeline, not to resume one the first
 iteration left unfinished. A retry the harness cuts short loses nothing a single iteration
 would have kept, since fullsend skips the post-script after a failed validation either way.
+Since 2026-11-05 the checkout's Stop hook (`scripts/pipeline_state.py stop-guard`, which
+Claude Code runs from a repository's `.claude/settings.json` in a `-p` session without the
+trust dialog) also holds a turn that ends with the pipeline DONE but
+`$FULLSEND_OUTPUT_DIR/agent-result.json` missing, naming the speedrun phases still owed:
+job 17766180996 ended both iterations on the submit skill's own report without the file.
 
 The model comes from `fullsend run --model`. `tests/test_fullsend_eval_harness.py` pins the
 child to exactly these overrides. Run it locally, with no `JIRA_*` variables on the host, from
