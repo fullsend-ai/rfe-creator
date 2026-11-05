@@ -416,6 +416,10 @@ def test_case_order_alone_is_enough_when_the_cases_directory_is_unreadable(tmp_p
     ],
 )
 def test_unusable_case_order_falls_back_to_the_directories(tmp_path, content):
+    if content == '- "case-021\\u0000weak"\n':
+        # The YAML escape must decode to a NUL in the id, or the case would only
+        # exercise the malformed-YAML fallback (fullsend review on #296).
+        assert yaml.safe_load(content) == ["case-021\x00weak"]
     case_dir, dataset = _batch(tmp_path, QUICK_PAIR)
     (dataset / "case-021-weak").mkdir()
     (dataset / "case-021-weak" / "annotations.yaml").write_text(
