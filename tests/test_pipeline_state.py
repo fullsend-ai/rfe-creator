@@ -359,6 +359,16 @@ class TestInit:
         assert "phase REVISE, not DONE" in decision["reason"]
         assert "fullsend expects" not in decision["reason"]
 
+    def test_stop_guard_quotes_the_result_path_in_the_command_example(self, tmp_dir, monkeypatch):
+        # FULLSEND_OUTPUT_DIR comes from the harness; a path with a space or a
+        # metacharacter must still give a command the model can paste.
+        out = tmp_dir / "fs out$dir"
+        out.mkdir()
+        ps._save_state(make_state(phase="DONE"))
+        decision, _ = self._stop_guard(monkeypatch, fullsend_dir=out)
+        quoted = "'" + str(out / "agent-result.json") + "'"
+        assert f"fullsend-check-output {quoted}" in decision["reason"]
+
     def test_stop_guard_fullsend_check_is_opt_in_and_needs_a_directory(self, tmp_dir, monkeypatch):
         out, _ = self._result_path(tmp_dir)
         ps._save_state(make_state(phase="DONE"))

@@ -2983,7 +2983,8 @@ def _stop_guard_fullsend_result(status):
         "discard everything this run produced. "
         + remaining
         + f"Then write {path} as the prompt's Output section describes (valid JSON, no fences) "
-        f"and validate it with `fullsend-check-output {path}`. Do not stop before the file exists."
+        f"and validate it with `fullsend-check-output {shlex.quote(path)}`. "
+        "Do not stop before the file exists."
     )
     print(json.dumps({"decision": "block", "reason": reason}))
 
