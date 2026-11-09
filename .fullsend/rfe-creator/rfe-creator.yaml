@@ -66,6 +66,14 @@ env:
     RFE_CREATOR_ENABLE_CONTEXT_HOOK: "1"
     RFE_SKIP_BOOTSTRAP: "1"
     CLAUDE_CODE_SUBAGENT_MODEL: claude-opus-4-6
+    # Claude Code's Bash budget per tool call (milliseconds), what the production agentic-ci
+    # job forwards into its sandbox (rfe-autofixer's .claude template). The headless
+    # pipeline's barrier (wait-for-wave, #269) blocks for the default minus a 30-second
+    # margin, so 600000 gives one 570-second block per call instead of 90 and fewer returns
+    # to the model per wave. Keep the two equal (Claude Code caps the default at the max);
+    # tests/test_fullsend_harness.py pins both.
+    BASH_DEFAULT_TIMEOUT_MS: "600000"
+    BASH_MAX_TIMEOUT_MS: "600000"
   runner:
     JIRA_SERVER: ${JIRA_SERVER}
     JIRA_USER: ${JIRA_USER}
