@@ -236,6 +236,51 @@ class TestInit:
         decision, err = self._stop_guard(monkeypatch)
         assert decision is None and err == ""
 
+    # ── Every invocation leaves one line in tmp/pipeline-hooks-seen.txt (AISDLC-662) ──
+
+    @staticmethod
+    def _hooks_seen():
+        import os
+
+        if not os.path.exists(ps.HOOKS_SEEN_FILE):
+            return []
+        with open(ps.HOOKS_SEEN_FILE, encoding="utf-8") as f:
+            return [line.rstrip("\n") for line in f if line.strip()]
+
+    def test_stop_guard_traces_each_invocation_with_the_pipeline_status(self, tmp_dir, monkeypatch):
+        self._stop_guard(monkeypatch)
+        ps._save_state(make_state(phase="DONE"))
+        self._stop_guard(monkeypatch)
+        lines = self._hooks_seen()
+        assert len(lines) == 2
+        assert lines[0].endswith(" stop-guard absent") and lines[1].endswith(" stop-guard done")
+        # A UTC timestamp first, so the lines can be matched against the job log.
+        assert all(line[10] == "T" and line[19] == "Z" for line in lines), lines
+
+    def test_stop_guard_trace_is_behind_the_gate(self, tmp_dir, monkeypatch):
+        ps._save_state(make_state(phase="ASSESS"))
+        self._stop_guard(monkeypatch, gate=False)
+        assert self._hooks_seen() == []
+
+    def test_post_compact_hook_traces_its_invocation(self, tmp_dir, monkeypatch):
+        import io
+        from contextlib import redirect_stdout
+
+        monkeypatch.setenv("RFE_CREATOR_ENABLE_CONTEXT_HOOK", "1")
+        with redirect_stdout(io.StringIO()):
+            ps.cmd_post_compact_hook([])
+        lines = self._hooks_seen()
+        assert len(lines) == 1 and lines[0].endswith(" post-compact-hook")
+
+    def test_an_unwritable_trace_never_fails_the_guard(self, tmp_dir, monkeypatch):
+        # A regular file where the trace's directory should be: makedirs and open fail.
+        (tmp_dir / "not-a-dir").write_text("")
+        monkeypatch.setattr(ps, "HOOKS_SEEN_FILE", str(tmp_dir / "not-a-dir" / "seen.txt"))
+        ps._save_state(make_state(phase="ASSESS"))
+        decision, _ = self._stop_guard(monkeypatch)
+        assert decision == {"decision": "block", "reason": decision["reason"]}
+        assert "[PIPELINE STATE RECOVERY]" in decision["reason"]
+
     # ── Under fullsend the run also owes $FULLSEND_OUTPUT_DIR/agent-result.json ──
 
     def _result_path(self, tmp_dir):

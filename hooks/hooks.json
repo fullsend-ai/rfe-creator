@@ -1,5 +1,5 @@
 {
-  "description": "rfe-creator pipeline hooks: after an auto-compaction, re-inject the pipeline state; on Stop, keep the orchestrator in the dispatch loop until the pipeline is DONE and, under fullsend, until $FULLSEND_OUTPUT_DIR/agent-result.json exists. The same handlers as the checkout's .claude/settings.json, rooted at the plugin directory; both opt in through RFE_CREATOR_ENABLE_CONTEXT_HOOK=1 in the session's environment.",
+  "description": "rfe-creator pipeline hooks: after an auto-compaction, re-inject the pipeline state; on Stop, keep the orchestrator in the dispatch loop until the pipeline is DONE and, under fullsend, until $FULLSEND_OUTPUT_DIR/agent-result.json exists. The same handlers as the checkout's .claude/settings.json, rooted at the plugin directory; both opt in through RFE_CREATOR_ENABLE_CONTEXT_HOOK=1 in the session's environment, and each invocation appends one line to tmp/pipeline-hooks-seen.txt.",
   "hooks": {
     "SessionStart": [
       {

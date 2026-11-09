@@ -2766,7 +2766,28 @@ def cmd_post_compact_hook(args):
     """Entry point for SessionStart compact hook — guarded by env var."""
     if not os.environ.get("RFE_CREATOR_ENABLE_CONTEXT_HOOK"):
         return
+    _trace_hook("post-compact-hook")
     cmd_dispatch_context(args)
+
+
+HOOKS_SEEN_FILE = "tmp/pipeline-hooks-seen.txt"
+
+
+def _trace_hook(name, note=""):
+    """Append one line per hook invocation to HOOKS_SEEN_FILE: the proof, in a
+    workspace that is synced back (the fullsend dry job keeps tmp/ as a job
+    artifact), that the repository hooks loaded and the gate variable reached the
+    session. Claude Code marks the sandbox workspace untrusted and names only
+    permissions.allow as held back; no transcript event records a hook that ran,
+    and the Stop guard leaves STOP_GUARD_FILE only when it blocks (AISDLC-662).
+    Best effort: a hook never fails because its trace could not be written."""
+    try:
+        os.makedirs(os.path.dirname(HOOKS_SEEN_FILE), exist_ok=True)
+        with open(HOOKS_SEEN_FILE, "a", encoding="utf-8") as f:
+            stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            f.write(f"{stamp} {name}{' ' + note if note else ''}\n")
+    except OSError:
+        pass
 
 
 STOP_GUARD_FILE = "tmp/pipeline-stop-guard.txt"
@@ -3060,6 +3081,7 @@ def cmd_stop_guard(args):
             # The pipeline banner fails open on a state it cannot read; the
             # result file is owed regardless, with wording that assumes nothing.
             state, status = None, "unreadable"
+    _trace_hook("stop-guard", status)
     if status != "running":
         _stop_guard_fullsend_result(status)
         return
