@@ -181,6 +181,55 @@ class TestHarnessModels:
         ]
 
 
+BASH_BUDGET_VARS = ("BASH_DEFAULT_TIMEOUT_MS", "BASH_MAX_TIMEOUT_MS")
+
+
+def bash_budget_problems(harness):
+    """The sandbox's Bash budget: both variables set, millisecond integers, equal to each
+    other. The production agentic-ci job forwards the same pair (rfe-autofixer's .claude
+    template, 600000); the barrier (wait-for-wave) blocks for the default minus a margin,
+    capped by the max, so an absent or unequal pair changes how often the orchestrator
+    returns to the model, and with it the cost and the trace (AISDLC-662)."""
+    sandbox = harness.get("env", {}).get("sandbox", {})
+    problems = []
+    for name in BASH_BUDGET_VARS:
+        value = sandbox.get(name)
+        if not isinstance(value, str) or not value.isdigit():
+            problems.append(f"env.sandbox.{name} is not a millisecond integer string: {value!r}")
+    if not problems and sandbox[BASH_BUDGET_VARS[0]] != sandbox[BASH_BUDGET_VARS[1]]:
+        problems.append(
+            "env.sandbox.BASH_DEFAULT_TIMEOUT_MS and BASH_MAX_TIMEOUT_MS differ: "
+            f"{sandbox[BASH_BUDGET_VARS[0]]!r} != {sandbox[BASH_BUDGET_VARS[1]]!r}"
+        )
+    return problems
+
+
+class TestBashBudget:
+    def test_harness_forwards_the_bash_budget(self, harness):
+        problems = bash_budget_problems(harness)
+        assert not problems, "\n".join(problems)
+
+    def test_missing_budget_fails(self, harness):
+        changed = copy.deepcopy(harness)
+        del changed["env"]["sandbox"]["BASH_MAX_TIMEOUT_MS"]
+        assert bash_budget_problems(changed) == [
+            "env.sandbox.BASH_MAX_TIMEOUT_MS is not a millisecond integer string: None"
+        ]
+
+    def test_unequal_budget_fails(self, harness):
+        changed = copy.deepcopy(harness)
+        changed["env"]["sandbox"]["BASH_MAX_TIMEOUT_MS"] = "120000"
+        problems = bash_budget_problems(changed)
+        assert len(problems) == 1 and "differ" in problems[0]
+
+    def test_non_integer_budget_fails(self, harness):
+        changed = copy.deepcopy(harness)
+        changed["env"]["sandbox"]["BASH_DEFAULT_TIMEOUT_MS"] = 600000
+        assert bash_budget_problems(changed) == [
+            "env.sandbox.BASH_DEFAULT_TIMEOUT_MS is not a millisecond integer string: 600000"
+        ]
+
+
 class TestProviderCredentials:
     def test_provider_credentials_declared(self, harness):
         problems = credential_problems(harness)
