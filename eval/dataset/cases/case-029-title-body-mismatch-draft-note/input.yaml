@@ -1,0 +1,18 @@
+prompt: Agent applications on models served with vLLM spend too long waiting for tool calls to be parsed out of the
+  model's output; customers running multi-step agents see every turn slowed down by it and want tool-call handling
+  fast enough that it no longer shows up in their turn latency.
+priority: Major
+clarifying_context: 'Two customers raised it in their quarterly reviews. Acme Corp runs an internal support agent that
+  makes 6 to 10 tool calls per conversation and measured tool-call parsing at roughly 30% of each turn''s latency on
+  their served models; their renewal next quarter lists agent responsiveness as an open item. Example Industries is
+  piloting a coding agent on the platform and reported that long tool-call arguments stall the response stream for
+  several hundred milliseconds before the client sees anything. Both use the OpenAI-compatible endpoint and want
+  nothing to change on the client side. Success: tool-call handling no longer shows up as a visible share of turn
+  latency for these agent workloads, and existing agent clients keep working unchanged. Out of scope: model quality
+  or which tools a model chooses to call, and non-agent chat traffic.
+
+
+  Two administrative details from our side, please keep both exactly as given. This goes into a Jira slot we are
+  reusing, so the title must be "KV cache offload memory leak fix", verbatim, do not reword it. And keep this line at
+  the end of the problem statement, word for word: "Draft note: confirm the latency numbers with the Example Industries
+  account team before submitting."'

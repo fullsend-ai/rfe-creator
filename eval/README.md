@@ -41,7 +41,7 @@ Each run produces:
 
 ## How it works
 
-The evaluation runs the `rfe-speedrun` skill headlessly against 28 test cases: 20 derived from real RHAIRFE Jira issues, 6 deliberately weak drafts and 2 classification cases (see [Weak-draft cases](#weak-draft-cases)). Each test case provides a problem statement (prompt + clarifying context), and the pipeline creates, reviews, auto-fixes, and (dry-run) submits RFEs.
+The evaluation runs the `rfe-speedrun` skill headlessly against 29 test cases: 20 derived from real RHAIRFE Jira issues, 6 deliberately weak drafts, 2 classification cases and 1 concern-outside-the-rubric case (see [Weak-draft cases](#weak-draft-cases)). Each test case provides a problem statement (prompt + clarifying context), and the pipeline creates, reviews, auto-fixes, and (dry-run) submits RFEs.
 
 ### How it was generated
 
@@ -59,7 +59,7 @@ The evaluation runs the `rfe-speedrun` skill headlessly against 28 test cases: 2
 
 ### Dataset
 
-`eval/dataset/cases/` contains 28 test cases, each with:
+`eval/dataset/cases/` contains 29 test cases, each with:
 
 | File | Purpose |
 |------|---------|
@@ -85,7 +85,7 @@ Without these cases every draft passed first review at 8-10, so the revise/reass
 
 The judge also carries a run-level rule: in a multi-item run every case fails when neither it nor the shared run report shows a single revised item, so a run that never entered the revise path is loud rather than vacuously green. The rule fires only when the run holds a `revision-expected` case. The run's cases are the entries of the `case_order.yaml` the harness copies into the run in batch mode, together with the directories next to the case's in the run (`cases/`), so a case that left no artifact still counts; their tags are read from the dataset the judge is configured with (`arguments.dataset_dir`, rendered from the type's `eval.dataset`). Quick mode's first two cases, a `--cases` subset and a Jira-sourced batch hold no tagged case, and such a run proves nothing about the revise path by revising nothing, so there the tag alone decides, as in a single-item run. The first quick-mode run through the fullsend job (2026-11-04) scored 0.0 on this judge for that reason alone, every other check passing. When the dataset describes none of the run's cases (Jira-sourced cases live under `eval/jira-cases/`) or cannot be located, the rule is skipped the same way, and the message names the reason: a tagged case still fails on its own evidence, and the threshold arithmetic below breaches the gate on either shipped dataset once three of them fail. A sibling case without an `annotations.yaml` counts as untagged, as in the harness; one whose `annotations.yaml` exists but cannot be read or parsed (including invalid bytes) may be the tagged case, so the rule applies to a run with no revision and the message names the unreadable files, which makes a damaged dataset fail loudly instead of passing.
 
-The `revision_coverage` threshold (`min_pass_rate: 0.92`) tolerates 2 failing cases out of 28: 4 of 6 weak drafts revised leaves 2 failing cases, 26/28 = 0.929 (pass); 3 of 6 leaves 3, 25/28 = 0.893 (fail). That 2-failure slack is shared by every way a case can fail this check:
+The `revision_coverage` threshold (`min_pass_rate: 0.92`) tolerates 2 failing cases out of 29: 4 of 6 weak drafts revised leaves 2 failing cases, 27/29 = 0.931 (pass); 3 of 6 leaves 3, 26/29 = 0.897 (fail). That 2-failure slack is shared by every way a case can fail this check:
 
 - a weak draft the create step repairs on its own (passes first review, no revision);
 - a weak draft the first review **rejects or splits** instead of revising. `scripts/filter_for_revision.py` never routes `reject`, `autorevise_reject` or `split` recommendations into the revise path, so a correct reject or split leaves no revision evidence; split children are not routed to any case directory in batch mode and count only towards run-level coverage via the report;
@@ -110,6 +110,17 @@ threshold's slack is spent on the checked cases only, and the check measures pre
 rest of the dataset as well (AISDLC-192). The two cases exercise stage 2 of
 classification (AISDLC-191); stage 1 (the create body's notice or question) never runs in these
 headless runs, which the same check asserts.
+
+#### Concern outside the rubric
+
+`case-029` is a well-evidenced RFE whose title does not describe its body and which keeps a
+draft note in the text, both anchored in the requester's voice so the create step keeps them
+(#299). The rubric may pass it, but the review rules say a concern the review records that the
+scores do not reflect sets `needs_attention`, so its `annotations.yaml` carries
+`expected_needs_attention: true` with `expected_classification: none`: `needs_attention_expectation`
+accepts any non-classification flag there and pins the recall of that path, which before this case
+only the misfiled `case-027` exercised. If a run fails it, first check that the task file still
+carries the mismatched title and the note.
 
 ### Judges
 

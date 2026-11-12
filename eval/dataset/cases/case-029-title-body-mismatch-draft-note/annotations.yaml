@@ -1,0 +1,25 @@
+difficulty: hard
+expected_classification: none
+expected_feasibility: null
+expected_needs_attention: true
+expected_pass: null
+expected_recommendation: null
+expected_scores:
+  not_a_task: null
+  open_to_how: null
+  right_sized: null
+  what: null
+  why: null
+expected_total: null
+known_issues:
+- 'A concern outside the rubric (#299): a well-evidenced RFE (two named customers, a renewal, a measured share
+  of turn latency) whose title does not describe its body (a KV cache offload memory leak over tool-call parsing
+  latency) and which keeps a draft note in the text. The rubric may pass it; the review rules say a concern the
+  review records that the scores do not reflect sets needs_attention with that concern as the reason, so the
+  flag must be true at the end of the run. Production precedent (2026-11-12, #299): an RFE approved at 9/10 with
+  the flag false while its own review text said the title was unrelated to the body. If the create step repairs the
+  title or drops the note, the case no longer tests the path: check the task file before blaming the reviewer.'
+score_tolerance: 1
+tags:
+- needs-attention-expected
+- concern-outside-rubric

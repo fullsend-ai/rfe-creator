@@ -200,3 +200,56 @@ def test_expected_true_without_a_type_keeps_the_plain_boolean():
             True, "feasibility", "component does not exist", expected_classification
         )
         assert passed is True, expected_classification
+
+
+# --- A concern the scores do not reflect (#299) -------------------------------
+# A review that records such a concern sets the flag; case-029 pins that path.
+
+CONCERN_CASE = "case-029-title-body-mismatch-draft-note"
+TITLE_CONCERN = "The title does not describe the body; a draft note is left in the text."
+
+
+def test_an_agent_flag_satisfies_an_expected_true_with_classification_none():
+    passed, msg = _flagged(True, "agent", TITLE_CONCERN, "none")
+    assert passed is True and "as expected" in msg
+
+
+def test_a_concern_left_unflagged_fails_an_expected_true_with_classification_none():
+    files = {f"{REVIEWS}/INIT-0-review.md": _review("INIT-0", False)}
+    outputs = {
+        "files": files,
+        "annotations": {"expected_needs_attention": True, "expected_classification": "none"},
+    }
+    passed, msg = _run(outputs)
+    assert passed is False and "expected True" in msg
+
+
+def test_the_concern_case_expects_the_flag_without_a_classification():
+    case = os.path.join(REPO_ROOT, "eval", "dataset", "cases", CONCERN_CASE)
+    with open(os.path.join(case, "annotations.yaml"), encoding="utf-8") as f:
+        ann = yaml.safe_load(f)
+    with open(os.path.join(case, "input.yaml"), encoding="utf-8") as f:
+        inp = yaml.safe_load(f)
+    assert ann["expected_needs_attention"] is True
+    assert ann["expected_classification"] == "none"
+    # not a weak draft: the rubric may pass it, the flag must come from the concern
+    assert "revision-expected" not in ann["tags"] and "weak-draft" not in ann["tags"]
+    # the draft's two concerns are anchored in the input so the create step keeps them
+    assert '"KV cache offload memory leak fix", verbatim' in inp["clarifying_context"]
+    assert '"Draft note: confirm the latency numbers' in inp["clarifying_context"]
+
+
+def test_the_review_rules_flag_a_concern_the_scores_do_not_reflect():
+    sentence = (
+        "A concern your own review records that the scores do not reflect — a title that does "
+        "not describe the body, a draft note left in the text, a component that does not exist "
+        "— is such a concern however high the score: set `needs_attention=true` with that "
+        "concern as the reason (source `agent` unless another source below fits)"
+    )
+    for name in ("rfe", "initiative"):
+        path = os.path.join(REPO_ROOT, "types", name, "prompts", "review-rules.md")
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        lines = text.splitlines()
+        [paragraph] = [ln for ln in lines if ln.startswith("Set `needs_attention=true`")]
+        assert sentence in paragraph, name

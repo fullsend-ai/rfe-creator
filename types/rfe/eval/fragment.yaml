@@ -61,10 +61,20 @@ revision:
     was the intent preserved while removing implementation bias?
     Or was it simply deleted without reframing the underlying need?
 threshold_notes:
+  needs_attention_expectation: |
+    two cases expect the flag true: case-027 pins the misfiled item's recall
+    (its expected_classification names a type, so only the classification flag
+    naming it counts) and case-029 (#299) the path of a concern the scores do
+    not reflect: a well-evidenced RFE whose title does not describe its body
+    and which keeps a draft note must end the run flagged (expected_classification
+    none, so a flag for any non-classification reason satisfies it). The review
+    rules make such a recorded concern set the flag after a production review
+    approved one at 9/10 with the flag false. case-029 is not yet calibrated on
+    a live run; the reviewer is non-deterministic, so judge it over several.
   revision_coverage: |
-    with 28 cases of which 6 are tagged revision-expected (case-021 to
-    case-026), 4 of 6 revised leaves 2 failures -> 26/28 = 0.929 (pass); 3 of 6
-    revised leaves 3 failures -> 25/28 = 0.893 (fail). case-026 (a maintenance
+    with 29 cases of which 6 are tagged revision-expected (case-021 to
+    case-026), 4 of 6 revised leaves 2 failures -> 27/29 = 0.931 (pass); 3 of 6
+    revised leaves 3 failures -> 26/29 = 0.897 (fail). case-026 (a maintenance
     checklist with no business evidence) calibrated on 2026-09-21 as a
     one-revision pass: first review 5/10 (WHY 0, not_a_task 0), revised once to
     9/10 — the reviser pads WHY to 1 with a generic segment despite the draft's
@@ -92,7 +102,7 @@ threshold_notes:
     case-027, an Initiative described as an RFE (must be flagged "likely an
     Initiative"), and case-028, a genuinely ambiguous idea (must not be flagged);
     every other annotated case must not be flagged either, so the check measures
-    precision over the dataset as well. With 28 cases, 0.92 allows 2 failures,
+    precision over the dataset as well. With 29 cases, 0.92 allows 2 failures,
     which makes this threshold a precision gate: the misfiled case's recall is
     pinned by needs_attention_expectation at 1.0, which on a case whose
     expected_classification names a type accepts only the classification flag
