@@ -41,7 +41,7 @@ Each run produces:
 
 ## How it works
 
-The evaluation runs the `rfe-speedrun` skill headlessly against 28 test cases: 20 derived from real RHAIRFE Jira issues, 6 deliberately weak drafts and 2 classification cases (see [Weak-draft cases](#weak-draft-cases)). Each test case provides a problem statement (prompt + clarifying context), and the pipeline creates, reviews, auto-fixes, and (dry-run) submits RFEs.
+The evaluation runs the `rfe-speedrun` skill headlessly against 29 test cases: 20 derived from real RHAIRFE Jira issues, 6 deliberately weak drafts, 2 classification cases and 1 attention case (see [Weak-draft cases](#weak-draft-cases) and [Attention case](#attention-case)). Each test case provides a problem statement (prompt + clarifying context), and the pipeline creates, reviews, auto-fixes, and (dry-run) submits RFEs.
 
 ### How it was generated
 
@@ -59,7 +59,7 @@ The evaluation runs the `rfe-speedrun` skill headlessly against 28 test cases: 2
 
 ### Dataset
 
-`eval/dataset/cases/` contains 28 test cases, each with:
+`eval/dataset/cases/` contains 29 test cases, each with:
 
 | File | Purpose |
 |------|---------|
@@ -85,7 +85,7 @@ Without these cases every draft passed first review at 8-10, so the revise/reass
 
 The judge also carries a run-level rule: in a multi-item run every case fails when neither it nor the shared run report shows a single revised item, so a run that never entered the revise path is loud rather than vacuously green. The rule fires only when the run holds a `revision-expected` case. The run's cases are the entries of the `case_order.yaml` the harness copies into the run in batch mode, together with the directories next to the case's in the run (`cases/`), so a case that left no artifact still counts; their tags are read from the dataset the judge is configured with (`arguments.dataset_dir`, rendered from the type's `eval.dataset`). Quick mode's first two cases, a `--cases` subset and a Jira-sourced batch hold no tagged case, and such a run proves nothing about the revise path by revising nothing, so there the tag alone decides, as in a single-item run. The first quick-mode run through the fullsend job (2026-11-04) scored 0.0 on this judge for that reason alone, every other check passing. When the dataset describes none of the run's cases (Jira-sourced cases live under `eval/jira-cases/`) or cannot be located, the rule is skipped the same way, and the message names the reason: a tagged case still fails on its own evidence, and the threshold arithmetic below breaches the gate on either shipped dataset once three of them fail. A sibling case without an `annotations.yaml` counts as untagged, as in the harness; one whose `annotations.yaml` exists but cannot be read or parsed (including invalid bytes) may be the tagged case, so the rule applies to a run with no revision and the message names the unreadable files, which makes a damaged dataset fail loudly instead of passing.
 
-The `revision_coverage` threshold (`min_pass_rate: 0.92`) tolerates 2 failing cases out of 28: 4 of 6 weak drafts revised leaves 2 failing cases, 26/28 = 0.929 (pass); 3 of 6 leaves 3, 25/28 = 0.893 (fail). That 2-failure slack is shared by every way a case can fail this check:
+The `revision_coverage` threshold (`min_pass_rate: 0.92`) tolerates 2 failing cases out of 29: 4 of 6 weak drafts revised leaves 2 failing cases, 27/29 = 0.931 (pass); 3 of 6 leaves 3, 26/29 = 0.897 (fail). That 2-failure slack is shared by every way a case can fail this check:
 
 - a weak draft the create step repairs on its own (passes first review, no revision);
 - a weak draft the first review **rejects or splits** instead of revising. `scripts/filter_for_revision.py` never routes `reject`, `autorevise_reject` or `split` recommendations into the revise path, so a correct reject or split leaves no revision evidence; split children are not routed to any case directory in batch mode and count only towards run-level coverage via the report;
@@ -111,6 +111,18 @@ rest of the dataset as well (AISDLC-192). The two cases exercise stage 2 of
 classification (AISDLC-191); stage 1 (the create body's notice or question) never runs in these
 headless runs, which the same check asserts.
 
+#### Attention case
+
+`case-029` is a well-formed need filed under a title that does not describe it, with a draft note
+("Confirm the exact hero-model list before submission.") left in the text, both anchored in the
+requester's voice so the create step keeps them. The body passes the rubric, so nothing in the
+scores says anything is wrong; the review rules want `needs_attention` set with the mismatch as the
+reason, a concern the review records that the scores do not reflect. The case pins the recall of
+that path through `needs_attention_expectation` (1.0), which until then checked an expected `true`
+only on the misfiled Initiative (`case-027`, source `classification`). It comes from RHAIRFE-3899 on
+2026-11-12 (issue #299): the production reviewer wrote the mismatch into its feedback and strategy
+notes and still set the flag false, while the parallel dry run of the same slot flagged it.
+
 ### Judges
 
 | Judge | Type | What it checks |
@@ -122,7 +134,7 @@ headless runs, which the same check asserts.
 | `revision_flag_consistency` | check | `auto_revised` agrees with revision evidence (state file, history, moved score, removed-context) |
 | `revision_coverage` | check | Revise path exercised: `revision-expected` cases were revised; every case fails when a multi-item run holding a tagged case revised nothing (single-item runs, and runs without a tagged case such as quick mode: tag alone decides) |
 | `classification_signal` | check | Stage 2 of classification (AISDLC-191): the final review's misfiled-item flag matches `expected_classification` (`none`: no review may carry one; a type: one must, naming that type); a `pass --type to override` notice in stdout fails the case (stage 1 never runs headless); the 0.92 threshold binds precision, the misfiled case's recall is pinned by `needs_attention_expectation` at 1.0, which accepts only the classification flag naming the expected type there |
-| `needs_attention_expectation` | check | The final review's `needs_attention` matches `expected_needs_attention` (the flag at the end of the run); a classification-only flag does not count against an expected `false`; on a case whose `expected_classification` names a type, only the flag naming that type satisfies an expected `true` |
+| `needs_attention_expectation` | check | The final review's `needs_attention` matches `expected_needs_attention` (the flag at the end of the run); a classification-only flag does not count against an expected `false`; on a case whose `expected_classification` names a type, only the flag naming that type satisfies an expected `true`; expected `true` on `case-027` (classification) and `case-029` (a concern the scores do not reflect) |
 | `pipeline_flow` | check | All three phases (create, auto-fix, submit) detected in stdout, no fatal tracebacks, no Phase 1 deletions |
 | `architecture_context_used` | check | Every feasibility file's writer transcript read `.context/architecture-context`; the prose fallback applies only to runs without transcript capture |
 | `rfe_quality` | LLM | RFE quality (WHAT/WHY/HOW/task/scope) + calibration accuracy |

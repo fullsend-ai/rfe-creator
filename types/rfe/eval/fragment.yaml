@@ -62,9 +62,9 @@ revision:
     Or was it simply deleted without reframing the underlying need?
 threshold_notes:
   revision_coverage: |
-    with 28 cases of which 6 are tagged revision-expected (case-021 to
-    case-026), 4 of 6 revised leaves 2 failures -> 26/28 = 0.929 (pass); 3 of 6
-    revised leaves 3 failures -> 25/28 = 0.893 (fail). case-026 (a maintenance
+    with 29 cases of which 6 are tagged revision-expected (case-021 to
+    case-026), 4 of 6 revised leaves 2 failures -> 27/29 = 0.931 (pass); 3 of 6
+    revised leaves 3 failures -> 26/29 = 0.897 (fail). case-026 (a maintenance
     checklist with no business evidence) calibrated on 2026-09-21 as a
     one-revision pass: first review 5/10 (WHY 0, not_a_task 0), revised once to
     9/10 — the reviser pads WHY to 1 with a generic segment despite the draft's
@@ -84,6 +84,17 @@ threshold_notes:
     mode's first two cases, a --cases subset, a Jira-sourced batch) skip the
     run-level check and are decided by the tag alone. Untagged cases otherwise
     always pass.
+  needs_attention_expectation: |
+    1.0 over the annotated cases. Expected true on case-027 (only the
+    classification flag naming the Initiative satisfies it) and, since issue
+    #299, on case-029: a well-formed need under a title that does not describe
+    it, with a draft note left in the text, so the body passes and the flag is
+    the only signal the case produces (source rubric or agent, not
+    classification). One miss fails the gate by design: the rules say a concern
+    the review records that the scores do not reflect sets the flag. The
+    production reviewer missed exactly that on RHAIRFE-3899 (2026-11-12) while
+    the parallel dry reviewer of the same slot flagged it; the case's first
+    baseline is the eval run of the PR that added it.
   classification_signal: |
     stage 2 of classification (AISDLC-191/192): a case's expected_classification
     is none (must not be flagged), the type the item really is (must be flagged,
@@ -92,7 +103,7 @@ threshold_notes:
     case-027, an Initiative described as an RFE (must be flagged "likely an
     Initiative"), and case-028, a genuinely ambiguous idea (must not be flagged);
     every other annotated case must not be flagged either, so the check measures
-    precision over the dataset as well. With 28 cases, 0.92 allows 2 failures,
+    precision over the dataset as well. With 29 cases, 0.92 allows 2 failures,
     which makes this threshold a precision gate: the misfiled case's recall is
     pinned by needs_attention_expectation at 1.0, which on a case whose
     expected_classification names a type accepts only the classification flag
