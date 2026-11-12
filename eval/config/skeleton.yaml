@@ -128,6 +128,10 @@ dataset:
       - expected_feasibility (nullable string)
       - expected_needs_attention (nullable bool): the review's needs_attention
         at the end of the run (after any revision), not at the first review
+      - expected_needs_attention_reason (nullable string, a regex): with
+        expected_needs_attention true and no named expected_classification,
+        the final review's needs_attention_reason must match it
+        (case-insensitive search)
       ${gen.annotations_extra}
       - known_issues (list)
       - score_tolerance (int, default 1)
@@ -504,7 +508,13 @@ judges:
       flag whose reason names `--type <that type>` satisfies it: a flag for
       another reason (feasibility, rubric) fails, so the misfiled case's
       recall is not satisfied by an unrelated concern. Without
-      expected_classification, or with `none`, the plain boolean applies.
+      expected_classification, or with `none`, the plain boolean applies, and
+      the optional expected_needs_attention_reason (a regex) adds one more
+      requirement: the flag's needs_attention_reason must match it
+      (re.search, case-insensitive), so a case that pins one concern is not
+      satisfied by an unrelated flag. When the flag is missing and the
+      annotation is set, the message names the created task's title, so an
+      anchor lost at create time reads differently from a missed flag.
     check: |
       import re
 
@@ -533,10 +543,38 @@ judges:
           if expected_classification
           else None
       )
+      expected_reason = ann.get("expected_needs_attention_reason")
+      reason_pattern = (
+          str(expected_reason).strip() if expected and expected_reason is not None else ""
+      )
+      reason_re = None
+      if reason_pattern:
+          try:
+              reason_re = re.compile(reason_pattern, re.IGNORECASE)
+          except re.error as exc:
+              return (False, f"invalid expected_needs_attention_reason {reason_pattern!r}: {exc}")
       files = outputs.get("files", {})
       reviews = {k: v for k, v in files.items() if k.endswith("-review.md")}
       if not reviews:
           return (False, "No review files to check")
+
+      def task_title(review_name):
+          # The <ID>.md task file of an <ID>-review.md review, wherever it sits in the run.
+          wanted = review_name.rsplit("/", 1)[-1][: -len("-review.md")] + ".md"
+          for name, text in sorted(files.items()):
+              if name.rsplit("/", 1)[-1] != wanted or not text.startswith("---"):
+                  continue
+              close = text.find("\n---", 3)
+              if close == -1:
+                  continue
+              try:
+                  meta = yaml.safe_load(text[3:close]) or {}
+              except yaml.YAMLError:
+                  continue
+              if isinstance(meta, dict) and meta.get("title"):
+                  return str(meta["title"]).strip()
+          return None
+
       errors = []
       for fname, content in sorted(reviews.items()):
           # Frontmatter is the leading ---...--- block; split on the closing fence
@@ -561,8 +599,17 @@ judges:
               if not names_expected.search(reason):
                   errors.append(f"{fname}: flagged, but not as a misfiled {expected_classification}")
                   continue
+          elif actual and expected is True and reason_re is not None:
+              if not reason_re.search(reason):
+                  errors.append(
+                      f"{fname}: flagged, but the reason does not match {reason_pattern}: {reason[:160]}"
+                  )
+                  continue
           if actual != expected:
-              errors.append(f"{fname}: needs_attention={actual}, expected {expected}")
+              message = f"{fname}: needs_attention={actual}, expected {expected}"
+              if expected is True and reason_re is not None:
+                  message += f" (task title: {task_title(fname)})"
+              errors.append(message)
       return (
           len(errors) == 0,
           "; ".join(errors[:5]) if errors else f"{len(reviews)} reviews: needs_attention={expected} as expected",
