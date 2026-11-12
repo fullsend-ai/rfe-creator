@@ -94,7 +94,12 @@ threshold_notes:
     the review records that the scores do not reflect sets the flag. The
     production reviewer missed exactly that on RHAIRFE-3899 (2026-11-12) while
     the parallel dry reviewer of the same slot flagged it; the case's first
-    baseline is the eval run of the PR that added it.
+    baseline is the eval run of the PR that added it. The optional
+    expected_needs_attention_reason (a regex, case-insensitive search against
+    the final review's needs_attention_reason) keeps an unrelated flag from
+    satisfying the case: case-029 sets (?i)\btitle\b. When the flag is missing
+    the judge message names the created task's title, so a title lost at create
+    time reads differently from a missed flag.
   classification_signal: |
     stage 2 of classification (AISDLC-191/192): a case's expected_classification
     is none (must not be flagged), the type the item really is (must be flagged,

@@ -200,3 +200,67 @@ def test_expected_true_without_a_type_keeps_the_plain_boolean():
             True, "feasibility", "component does not exist", expected_classification
         )
         assert passed is True, expected_classification
+
+
+TASKS = "artifacts/initiative-tasks"
+TITLE_REASON = r"(?i)\btitle\b"
+
+
+def _with_reason(expected_reason, reason, flag=True, expected_classification=None, title=None):
+    files = {f"{REVIEWS}/INIT-0-review.md": _review("INIT-0", flag, source="agent", reason=reason)}
+    if title is not None:
+        files[f"{TASKS}/INIT-0.md"] = f"---\ninitiative_id: INIT-0\ntitle: {title}\n---\n\nBody\n"
+    annotations = {
+        "expected_needs_attention": True,
+        "expected_needs_attention_reason": expected_reason,
+    }
+    if expected_classification is not None:
+        annotations["expected_classification"] = expected_classification
+    return _run({"files": files, "annotations": annotations})
+
+
+def test_a_flag_whose_reason_matches_the_expected_reason_passes():
+    passed, msg = _with_reason(TITLE_REASON, "The Title does not describe the body.")
+    assert passed is True and "as expected" in msg
+
+
+def test_a_flag_whose_reason_does_not_match_the_expected_reason_fails():
+    passed, msg = _with_reason(TITLE_REASON, "Feasibility is indeterminate.")
+    assert passed is False
+    assert "the reason does not match" in msg and TITLE_REASON in msg
+    assert "Feasibility is indeterminate." in msg
+
+
+def test_a_null_or_absent_expected_reason_keeps_the_plain_boolean():
+    for expected_reason in (None, ""):
+        assert _with_reason(expected_reason, "anything")[0] is True, expected_reason
+    files = {f"{REVIEWS}/INIT-0-review.md": _review("INIT-0", True, source="agent", reason="x")}
+    assert _run({"files": files, "annotations": {"expected_needs_attention": True}})[0] is True
+
+
+def test_a_named_expected_classification_still_wins_over_the_expected_reason():
+    passed, msg = _with_reason(TITLE_REASON, "The title is wrong.", expected_classification="rfe")
+    assert passed is False and "flagged, but not as a misfiled rfe" in msg
+    reason = "likely an RFE: one team; consider /rfe-create --type rfe"
+    assert _with_reason(TITLE_REASON, reason, expected_classification="rfe")[0] is True
+
+
+def test_a_missing_flag_reports_the_task_title():
+    passed, msg = _with_reason(TITLE_REASON, None, flag=False, title="Parsing speed-up")
+    assert passed is False
+    assert "expected True" in msg and "task title: Parsing speed-up" in msg
+
+
+def test_a_missing_flag_without_a_task_file_reports_no_title():
+    passed, msg = _with_reason(TITLE_REASON, None, flag=False)
+    assert passed is False and "task title: None" in msg
+
+
+def test_a_missing_flag_without_an_expected_reason_does_not_report_a_title():
+    passed, msg = _with_reason(None, None, flag=False, title="Parsing speed-up")
+    assert passed is False and "task title" not in msg
+
+
+def test_an_invalid_expected_reason_pattern_fails_loudly():
+    passed, msg = _with_reason("(", "anything")
+    assert passed is False and "invalid expected_needs_attention_reason" in msg

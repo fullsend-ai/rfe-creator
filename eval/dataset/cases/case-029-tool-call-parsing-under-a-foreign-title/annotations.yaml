@@ -2,7 +2,8 @@ difficulty: hard
 expected_classification: none
 expected_feasibility: null
 expected_needs_attention: true
-expected_pass: null
+expected_needs_attention_reason: '(?i)\btitle\b'
+expected_pass: true
 expected_recommendation: null
 expected_scores:
   not_a_task: null
@@ -18,7 +19,9 @@ known_issues:
   dimension what, or agent). The production reviewer wrote the mismatch into its feedback and still
   set the flag false; the parallel dry reviewer of the same slot flagged it. The create step must keep
   the requester''s title and note: a baseline that shows it retitling means the anchor is too weak,
-  not that the rule is wrong.'
+  not that the rule is wrong. expected_pass states the intent (the body passes the rubric); no deterministic
+  judge reads it. expected_needs_attention_reason is read by needs_attention_expectation: the flag''s reason
+  must mention the title, so an unrelated flag does not satisfy the case.'
 score_tolerance: 1
 tags:
 - attention-expected
