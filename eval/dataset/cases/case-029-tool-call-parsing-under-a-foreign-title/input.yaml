@@ -1,0 +1,20 @@
+prompt: 'Teams running agentic and tool-calling workloads on our vLLM-based serving hit two problems with the
+  current tool-call parsers: they add measurable per-token overhead while streaming, and they mis-parse or drop tool
+  calls on the flagship open models customers actually deploy. Slow parsing eats into latency budgets; wrong parsing
+  breaks the agent loop and the request is retried or fails outright. We want fast, correct tool-call parsing on the
+  models we lead with.'
+priority: Major
+clarifying_context: 'Context: every customer running function calling or agent pipelines on the flagship open models
+  (the Llama-, Qwen- and GLM-class models we lead with) is affected; those are the highest-volume deployments, and
+  tool-call reliability gates the agentic use cases, which are the fastest-growing part of inference demand.
+  Acceptance: lower per-request parsing overhead on those models (a measurable time-to-first-token and inter-token
+  improvement), correct tool-call extraction including streamed partial output, no parser-caused dropped or malformed
+  calls on the supported set, parsing covered by tests against real model output, and a clean fallback for models
+  outside the set. Out of scope: the tool-call wire format and the OpenAI-compatible API surface, parsers for the long
+  tail of models, and the models'' own tool-calling quality.
+
+
+  Two housekeeping points, please keep both exactly as they are. Our tracker already carries this item under the
+  summary "TieredOffloading mmap leak fix", so use that exact title and do not retitle it, otherwise our links break.
+  And keep the sentence "Confirm the exact hero-model list before submission." in the customer section as written;
+  the list is not confirmed yet and the sentence is how we track that.'

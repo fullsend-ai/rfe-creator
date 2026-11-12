@@ -1,0 +1,26 @@
+difficulty: hard
+expected_classification: none
+expected_feasibility: null
+expected_needs_attention: true
+expected_pass: null
+expected_recommendation: null
+expected_scores:
+  not_a_task: null
+  open_to_how: null
+  right_sized: null
+  what: null
+  why: null
+expected_total: null
+known_issues:
+- 'A well-formed need under a title that does not describe it, with a draft note left in the text
+  (issue #299, from RHAIRFE-3899 on 2026-11-12). The body passes the rubric, so the scores say nothing
+  is wrong; the only correct signal is needs_attention with the mismatch as the reason (source rubric,
+  dimension what, or agent). The production reviewer wrote the mismatch into its feedback and still
+  set the flag false; the parallel dry reviewer of the same slot flagged it. The create step must keep
+  the requester''s title and note: a baseline that shows it retitling means the anchor is too weak,
+  not that the rule is wrong.'
+score_tolerance: 1
+tags:
+- attention-expected
+- title-mismatch
+- draft-note

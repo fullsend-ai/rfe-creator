@@ -196,7 +196,7 @@ def _dataset(path):
 
 def test_threshold_arithmetic():
     # Same value in both configs, different denominators, derived from the shipped
-    # datasets so the calibration notes cannot drift from the case counts. RFE: 28
+    # datasets so the calibration notes cannot drift from the case counts. RFE: 29
     # cases, 6 tagged revision-expected, 4 of 6 revised must pass and 3 of 6 must
     # fail. Initiative: 23 cases, 7 tagged (case-007, case-013, case-017..021, since
     # the gate had passed only on incidental revisions), 6 of 7 must pass and 5 of 7
@@ -205,7 +205,7 @@ def test_threshold_arithmetic():
         assert _config(path)["thresholds"][JUDGE]["min_pass_rate"] == 0.92
     n_rfe, tagged_rfe, _ = _dataset("eval/dataset/cases")
     n_init, tagged_init, _ = _dataset("eval/initiative-dataset/cases")
-    assert (n_rfe, len(tagged_rfe)) == (28, 6)
+    assert (n_rfe, len(tagged_rfe)) == (29, 6)
     assert (n_init, len(tagged_init)) == (23, 7)
     assert tagged_init == [
         "case-007-gpu-utilization-observability",
