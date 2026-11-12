@@ -9,7 +9,7 @@ execution:
   mode: batch
   skill: rfe-speedrun
   arguments: --headless --dry-run --input batch.yaml --type rfe
-  timeout: 10800          # 3 hours — 26 rfe / 21 initiative cases at opus pace ran 105–110 min on 2026-09-22 with three evals sharing the runners; 2 h left no headroom
+  timeout: 12000          # 3 h 20 — the fullsend child's 180-minute agent budget plus 20 minutes of sandbox start, pre- and post-script (tests/test_eval_profiles.py pins the sum); the 29-case RFE batch ran past 150 minutes twice on 2026-11-12, 113 minutes of agent time on 2026-11-05
   max_budget_usd: 100.0  # Per-invocation cost cap
   env:
     RFE_CREATOR_ENABLE_CONTEXT_HOOK: "1"  # the compaction-recovery hook (carried from .claude/settings.json) is opt-in

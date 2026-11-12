@@ -26,11 +26,13 @@ base: rfe-creator.yaml
 # frontmatter; a test keeps the bodies identical.
 agent: rfe-creator/prompt-eval.md
 
-# Per-iteration budget. The full 26-case batch took 105-110 minutes under
-# claude-code; 150 leaves the eval's 10800 s execution.timeout room for the
-# sandbox start, the pre-script, a result-file retry and the post-script
-# (tests/test_eval_profiles.py pins the sum).
-timeout_minutes: 150
+# Per-iteration budget. The full 28-case batch took 113 minutes of agent time
+# on 2026-11-05; the two 29-case runs of 2026-11-12 passed 150 (seven split
+# children and a second reassess cycle) and were killed in their last batch,
+# which loses every artifact. 180 leaves the eval's 12000 s execution.timeout
+# room for the sandbox start, the pre-script, a result-file retry and the
+# post-script (tests/test_eval_profiles.py pins the sum).
+timeout_minutes: 180
 
 # validation_loop is inherited (max_iterations: 2, feedback append). The first
 # fullsend eval run that completed the pipeline ended its turn on the skill's
