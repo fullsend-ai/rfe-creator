@@ -142,7 +142,7 @@ eval:
   config: eval.yaml
   dataset: eval/dataset/cases                           # eval.yaml:36 dataset.path
   mlflow_experiment: rfe-speedrun-eval                  # eval.yaml:33
-  timeout: 10800                                        # eval.yaml:12 — 3 h: 26 cases at opus pace ran ~107 min on 2026-09-22 (2 h left no headroom)
+  timeout: 12000                                        # eval.yaml:12 — 3 h 20: the fullsend child's 180-minute budget plus 20 minutes of start, pre- and post-script (tests/test_eval_profiles.py pins the sum); 29 cases ran past 150 minutes twice on 2026-11-12
   thresholds:                                           # eval.yaml:845-878, verbatim judge names — AUTHORITATIVE from PR-4 (design §4.5)
     files_exist: { min_pass_rate: 1.0 }
     frontmatter_valid: { min_pass_rate: 1.0 }

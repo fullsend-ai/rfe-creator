@@ -82,10 +82,11 @@ pre-script and post-script. It overrides only:
   host needs no Jira credentials;
 - the `jira` provider (`jira-provider-eval.yaml`, literal placeholder credential) and the
   `jira` OpenShell profile (`jira-profile-eval.yaml`, no endpoints: no Atlassian egress);
-- `timeout_minutes: 150`: one iteration plus the sandbox start, the pre-script, a
-  result-file retry and the post-script fit the eval's 10800 s `execution.timeout`
-  (`tests/test_eval_profiles.py` pins the sum; the full 26-case batch took 105-110 minutes
-  under claude-code).
+- `timeout_minutes: 180`: one iteration plus the sandbox start, the pre-script, a
+  result-file retry and the post-script fit the eval's 12000 s `execution.timeout`
+  (`tests/test_eval_profiles.py` pins the sum; the 28-case batch took 113 minutes of agent
+  time on 2026-11-05, and the two 29-case runs of 2026-11-12 passed 150 minutes, seven
+  split children and a second reassess cycle, so 150 lost whole runs).
 
 The validation loop is inherited whole (`max_iterations: 2`, `feedback_mode: append`). The
 first fullsend eval run that completed the pipeline ended its turn on the skill's own summary
@@ -98,7 +99,7 @@ still owes after its auto-fix phase (the speedrun records its phase in
 writes the result file, without starting the task over (`/rfe-speedrun` would otherwise reset
 `tmp/` and redo the batch). fullsend starts a second iteration only when the agent finished and
 its output failed validation, never after a timeout, so a first iteration that ran out of time
-is not followed by a second one. The second iteration gets what is left of the eval's 10800 s:
+is not followed by a second one. The second iteration gets what is left of the eval's 12000 s:
 enough to write the result file after a completed pipeline, not to resume one the first
 iteration left unfinished. A retry the harness cuts short loses nothing a single iteration
 would have kept, since fullsend skips the post-script after a failed validation either way.

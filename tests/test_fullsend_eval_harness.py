@@ -148,7 +148,7 @@ def test_composed_lists_swap_only_the_jira_entries():
 
 def test_eval_values():
     child = _load(EVAL)
-    assert child["timeout_minutes"] == 150
+    assert child["timeout_minutes"] == 180
     assert child["env"]["sandbox"] == {
         "JIRA_SERVER": EVAL_JIRA_SERVER,
         "JIRA_USER": EVAL_JIRA_USER,

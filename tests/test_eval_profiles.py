@@ -248,7 +248,7 @@ def test_fullsend_profile_selects_the_eval_child_agent_and_stages_types():
     # and a missing result file, Dispatch rule 3 of the prompt), not for resuming a pipeline
     # the first iteration left unfinished (rule 2). A retry the harness cuts short loses
     # nothing a single iteration would have kept: fullsend skips the post-script after a
-    # failed validation either way. Two full iterations are out of budget by design (5h20
+    # failed validation either way. Two full iterations are out of budget by design (6h20
     # with the overhead, longer than the CI job); the last assertion keeps that explicit.
     loop = {**production["validation_loop"], **child.get("validation_loop", {})}
     assert loop["max_iterations"] == 2 and loop["feedback_mode"] == "append", loop
