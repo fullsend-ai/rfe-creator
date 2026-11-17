@@ -1852,9 +1852,12 @@ def launch_vars(desc, stage):
             (
                 # The human exit of the misfiled-item check (review-rules stage 2): the review
                 # agent skips the check when the task's original_labels carry this label. Read
-                # by the review prompt only, never by a script; empty when the type names none.
+                # by the review prompt only, never by a script. A type that names none gets the
+                # schema's default, <label_prefix>-type-confirmed, so the prompt never renders
+                # an empty label (an empty one reads as "no labels" and could skip the check).
                 "TYPE_CONFIRMED_LABEL",
-                labels.get("type_confirmed", ""),
+                labels.get("type_confirmed")
+                or f"{desc.get('conventions.label_prefix')}-type-confirmed",
             ),
             (
                 # The verdict-label families of the declared dimensions (conventions.labels

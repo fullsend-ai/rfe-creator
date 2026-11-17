@@ -125,12 +125,9 @@ class TestReviewPromptStageTwo:
         assert "the recommendation is `reclassify` in that case too" in paragraph
         assert "the recommendation," not in paragraph  # it no longer "stays what the rules decide"
         # the human exit comes first: a confirmed type skips the check
-        # (and only when the label is non-empty: an empty one never skips)
-        assert paragraph.index(
-            "When `{TYPE_CONFIRMED_LABEL}` is non-empty and the task frontmatter you read in "
-            "Step 1 lists it verbatim under `original_labels`"
-        ) < paragraph.index("When the rules in `{RULES_PATH}`")
-        assert "If `{TYPE_CONFIRMED_LABEL}` is empty, never skip." in paragraph
+        assert paragraph.index("lists `{TYPE_CONFIRMED_LABEL}` under `original_labels`") < (
+            paragraph.index("When the rules in `{RULES_PATH}`")
+        )
         assert "skip this check and record nothing for it" in paragraph
         assert "the review neither relabels nor moves the item" in paragraph
         assert (
@@ -265,9 +262,30 @@ class TestTypeConfirmedLabel:
             prompt = REVIEW_AGENT.read_text()
             for key, value in type_registry.launch_vars(desc, "review"):
                 prompt = prompt.replace("{" + key + "}", value)
-            assert f"When `{label}` is non-empty and" in prompt, name
-            assert "lists it verbatim under `original_labels`" in prompt, name
-            assert f"If `{label}` is empty, never skip." in prompt, name
+            assert f"lists `{label}` under `original_labels`" in prompt, name
+
+    def test_a_type_without_the_key_renders_the_schema_default(self, tmp_path):
+        """The schema calls the key's default ``<prefix>-type-confirmed``; the launch block
+        renders it when a descriptor omits the key, so the review prompt never carries an
+        empty label — an empty one reads as "no labels" and could skip the check for every
+        unlabelled task (qodo on #303). The type still registers and validates without it."""
+        import shutil
+
+        root = tmp_path / "types"
+        shutil.copytree(TYPES_ROOT, root)
+        descriptor = root / "rfe" / "type.yaml"
+        lines = [
+            line
+            for line in descriptor.read_text().splitlines(keepends=True)
+            if not line.lstrip().startswith("type_confirmed:")
+        ]
+        assert len(lines) == len(descriptor.read_text().splitlines(keepends=True)) - 1
+        descriptor.write_text("".join(lines))
+        reg = type_registry.load(root=root, extra_roots=[], env={})
+        desc = reg.get("rfe")
+        assert "type_confirmed" not in desc.labels
+        block = dict(type_registry.launch_vars(desc, "review"))
+        assert block["TYPE_CONFIRMED_LABEL"] == "rfe-creator-type-confirmed"
 
     def test_the_key_is_reserved_in_the_schema_and_read_by_no_script(self):
         schema = json.loads((TYPES_ROOT / "_schema" / "type.schema.json").read_text())

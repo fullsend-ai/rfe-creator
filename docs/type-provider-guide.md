@@ -133,7 +133,8 @@ Rules that are easy to trip:
   `conventions.labels.type_confirmed` (the human exit of the review's misfiled-item check,
   "The classification block" below) is the other way round: reserved in the schema but read
   through the review launch block (`TYPE_CONFIRMED_LABEL`), by no script, so a type that omits
-  it registers and runs — its placeholder renders empty and the type has no human exit.
+  it registers and runs — the launch block then renders the schema's default,
+  `<label_prefix>-type-confirmed`, and that is the label a human sets.
 - **Opt-in by label.** A type that production selects by label (the Initiative trial,
   AISDLC-205) names the label as `conventions.labels.opt_in`; the autofixer's selection JQL
   and any downstream intake should read it with `python3 scripts/type_registry.py get <type>
