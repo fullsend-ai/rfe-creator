@@ -15,7 +15,7 @@ known_issues:
 - 'Genuinely ambiguous (AISDLC-192): reads as an RFE (one customer-facing capability, two named customers,
   a renewal) and as an Initiative (four components, a possible programme). Stage 2 must not flag it: a
   classification flag needs the other type''s signals to match clearly. If the baseline shows the reviewer
-  flagging it, the rule''s bar is too low.'
+  flagging it, or recommending reclassify (which counts as a flag), the rule''s bar is too low.'
 score_tolerance: 1
 tags:
 - ambiguous

@@ -75,6 +75,11 @@ threshold_notes:
     a tagged draft the create step repairs on its own, a tagged draft the
     first review rejects or splits instead of revising (correct pipeline
     behaviour, but it never enters the revise path and leaves no evidence),
+    a tagged draft the first review holds as reclassify (since 2026-11-17 a
+    stage-2 classification flag co-sets that recommendation and suppresses the
+    revision, so a false positive on a weak draft — case-021 to case-026 all
+    carry expected_classification none — costs its revision here as well as a
+    precision miss in classification_signal),
     and any case without a review file each consume one failure. Calibrated on
     two live 5-case runs (2026-09-07): drafts weak only by wording were
     repaired at create time in 4 of 5; drafts with an in-character "no
@@ -112,7 +117,12 @@ threshold_notes:
     which makes this threshold a precision gate: the misfiled case's recall is
     pinned by needs_attention_expectation at 1.0, which on a case whose
     expected_classification names a type accepts only the classification flag
-    naming that type (expected_needs_attention: true on case-027).
+    naming that type (expected_needs_attention: true on case-027), and its
+    recommendation by recommendation_consistency at 1.0 (since 2026-11-17 the
+    flag and recommendation reclassify imply each other; expected_recommendation
+    reclassify on case-027 is documentary). A review whose recommendation is
+    reclassify counts as flagged here even without the source or the sentence,
+    so a bare reclassify on a none case (case-028) is a precision miss.
     Baseline 2026-11-03 (run 2026-11-03-opus-4-6 on ef82342, eval pipeline
     3021822252): 27/28 = 0.964. Precision was perfect — no regular or weak-draft
     case flagged — and the one miss was case-027 itself: the reviewer read the
@@ -123,6 +133,22 @@ threshold_notes:
     split as the misfiled case. Second run with the sharpened rule, 2026-11-03 (run 2026-11-03-opus-4-6 on
     be79aef, eval pipeline 3023147047): 28/28. case-027 was flagged "likely an
     Initiative: names several teams in a joint programme ..." under source
-    classification (the split stays recommended, as the rules require) and no
-    other case was flagged; needs_attention_expectation 1.0. The value stays at
-    0.92.
+    classification (under the rules of the time the split stayed recommended;
+    since 2026-11-17 the recommendation is reclassify: the item is held, neither
+    split nor revised) and no other case was flagged; needs_attention_expectation
+    1.0. The value stays at 0.92.
+  recommendation_consistency: |
+    1.0: one inconsistent review fails the run by design. Besides the
+    pass/recommendation and feasibility rules, since 2026-11-17 the check pins
+    the reclassify recommendation both ways: a review flagged as misfiled
+    (source classification, or the `consider /rfe-create --type` sentence under
+    another source, the flag predicate classification_signal uses; that check also
+    counts a bare reclassify as flagged, this one deliberately not) must recommend
+    reclassify, and reclassify needs that flag with needs_attention true. The
+    misfiled item is held for a human, neither split nor revised, not
+    auto-approved, whatever its scores: pass=true + reclassify and pass=false +
+    reclassify are both consistent. The 2026-11-03 baselines prove the flag is
+    set reliably (case-027 flagged in the second run), not the co-setting, which
+    they predate: the first eval run after the rule change is its calibration.
+    A reviewer that flags but keeps split or revise fails here, not in
+    classification_signal.

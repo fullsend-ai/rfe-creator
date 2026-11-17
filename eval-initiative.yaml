@@ -118,7 +118,10 @@ dataset:
       - expected_scores (dict with what/why/scope/open_to_how/right_sized, nullable floats)
       - expected_total (nullable float, 0-10)
       - expected_pass (nullable bool)
-      - expected_recommendation (nullable string: submit/revise/split/reject)
+      - expected_recommendation (nullable string: submit/revise/split/reject/reclassify):
+        the first review's recommendation (a revision-expected draft is revised
+        afterwards; a reclassify item is held, so first and final coincide).
+        No deterministic judge reads it.
       - expected_feasibility (nullable string)
       - expected_needs_attention (nullable bool): the review's needs_attention
         at the end of the run (after any revision), not at the first review
@@ -181,11 +184,11 @@ outputs:
       Files per Initiative:
         {ID}-review.md: Main review with YAML frontmatter containing:
           initiative_id, score (0-10), pass (bool), recommendation
-          (submit/revise/split/reject/autorevise_reject), feasibility
+          (submit/revise/split/reject/autorevise_reject/reclassify), feasibility
           (feasible/infeasible/indeterminate), auto_revised (bool),
           alignment (strong/partial/weak/not_assessed),
           needs_attention (bool), needs_attention_reason,
-          needs_attention_source (feasibility/alignment/rubric/agent, optional),
+          needs_attention_source (feasibility/alignment/rubric/classification/agent, optional),
           needs_attention_dimension (a score field, optional),
           scores.what/why/scope/open_to_how/right_sized (each 0-2),
           before_score, before_scores (pre-revision scores).
@@ -213,7 +216,8 @@ outputs:
         completed timestamps, batch_size, per_initiative list (each with
         id, recommendation, revision_cycles, alignment, feasibility, needs_attention, needs_attention_source, needs_attention_reason),
         before_scores_avg, after_scores_avg,
-        results (passed/failed/split/errors/retried/retry_successes).
+        results (passed/failed/split/blocked/reclassify/errors/retried/retry_successes;
+        a reclassify entry is held for a human and counted as processed).
       initiative-run-YYYYMMDD-HHMMSS-report.html: Human-readable HTML companion
         with diffs, scores, and revision analysis (scripts/generate_review_pdf.py).
 
@@ -277,7 +281,7 @@ judges:
               if s is not None and s not in (0, 1, 2):
                   errors.append(f"{fname}: scores.{c}={s} not in 0-2")
           rec = fm.get('recommendation')
-          valid_recs = ['submit', 'revise', 'split', 'reject', 'autorevise_reject']
+          valid_recs = ['submit', 'revise', 'split', 'reject', 'autorevise_reject', 'reclassify']
           if rec and rec not in valid_recs:
               errors.append(f"{fname}: invalid recommendation '{rec}'")
           alignment = fm.get('alignment')
@@ -326,7 +330,17 @@ judges:
   - name: recommendation_consistency
     description: |
       Cross-field semantic checks: pass/fail aligns with recommendation,
-      infeasible Initiatives are never recommended for submission.
+      infeasible Initiatives are never recommended for submission,
+      and a classification flag and recommendation=reclassify imply each
+      other. The flag is stage 2's (source `classification`, or the
+      `consider /rfe-create --type` sentence under another source, the flag
+      predicate `classification_signal` uses; that check additionally counts
+      a bare reclassify as flagged, this one must not or its first rule would
+      be vacuous): the review of a misfiled
+      Initiative recommends reclassify, which holds it for a human
+      (neither split nor revised, not auto-approved) whatever its scores, and
+      reclassify without that flag is inconsistent. Scores and pass stay as
+      scored, so pass=true and pass=false are both consistent with reclassify.
       Type rule: alignment=weak requires needs_attention=true.
     check: |
       import yaml
@@ -357,6 +371,15 @@ judges:
               errors.append(f"{fname}: pass=false but recommendation=submit")
           if feas == 'infeasible' and rec == 'submit':
               errors.append(f"{fname}: feasibility=infeasible but recommendation=submit")
+          reason = str(fm.get('needs_attention_reason') or '')
+          misfiled = (
+              fm.get('needs_attention_source') == 'classification'
+              or 'consider /rfe-create --type' in reason
+          )
+          if rec == 'reclassify' and not (fm.get('needs_attention') is True and misfiled):
+              errors.append(f"{fname}: recommendation=reclassify without a classification flag")
+          if misfiled and rec != 'reclassify':
+              errors.append(f"{fname}: flagged as misfiled but recommendation={rec}")
           if fm.get('alignment', '') == 'weak' and not fm.get('needs_attention'):
               errors.append(f"{fname}: alignment=weak but needs_attention=false")
       return (len(errors) == 0, "; ".join(errors[:5]) if errors else f"{len(reviews)} reviews consistent")
@@ -629,9 +652,12 @@ judges:
       annotation. `none` means no review may carry a classification flag (the
       regular cases and the genuinely ambiguous ones: precision); a type name
       means some review must carry one whose reason names that type
-      (`consider /rfe-create --type <type>`). A case without the annotation is
-      not checked. Stage 1 never runs headless: a `pass --type to override`
-      notice in the run's stdout fails the case.
+      (`consider /rfe-create --type <type>`). A review whose recommendation is
+      `reclassify` counts as flagged even without the source or the sentence,
+      so a bare reclassify on a `none` case is a misfiling, not a clean review
+      (`recommendation_consistency` pins the co-setting itself). A case without
+      the annotation is not checked. Stage 1 never runs headless: a `pass
+      --type to override` notice in the run's stdout fails the case.
     check: |
       import re
 
@@ -670,7 +696,11 @@ judges:
               unreadable.append(fname)
               continue
           reason = str(fm.get("needs_attention_reason") or "")
-          if fm.get("needs_attention_source") == "classification" or "consider /rfe-create --type" in reason:
+          if (
+              fm.get("needs_attention_source") == "classification"
+              or "consider /rfe-create --type" in reason
+              or fm.get("recommendation") == "reclassify"
+          ):
               flagged.append((fname, fm.get("needs_attention_source"), reason))
       if expected == "none":
           if flagged:
@@ -685,7 +715,10 @@ judges:
       if unreadable:
           return (False, f"{unreadable[0]}: review frontmatter unreadable, classification state unknown")
       if flagged:
-          return (False, f"{flagged[0][0]}: flagged but names another type: {flagged[0][2][:160]}")
+          fname, source, reason = flagged[0]
+          if "--type" not in reason:
+              return (False, f"{fname}: flagged as misfiled (source={source}) but the reason names no type")
+          return (False, f"{fname}: flagged but names another type: {reason[:160]}")
       return (False, f"no review flagged the item as a misfiled {expected}")
 
   - name: revision_coverage
@@ -1251,6 +1284,10 @@ judges:
       revise. If the Initiative is already high quality (score ≥ 8) and doesn't
       have critical issues, skipping revision is correct — score 4-5. Only
       score low if the Initiative has clear problems the pipeline should have fixed.
+      A review whose recommendation is `reclassify` (the Initiative reads as
+      another work-item type and is held for a human) is deliberately not
+      revised: when the classification flag is justified by the text, score
+      the decision 4-5 whatever the rubric score.
 
       **If a revision was performed**: compare original vs revised and assess:
 
@@ -1296,6 +1333,23 @@ thresholds:
     min_pass_rate: 1.0
   run_report_exists:
     min_pass_rate: 1.0
+  # recommendation_consistency: 1.0: one inconsistent review fails the run by design. Besides the
+  # pass/recommendation and feasibility rules, since 2026-11-17 the check pins
+  # the reclassify recommendation both ways: a review flagged as misfiled
+  # (source classification, or the `consider /rfe-create --type` sentence under
+  # another source, the flag predicate classification_signal uses; that check also
+  # counts a bare reclassify as flagged, this one deliberately not) must recommend
+  # reclassify, and reclassify needs that flag with needs_attention true. The
+  # misfiled item is held for a human, neither split nor revised, not
+  # auto-approved, whatever its scores: pass=true + reclassify and pass=false +
+  # reclassify are both consistent. The 2026-11-03 baselines prove the flag is
+  # set reliably (case-022 flagged in the second run), not the co-setting, which
+  # they predate: the first eval run after the rule change is its calibration.
+  # A reviewer that flags but keeps split or revise fails here, not in
+  # classification_signal. The weak-alignment composite (source alignment with
+  # the classification sentence appended, types/initiative/prompts/review-rules.md)
+  # is covered because the predicate reads the sentence, not only the source;
+  # the type rule alignment=weak requires needs_attention=true is unchanged.
   recommendation_consistency:
     min_pass_rate: 1.0
   revision_flag_consistency:
@@ -1314,7 +1368,12 @@ thresholds:
   # reached cycle 2, stayed at 5/10 and was flagged at COLLECT (restored=1
   # flagged=1) — the first live proof of #194's second revision and of the
   # #192 flag path. The 1-failure slack is shared
-  # with any case without a review file. Calibrated on 2026-09-18 (#193): all
+  # with any case without a review file and, since 2026-11-17, with a tagged
+  # draft the first review holds as reclassify: a stage-2 classification flag
+  # co-sets that recommendation and suppresses the revision, so the 2026-11-03
+  # run-1 flag on case-021 ("likely an RFE") would have consumed the slack on
+  # its own (6 of 7 revised, 22/23 = 0.957 pass; a second unrevised draft,
+  # 21/23 = 0.913 fail). Calibrated on 2026-09-18 (#193): all
   # six failed first review on the targeted criterion and were revised (007
   # HOW 0, 013 WHY 0, 017 WHY 0, 018 HOW 0, 019 HOW 0, 020 WHY 0). Until 2026-09-16
   # the dataset had no tagged case and the gate passed only through the
@@ -1350,7 +1409,20 @@ thresholds:
   # case whose expected_classification names a type accepts only the
   # classification flag naming that type (expected_needs_attention: true on
   # case-022); a classification flag on a weak draft does not count against
-  # that judge's expected false (case-018).
+  # that judge's expected false (case-018). The misfiled case's recommendation
+  # is pinned by recommendation_consistency at 1.0 (since 2026-11-17 the flag
+  # and recommendation reclassify imply each other; expected_recommendation
+  # reclassify on case-022 is documentary), and a review whose recommendation
+  # is reclassify counts as flagged here even without the source or the
+  # sentence, so a bare reclassify on case-023 is a precision miss. Since the
+  # same date a classification flag also holds the item (reclassify, no
+  # revision): on a weak draft that costs revision_coverage's single allowed
+  # failure (the run-1 flag on case-021 below would have consumed it), and on
+  # case-007 and case-018 (expected_needs_attention false: a feasibility
+  # concern the revision used to clear, AISDLC-442) a stage-2 flag now blocks
+  # that revision; needs_attention_expectation's discount holds only while the
+  # reason is the bare classification sentence, so "likely an RFE: ...;
+  # consider /rfe-create --type rfe; prescribes a stack" fails that 1.0 gate.
   # Baseline 2026-11-03 (run 2026-11-03-opus-4-6 on ef82342, eval pipeline
   # 3021822422): 21/23 = 0.913, two misses. case-021, a weak draft, was flagged
   # "likely an RFE: a single capability in one product area" — a fair reading
@@ -1362,6 +1434,8 @@ thresholds:
   # 54a1e63, eval pipeline 3022414926): 23/23. case-022 was flagged "likely an
   # RFE: one user-facing capability ..." under source classification and no
   # other case was flagged, the weak drafts included; needs_attention_expectation
-  # 1.0. The value stays at 0.92.
+  # 1.0. The run predates the reclassify recommendation: case-022's expected
+  # final review is now reclassify, held at submit (label and comment), not
+  # submitted as approved. The value stays at 0.92.
   classification_signal:
     min_pass_rate: 0.92

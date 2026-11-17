@@ -4,7 +4,7 @@ expected_classification: rfe
 expected_feasibility: null
 expected_needs_attention: true
 expected_pass: null
-expected_recommendation: null
+expected_recommendation: reclassify
 expected_scores:
   open_to_how: null
   right_sized: null
@@ -15,8 +15,12 @@ expected_total: null
 known_issues:
 - 'An RFE at the Initiative door (AISDLC-192): one customer''s capability with acceptance criteria, one
   team, one release, no Outcome. Stage 2 (AISDLC-191) should flag it ''likely an RFE'' with needs_attention_source
-  classification; the rubric will probably score it well. The flag, not the scores, is what this case
-  checks.'
+  classification; the rubric will probably score it well. With the flag the review recommends reclassify, so the
+  item is held: neither split nor revised, its flag and source kept, a label-only item at submit (needs-attention
+  label and comment) and not submitted as approved however well it scores. The flag and the reclassify
+  recommendation, not the scores, are what this case checks: classification_signal and
+  needs_attention_expectation read the flag, recommendation_consistency the co-setting; expected_recommendation
+  is documentary.'
 score_tolerance: 1
 tags:
 - misfiled

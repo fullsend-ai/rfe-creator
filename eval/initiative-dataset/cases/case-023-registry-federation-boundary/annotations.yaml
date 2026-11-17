@@ -14,7 +14,8 @@ expected_scores:
 expected_total: null
 known_issues:
 - 'Genuinely ambiguous (AISDLC-192): one customer''s capability (an RFE reading) or a two-workstream body
-  of work under a programme (an Initiative reading). Stage 2 must not flag it.'
+  of work under a programme (an Initiative reading). Stage 2 must not flag it, nor recommend reclassify
+  (which counts as a flag).'
 score_tolerance: 1
 tags:
 - ambiguous

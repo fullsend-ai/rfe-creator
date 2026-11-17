@@ -64,7 +64,7 @@ The evaluation runs the `rfe-speedrun` skill headlessly against 29 test cases: 2
 | File | Purpose |
 |------|---------|
 | `input.yaml` | Skill input: `prompt`, `priority`, `clarifying_context` |
-| `annotations.yaml` | Expected scores, feasibility/recommendation expectations, test tags; optionally `expected_needs_attention` and `expected_needs_attention_reason` (a regex the final review's attention reason must match) |
+| `annotations.yaml` | Expected scores, feasibility/recommendation expectations, test tags; optionally `expected_needs_attention` and `expected_needs_attention_reason` (a regex the final review's attention reason must match). `expected_recommendation` is documentary (no deterministic judge reads it): the weak drafts set `revise` to describe the first review, the misfiled case (`case-027`) sets `reclassify`, whose review is held and so coincides with the final one |
 
 Input files contain only the fields the skill needs in batch Mode A — no Jira keys or existing RFE content.
 
@@ -88,7 +88,7 @@ The judge also carries a run-level rule: in a multi-item run every case fails wh
 The `revision_coverage` threshold (`min_pass_rate: 0.92`) tolerates 2 failing cases out of 29: 4 of 6 weak drafts revised leaves 2 failing cases, 27/29 = 0.931 (pass); 3 of 6 leaves 3, 26/29 = 0.897 (fail). That 2-failure slack is shared by every way a case can fail this check:
 
 - a weak draft the create step repairs on its own (passes first review, no revision);
-- a weak draft the first review **rejects or splits** instead of revising. `scripts/filter_for_revision.py` never routes `reject`, `autorevise_reject` or `split` recommendations into the revise path, so a correct reject or split leaves no revision evidence; split children are not routed to any case directory in batch mode and count only towards run-level coverage via the report;
+- a weak draft the first review **rejects, splits or holds as `reclassify`** instead of revising. `scripts/filter_for_revision.py` never routes `reject`, `autorevise_reject`, `split` or `reclassify` recommendations into the revise path, so a correct reject, split or reclassify leaves no revision evidence; split children are not routed to any case directory in batch mode and count only towards run-level coverage via the report. Since 2026-11-17 a stage-2 classification flag co-sets `reclassify`, so a stage-2 false positive on a weak draft costs that draft its revision as well as a `classification_signal` precision miss (the flag is no longer advisory on the revise path);
 - any case without a review file (`No review files to check`).
 
 The 0.92 value was calibrated on two live 5-case runs on 2026-09-07 (claude-opus-4-6, `--dry-run`). The first authoring of the five drafts, which relied on rewording weaknesses (a mandated design, a chore framing, a vague ask, an internal requester), was repaired by the create step in 4 of 5 cases (first-pass scores 8-9, only the missing-WHY draft was revised). The second authoring added an in-character evidence anchor to each draft and 5 of 5 were revised (first-pass 5-8, every one failing on `why: 0`, three also on `not_a_task`, `what` or `right_sized`), all five passed re-review, and `revision_coverage` scored 1.0. Re-tune only if a future run shows a different distribution.
@@ -111,6 +111,16 @@ rest of the dataset as well (AISDLC-192). The two cases exercise stage 2 of
 classification (AISDLC-191); stage 1 (the create body's notice or question) never runs in these
 headless runs, which the same check asserts.
 
+Since 2026-11-17 the misfiled case's final review recommends `reclassify` (its
+`expected_recommendation: reclassify` is documentary): the item is neither split nor revised, keeps
+its flag and source, and reaches submit as a label-only item held for a human (needs-attention label
+and comment, no rubric-pass label, not auto-approved). `recommendation_consistency` (1.0) pins the
+co-setting both ways — a classification flag without `reclassify`, or `reclassify` without the flag,
+fails the run — and `classification_signal` counts a bare `reclassify` as a flag, so `case-028` must
+carry neither. The cost: a stage-2 false positive on a weak draft (`case-021` to `case-026`, all
+`expected_classification: none`) now fails `classification_signal` and loses that draft's revision
+(one of `revision_coverage`'s two allowed failures).
+
 #### Attention case
 
 `case-029` is a well-formed need filed under a title that does not describe it, with a draft note
@@ -130,11 +140,11 @@ notes and still set the flag false, while the parallel dry run of the same slot 
 | `files_exist` | check | Task + review files produced |
 | `frontmatter_valid` | check | YAML schema, score ranges, pass logic consistency |
 | `run_report_exists` | check | Auto-fix YAML run report with required fields |
-| `recommendation_consistency` | check | pass/fail aligns with recommendation, infeasible != submit |
+| `recommendation_consistency` | check | pass/fail aligns with recommendation, infeasible != submit, a classification flag and `reclassify` imply each other (the misfiled item is held: neither split nor revised, whatever its scores) |
 | `revision_flag_consistency` | check | `auto_revised` agrees with revision evidence (state file, history, moved score, removed-context) |
 | `revision_coverage` | check | Revise path exercised: `revision-expected` cases were revised; every case fails when a multi-item run holding a tagged case revised nothing (single-item runs, and runs without a tagged case such as quick mode: tag alone decides) |
-| `classification_signal` | check | Stage 2 of classification (AISDLC-191): the final review's misfiled-item flag matches `expected_classification` (`none`: no review may carry one; a type: one must, naming that type); a `pass --type to override` notice in stdout fails the case (stage 1 never runs headless); the 0.92 threshold binds precision, the misfiled case's recall is pinned by `needs_attention_expectation` at 1.0, which accepts only the classification flag naming the expected type there |
-| `needs_attention_expectation` | check | The final review's `needs_attention` matches `expected_needs_attention` (the flag at the end of the run); a classification-only flag does not count against an expected `false`; on a case whose `expected_classification` names a type, only the flag naming that type satisfies an expected `true`; the optional `expected_needs_attention_reason` (a regex, case-insensitive search) additionally requires the flag's `needs_attention_reason` to match it, so an unrelated flag does not satisfy the case, and a missing flag reports the created task's title; expected `true` on `case-027` (classification) and `case-029` (a concern the scores do not reflect, reason matching `title`) |
+| `classification_signal` | check | Stage 2 of classification (AISDLC-191): the final review's misfiled-item flag matches `expected_classification` (`none`: no review may carry one; a type: one must, naming that type); a `pass --type to override` notice in stdout fails the case (stage 1 never runs headless); a bare `reclassify` counts as a flag; the 0.92 threshold binds precision, the misfiled case's recall is pinned by `needs_attention_expectation` at 1.0, which accepts only the classification flag naming the expected type there, and its recommendation by `recommendation_consistency` (1.0) |
+| `needs_attention_expectation` | check | The final review's `needs_attention` matches `expected_needs_attention` (the flag at the end of the run); a classification-only flag does not count against an expected `false`; on a case whose `expected_classification` names a type, only the flag naming that type satisfies an expected `true`; the optional `expected_needs_attention_reason` (a regex, case-insensitive search) additionally requires the flag's `needs_attention_reason` to match it, so an unrelated flag does not satisfy the case, and a missing flag reports the created task's title; expected `true` on `case-027` (classification: the review is held as `reclassify`, never revised, so the flag is still there at the end of the run) and `case-029` (a concern the scores do not reflect, reason matching `title`) |
 | `pipeline_flow` | check | All three phases (create, auto-fix, submit) detected in stdout, no fatal tracebacks, no Phase 1 deletions |
 | `architecture_context_used` | check | Every feasibility file's writer transcript read `.context/architecture-context`; the prose fallback applies only to runs without transcript capture |
 | `rfe_quality` | LLM | RFE quality (WHAT/WHY/HOW/task/scope) + calibration accuracy |
@@ -402,7 +412,7 @@ The evaluation runs the `rfe-speedrun` skill with `--type initiative` headlessly
 | File | Purpose |
 |------|---------|
 | `input.yaml` | Skill input: `prompt`, `priority`, `clarifying_context` |
-| `annotations.yaml` | Expected scores, feasibility/recommendation/alignment expectations, test tags; optionally `expected_needs_attention`, the flag at the end of the run (`case-007` and `case-018`, whose only flaw is a prescriptive stack a revision can reframe, expect `false`: a flag feasibility raised on Open to HOW is cleared once the revision passes with Open to HOW 2/2 — AISDLC-442) |
+| `annotations.yaml` | Expected scores, feasibility/recommendation/alignment expectations, test tags; optionally `expected_needs_attention`, the flag at the end of the run (`case-007` and `case-018`, whose only flaw is a prescriptive stack a revision can reframe, expect `false`: a flag feasibility raised on Open to HOW is cleared once the revision passes with Open to HOW 2/2 — AISDLC-442). `expected_recommendation` is documentary (no deterministic judge reads it): the weak drafts set `revise` to describe the first review, the misfiled case (`case-022`) sets `reclassify`, whose review is held and so coincides with the final one |
 
 One case (`case-012`, tagged `sparse-input`) provides minimal context to test sparse-input handling.
 
@@ -427,6 +437,18 @@ expectation is about the quality path, and `needs_attention_expectation` discoun
 checked cases only, and the check measures precision over the rest of the dataset as well
 (AISDLC-192).
 
+Since 2026-11-17 the misfiled case's final review recommends `reclassify` (its
+`expected_recommendation: reclassify` is documentary): the item is neither split nor revised, keeps
+its flag and source, and reaches submit as a label-only item held for a human (needs-attention label
+and comment, not submitted as approved however well it scores). `recommendation_consistency` (1.0)
+pins the co-setting both ways, the weak-alignment composite included (source `alignment` with the
+classification sentence appended), and `classification_signal` counts a bare `reclassify` as a flag,
+so `case-023` must carry neither. The cost: a stage-2 flag on a weak draft now holds it instead of
+letting the revision run, so the flag the first 2026-11-03 run put on `case-021` would have consumed
+`revision_coverage`'s single allowed failure, and on `case-007` and `case-018` (`expected_needs_attention:
+false`) such a flag blocks the revision that used to clear the feasibility concern — the
+`needs_attention_expectation` discount holds only while the reason is the bare classification sentence.
+
 ### Judges
 
 | Judge | Type | What it checks |
@@ -434,11 +456,11 @@ checked cases only, and the check measures precision over the rest of the datase
 | `files_exist` | check | Task + review files produced |
 | `frontmatter_valid` | check | YAML schema, score ranges, alignment enum, pass logic consistency |
 | `run_report_exists` | check | Initiative run report YAML with required fields |
-| `recommendation_consistency` | check | pass/fail aligns with recommendation, infeasible != submit, weak alignment sets needs_attention |
+| `recommendation_consistency` | check | pass/fail aligns with recommendation, infeasible != submit, weak alignment sets needs_attention, a classification flag and `reclassify` imply each other (the misfiled item is held: neither split nor revised, whatever its scores) |
 | `revision_flag_consistency` | check | `auto_revised` agrees with revision evidence (state file, history, moved score, removed-context) |
 | `revision_coverage` | check | Revise path exercised (23 cases, 7 tagged weak drafts; 0.92 allows one failing case): untagged-but-revised cases count; every case fails when a multi-item run holding a tagged case revised nothing (single-item runs, and runs without a tagged case such as quick mode: tag alone decides) |
-| `classification_signal` | check | Stage 2 of classification (AISDLC-191): the final review's misfiled-item flag matches `expected_classification` (`none`: no review may carry one; a type: one must, naming that type); a `pass --type to override` notice in stdout fails the case (stage 1 never runs headless); the 0.92 threshold binds precision, the misfiled case's recall is pinned by `needs_attention_expectation` at 1.0, which accepts only the classification flag naming the expected type there |
-| `needs_attention_expectation` | check | The final review's `needs_attention` matches `expected_needs_attention` (the flag at the end of the run); a classification-only flag does not count against an expected `false`; on a case whose `expected_classification` names a type, only the flag naming that type satisfies an expected `true`; the optional `expected_needs_attention_reason` (a regex, case-insensitive search) additionally requires the flag's `needs_attention_reason` to match it, and a missing flag reports the created task's title |
+| `classification_signal` | check | Stage 2 of classification (AISDLC-191): the final review's misfiled-item flag matches `expected_classification` (`none`: no review may carry one; a type: one must, naming that type); a `pass --type to override` notice in stdout fails the case (stage 1 never runs headless); a bare `reclassify` counts as a flag; the 0.92 threshold binds precision, the misfiled case's recall is pinned by `needs_attention_expectation` at 1.0, which accepts only the classification flag naming the expected type there, and its recommendation by `recommendation_consistency` (1.0) |
+| `needs_attention_expectation` | check | The final review's `needs_attention` matches `expected_needs_attention` (the flag at the end of the run); a classification-only flag does not count against an expected `false`; on a case whose `expected_classification` names a type, only the flag naming that type satisfies an expected `true`; the optional `expected_needs_attention_reason` (a regex, case-insensitive search) additionally requires the flag's `needs_attention_reason` to match it, and a missing flag reports the created task's title; expected `true` on `case-022` (classification: the review is held as `reclassify`, never revised, so the flag is still there at the end of the run) |
 | `pipeline_flow` | check | All three phases (create, auto-fix, submit) detected in stdout, no fatal tracebacks, no Phase 1 deletions |
 | `architecture_context_used` | check | Every feasibility file's writer transcript read `.context/architecture-context` (or the review declares the context not relevant); the prose fallback applies only to runs without transcript capture |
 | `initiative_quality` | LLM | Initiative quality (WHAT/WHY/Scope/HOW/Right-sized) + calibration accuracy |

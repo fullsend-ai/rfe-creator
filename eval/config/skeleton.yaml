@@ -124,7 +124,10 @@ dataset:
       - expected_scores (dict with ${gen.score_fields_slash}, nullable floats)
       - expected_total (nullable float, 0-10)
       - expected_pass (nullable bool)
-      - expected_recommendation (nullable string: submit/revise/split/reject)
+      - expected_recommendation (nullable string: submit/revise/split/reject/reclassify):
+        the first review's recommendation (a revision-expected draft is revised
+        afterwards; a reclassify item is held, so first and final coincide).
+        No deterministic judge reads it.
       - expected_feasibility (nullable string)
       - expected_needs_attention (nullable bool): the review's needs_attention
         at the end of the run (after any revision), not at the first review
@@ -181,11 +184,11 @@ outputs:
       Files per ${type.display.entity}:
         {ID}-review.md: Main review with YAML frontmatter containing:
           ${type.identity.id_field}, score (0-10), pass (bool), recommendation
-          (submit/revise/split/reject/autorevise_reject), feasibility
+          (submit/revise/split/reject/autorevise_reject/reclassify), feasibility
           (feasible/infeasible/indeterminate), auto_revised (bool),
           ${gen.review_extra_fields}
           needs_attention (bool), needs_attention_reason,
-          needs_attention_source (feasibility/alignment/rubric/agent, optional),
+          needs_attention_source (feasibility/alignment/rubric/classification/agent, optional),
           needs_attention_dimension (a score field, optional),
           scores.${gen.score_fields_slash} (each 0-2),
           before_score, before_scores (pre-revision scores).
@@ -209,7 +212,8 @@ outputs:
         completed timestamps, batch_size, ${type.reporting.item_key} list (each with
         ${gen.run_report_entry_fields}),
         before_scores_avg, after_scores_avg,
-        results (passed/failed/split/errors/retried/retry_successes).
+        results (passed/failed/split/blocked/reclassify/errors/retried/retry_successes;
+        a reclassify entry is held for a human and counted as processed).
       ${type.snapshot.report_prefix}YYYYMMDD-HHMMSS-report.html: Human-readable HTML companion
         with diffs, scores, and revision analysis (scripts/generate_review_pdf.py).
 
@@ -273,7 +277,7 @@ judges:
               if s is not None and s not in (0, 1, 2):
                   errors.append(f"{fname}: scores.{c}={s} not in 0-2")
           rec = fm.get('recommendation')
-          valid_recs = ['submit', 'revise', 'split', 'reject', 'autorevise_reject']
+          valid_recs = ['submit', 'revise', 'split', 'reject', 'autorevise_reject', 'reclassify']
           if rec and rec not in valid_recs:
               errors.append(f"{fname}: invalid recommendation '{rec}'")
           ${gen.checks.extra_enum_fields}
@@ -319,7 +323,17 @@ judges:
   - name: recommendation_consistency
     description: |
       Cross-field semantic checks: pass/fail aligns with recommendation,
-      infeasible ${type.display.entity_plural} are never recommended for submission.
+      infeasible ${type.display.entity_plural} are never recommended for submission,
+      and a classification flag and recommendation=reclassify imply each
+      other. The flag is stage 2's (source `classification`, or the
+      `consider /rfe-create --type` sentence under another source, the flag
+      predicate `classification_signal` uses; that check additionally counts
+      a bare reclassify as flagged, this one must not or its first rule would
+      be vacuous): the review of a misfiled
+      ${type.display.entity} recommends reclassify, which holds it for a human
+      (neither split nor revised, not auto-approved) whatever its scores, and
+      reclassify without that flag is inconsistent. Scores and pass stay as
+      scored, so pass=true and pass=false are both consistent with reclassify.
       ${gen.checks.extra_rules_desc}
     check: |
       import yaml
@@ -350,6 +364,15 @@ judges:
               errors.append(f"{fname}: pass=false but recommendation=submit")
           if feas == 'infeasible' and rec == 'submit':
               errors.append(f"{fname}: feasibility=infeasible but recommendation=submit")
+          reason = str(fm.get('needs_attention_reason') or '')
+          misfiled = (
+              fm.get('needs_attention_source') == 'classification'
+              or 'consider /rfe-create --type' in reason
+          )
+          if rec == 'reclassify' and not (fm.get('needs_attention') is True and misfiled):
+              errors.append(f"{fname}: recommendation=reclassify without a classification flag")
+          if misfiled and rec != 'reclassify':
+              errors.append(f"{fname}: flagged as misfiled but recommendation={rec}")
           ${gen.checks.extra_rules}
       return (len(errors) == 0, "; ".join(errors[:5]) if errors else f"{len(reviews)} reviews consistent")
 
@@ -621,9 +644,12 @@ judges:
       annotation. `none` means no review may carry a classification flag (the
       regular cases and the genuinely ambiguous ones: precision); a type name
       means some review must carry one whose reason names that type
-      (`consider /rfe-create --type <type>`). A case without the annotation is
-      not checked. Stage 1 never runs headless: a `pass --type to override`
-      notice in the run's stdout fails the case.
+      (`consider /rfe-create --type <type>`). A review whose recommendation is
+      `reclassify` counts as flagged even without the source or the sentence,
+      so a bare reclassify on a `none` case is a misfiling, not a clean review
+      (`recommendation_consistency` pins the co-setting itself). A case without
+      the annotation is not checked. Stage 1 never runs headless: a `pass
+      --type to override` notice in the run's stdout fails the case.
     check: |
       import re
 
@@ -662,7 +688,11 @@ judges:
               unreadable.append(fname)
               continue
           reason = str(fm.get("needs_attention_reason") or "")
-          if fm.get("needs_attention_source") == "classification" or "consider /rfe-create --type" in reason:
+          if (
+              fm.get("needs_attention_source") == "classification"
+              or "consider /rfe-create --type" in reason
+              or fm.get("recommendation") == "reclassify"
+          ):
               flagged.append((fname, fm.get("needs_attention_source"), reason))
       if expected == "none":
           if flagged:
@@ -677,7 +707,10 @@ judges:
       if unreadable:
           return (False, f"{unreadable[0]}: review frontmatter unreadable, classification state unknown")
       if flagged:
-          return (False, f"{flagged[0][0]}: flagged but names another type: {flagged[0][2][:160]}")
+          fname, source, reason = flagged[0]
+          if "--type" not in reason:
+              return (False, f"{fname}: flagged as misfiled (source={source}) but the reason names no type")
+          return (False, f"{fname}: flagged but names another type: {reason[:160]}")
       return (False, f"no review flagged the item as a misfiled {expected}")
 
   - name: revision_coverage
@@ -1225,6 +1258,10 @@ judges:
       revise. If the ${type.display.entity} is already high quality (score ≥ 8) and doesn't
       have critical issues, skipping revision is correct — score 4-5. Only
       score low if the ${type.display.entity} has clear problems the pipeline should have fixed.
+      A review whose recommendation is `reclassify` (the ${type.display.entity} reads as
+      another work-item type and is held for a human) is deliberately not
+      revised: when the classification flag is justified by the text, score
+      the decision 4-5 whatever the rubric score.
 
       **If a revision was performed**: compare original vs revised and assess:
 
