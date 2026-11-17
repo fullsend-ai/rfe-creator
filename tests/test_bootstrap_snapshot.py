@@ -1678,6 +1678,29 @@ class TestLoadRunReportRejectsCorruptFiles:
 
         assert ids == {"RHAIRFE-1"}
 
+    def test_reclassify_entries_count_as_processed(self, tmp_path):
+        """A ``recommendation: reclassify`` entry (the review's misfiled-item rule) carries no
+        outcome key: submit.py's Label-only path labelled and commented the issue and marked
+        it processed in the live snapshot, so a snapshot rebuilt from the report must count it
+        processed too (RHAIFIRST-571). The human exit is a label, which the description hash
+        does not see, so nothing re-selects the item until its text changes."""
+        results, run = self._write_report(
+            tmp_path,
+            "per_rfe:\n"
+            "- id: RHAIRFE-1\n"
+            "  recommendation: submit\n"
+            "- id: RHAIRFE-2\n"
+            "  recommendation: reclassify\n"
+            "  needs_attention: true\n"
+            "  needs_attention_source: classification\n"
+            "  needs_attention_reason: 'likely an Initiative: three teams over four quarters; "
+            "consider /rfe-create --type initiative'\n",
+        )
+
+        ids, _ = _load_run_report(results, run)
+
+        assert ids == {"RHAIRFE-1", "RHAIRFE-2"}
+
     def test_held_split_entries_do_not_count_as_processed(self, tmp_path):
         """A split submit.py --hold-splits withheld (AISDLC-278) is reported as
         ``blocked_reason: split_held: …`` and the live snapshot resets the parent to

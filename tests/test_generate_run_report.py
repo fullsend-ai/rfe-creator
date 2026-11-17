@@ -833,6 +833,130 @@ class TestRefusedSplitIsBlockedNotSplit:
         assert report["per_rfe"][0]["needs_attention"] is True
 
 
+class TestReclassifyIsHeldForAHuman:
+    """A ``reclassify`` recommendation (the review's misfiled-item rule) is a disposition of its
+    own: counted under ``results.reclassify``, neither passed nor blocked, and the entry carries
+    no outcome key (error / failed_reason / blocked_reason) because submit.py's Label-only path
+    marked the item processed — bootstrap_snapshot must read the entry the same way
+    (RHAIFIRST-571). Submit-time markers still outrank the recommendation."""
+
+    REASON = (
+        "likely an Initiative: names three teams over four quarters; "
+        "consider /rfe-create --type initiative"
+    )
+
+    @pytest.fixture(autouse=True)
+    def _no_marker(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(generate_run_report, "SETUP_ERROR_FILE", str(tmp_path / "no-marker"))
+
+    def _item(self, art_dir, rfe_id, pass_val="true", recommendation="reclassify", extra_fm=""):
+        _write(f"{art_dir}/rfe-tasks/{rfe_id}.md", TASK_TEMPLATE.format(rfe_id=rfe_id, extra=""))
+        attention = (
+            "needs_attention: true\nneeds_attention_source: classification\n"
+            f"needs_attention_reason: '{self.REASON}'\n"
+            if recommendation == "reclassify"
+            else "needs_attention: false\n"
+        )
+        _write(
+            f"{art_dir}/rfe-reviews/{rfe_id}-review.md",
+            f"---\nrfe_id: {rfe_id}\nscore: 8\npass: {pass_val}\n"
+            f"recommendation: {recommendation}\nfeasibility: feasible\nauto_revised: false\n"
+            f"{attention}{extra_fm}"
+            "scores:\n  what: 2\n  why: 2\n  open_to_how: 2\n  not_a_task: 1\n  right_sized: 1\n"
+            "---\n\nok.\n",
+        )
+
+    def _report(self, ids):
+        return build_report(ids, "2026-11-17T09:00:00Z", 5, [], [])
+
+    def test_a_passing_reclassify_is_counted_held_not_passed(self, art_dir):
+        self._item(art_dir, "RHAIRFE-1", pass_val="true")
+        report = self._report(["RHAIRFE-1"])
+        assert report["results"] == {
+            **report["results"],
+            "reclassify": 1,
+            "passed": 0,
+            "failed": 0,
+            "split": 0,
+            "blocked": 0,
+        }
+        [entry] = report["per_rfe"]
+        assert "blocked_reason" not in entry
+        assert "failed_reason" not in entry
+        assert "error" not in entry
+        assert report["errors"] == []
+
+    def test_a_failing_reclassify_is_counted_held_not_failed(self, art_dir):
+        self._item(art_dir, "RHAIRFE-1", pass_val="false")
+        report = self._report(["RHAIRFE-1"])
+        assert report["results"]["reclassify"] == 1
+        assert report["results"]["failed"] == 0
+        assert report["results"]["passed"] == 0
+
+    def test_the_counts_keep_their_order_with_the_new_key_before_errors(self, art_dir):
+        self._item(art_dir, "RHAIRFE-1")
+        assert list(self._report(["RHAIRFE-1"])["results"])[:6] == [
+            "passed",
+            "failed",
+            "split",
+            "blocked",
+            "reclassify",
+            "errors",
+        ]
+
+    def test_the_entry_carries_the_verdict_and_the_filing_advice(self, art_dir):
+        self._item(art_dir, "RHAIRFE-1")
+        [entry] = self._report(["RHAIRFE-1"])["per_rfe"]
+        assert entry["recommendation"] == "reclassify"
+        assert entry["needs_attention"] is True
+        assert entry["needs_attention_source"] == "classification"
+        assert entry["needs_attention_reason"].startswith("likely an Initiative")
+        assert entry["needs_attention_reason"].endswith("consider /rfe-create --type initiative")
+
+    def test_a_submit_time_hold_still_outranks_the_recommendation(self, art_dir):
+        """A reclassify review that also carries a revision_interrupted: record (body changed,
+        auto_revised false) was held and left unprocessed by submit: blocked wins, and the
+        reclassify advice stays legible in the entry's recommendation."""
+        self._item(
+            art_dir,
+            "RHAIRFE-1",
+            extra_fm="error: 'revision_interrupted: auto_revised never recorded'\n",
+        )
+        report = self._report(["RHAIRFE-1"])
+        [entry] = report["per_rfe"]
+        assert report["results"]["blocked"] == 1
+        assert report["results"]["reclassify"] == 0
+        assert entry["blocked_reason"]
+        assert entry["recommendation"] == "reclassify"
+
+    def test_a_setup_failure_still_outranks_the_recommendation(
+        self, art_dir, tmp_path, monkeypatch
+    ):
+        marker = tmp_path / "setup-error.txt"
+        marker.write_text("ERROR rfe: pipeline.rubric.ref: missing\n")
+        monkeypatch.setattr(generate_run_report, "SETUP_ERROR_FILE", str(marker))
+        self._item(art_dir, "RHAIRFE-1")
+        report = self._report(["RHAIRFE-1"])
+        [entry] = report["per_rfe"]
+        assert entry["failed_reason"].startswith(generate_run_report.SETUP_FAILED_PREFIX)
+        assert report["results"]["reclassify"] == 0
+        assert report["results"]["failed"] == 1
+
+    def test_no_new_entry_key_is_introduced(self, art_dir):
+        """A reclassify entry has exactly a submit entry's keys plus the two attention keys the
+        descriptor's extra_entry_fields already carry, in the same relative order."""
+        self._item(art_dir, "RHAIRFE-1", recommendation="submit")
+        self._item(art_dir, "RHAIRFE-2", recommendation="reclassify")
+        by_id = {e["id"]: e for e in self._report(["RHAIRFE-1", "RHAIRFE-2"])["per_rfe"]}
+        submit_keys = list(by_id["RHAIRFE-1"])
+        held_keys = list(by_id["RHAIRFE-2"])
+        assert [k for k in held_keys if k not in submit_keys] == [
+            "needs_attention_source",
+            "needs_attention_reason",
+        ]
+        assert [k for k in held_keys if k in submit_keys] == submit_keys
+
+
 class TestEntryProvenanceFields:
     """tracker_ref, role and local_id — the three-mode classification per entry.
 

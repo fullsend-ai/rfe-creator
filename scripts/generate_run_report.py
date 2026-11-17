@@ -110,6 +110,11 @@ SPLIT_HELD_PREFIX = "split_held:"
 # on every active id's review error and the diagnosis to SETUP_ERROR_FILE; the report carries
 # it as failed_reason (an undisposed outcome bootstrap_snapshot never counts as processed).
 SETUP_FAILED_PREFIX = "setup_failed:"
+# A `reclassify` recommendation (review-rules.md, misfiled item) is a disposition the REVIEW
+# wrote, not a submit-time marker: no error prefix, no blocked_reason, hence no constant here.
+# submit.py labels and comments the issue and marks it processed (Label only), so the report
+# counts it under results.reclassify and leaves the entry free of outcome keys for
+# bootstrap_snapshot, which reads error / failed_reason / blocked_reason as NOT processed.
 # Mirror of pipeline_state.SETUP_ERROR_FILE: present while a SETUP failure ended the run.
 SETUP_ERROR_FILE = "tmp/pipeline-setup-error.txt"
 # Mirror of pipeline_state.PROCESS_IDS_FILE: every id the run was to process, all batches.
@@ -510,7 +515,7 @@ def build_report(
     before_totals = {f: [] for f in score_fields}
     after_totals = {f: [] for f in score_fields}
     before_score_list, after_score_list = [], []
-    counts = {"passed": 0, "failed": 0, "split": 0, "blocked": 0, "errors": 0}
+    counts = {"passed": 0, "failed": 0, "split": 0, "blocked": 0, "reclassify": 0, "errors": 0}
 
     for item_id in expanded_ids:
         if entry_type == "rfe":
@@ -683,6 +688,15 @@ def build_report(
             counts["failed"] += 1
         elif rec == "split":
             counts["split"] += 1
+        elif rec == "reclassify":
+            # Held for a human: the review found the item reads as another registered type
+            # (review-rules.md, misfiled item). Deliberately NOT blocked: submit.py's
+            # Label-only path marked it processed and set its status, and an entry with no
+            # outcome key (error / failed_reason / blocked_reason) is what bootstrap_snapshot
+            # reads as processed too, so the two snapshots agree (RHAIFIRST-571). Not passed
+            # either: nothing was approved, whatever `pass` says. Submit-time markers above
+            # (a hold, a setup failure) still outrank the recommendation.
+            counts["reclassify"] += 1
         elif data.get("pass", False):
             counts["passed"] += 1
         else:

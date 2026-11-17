@@ -105,6 +105,51 @@ class TestBuildReport:
         assert report["results"]["passed"] == 1
         assert "batch_size" not in report
 
+    def test_reclassify_is_counted_held_and_carries_its_fields(self, art_dir):
+        """An Initiative review saying reclassify (it reads as an RFE) is counted under
+        results.reclassify, not passed; the entry carries alignment and the attention fields.
+        The recommendation, not needs_attention_source, is the reliable marker: a weak
+        alignment keeps source=alignment with the classification sentence appended."""
+        _write(
+            f"{art_dir}/initiative-reviews/INIT-001-review.md",
+            REVIEW_TEMPLATE.format(
+                init_id="INIT-001",
+                score=8,
+                pass_val="true",
+                recommendation="reclassify",
+                auto_revised="false",
+                alignment="weak",
+                what=2,
+                why=2,
+                scope=2,
+                open_to_how=1,
+                right_sized=1,
+                extra=(
+                    "needs_attention_source: alignment\n"
+                    "needs_attention_reason: 'Weak alignment with the stated outcome; "
+                    "likely an RFE: one feature for one team; consider /rfe-create --type rfe'"
+                ),
+            ).replace("needs_attention: false", "needs_attention: true"),
+        )
+        report = build_report(
+            ["INIT-001"], "20260404-170041", artifacts_dir=art_dir, entry_type="initiative"
+        )
+        assert report["results"] == {
+            "passed": 0,
+            "failed": 0,
+            "split": 0,
+            "blocked": 0,
+            "reclassify": 1,
+            "errors": 0,
+        }
+        [entry] = report["per_initiative"]
+        assert entry["recommendation"] == "reclassify"
+        assert entry["alignment"] == "weak"
+        assert entry["needs_attention"] is True
+        assert entry["needs_attention_source"] == "alignment"
+        assert "consider /rfe-create --type rfe" in entry["needs_attention_reason"]
+        assert "blocked_reason" not in entry and "failed_reason" not in entry
+
     def test_missing_review_counts_as_error(self, art_dir):
         report = build_report(
             ["INIT-MISSING"], "20260404-170041", artifacts_dir=art_dir, entry_type="initiative"
@@ -282,6 +327,7 @@ class TestSplitChildrenIncluded:
             "failed": 0,
             "split": 1,
             "blocked": 0,
+            "reclassify": 0,
             "errors": 0,
         }
         # input_count reflects caller-supplied IDs only
