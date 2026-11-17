@@ -279,7 +279,9 @@ def _cases():
     """(type, legacy file, legacy text to cover, corpus text, mode) — mode ``full`` covers every
     sentence (prompts, dimension bodies, the create guidance), ``rules`` only the bold-lead
     rule lines (orchestrator bodies, whose mechanics the collapse restructures on purpose)."""
-    for t in REG.names():
+    # Only the types that existed before the collapse have frozen legacy prompts to cover; a type
+    # registered after it (react-shopping-cart) was written against the generic bodies directly.
+    for t in (n for n in REG.names() if os.path.isdir(os.path.join(ROOT, LEGACY, n))):
         desc = REG.get(t)
         pairs = type_registry.launch_vars(desc, "review")
         prompts = desc.get("pipeline.prompts")

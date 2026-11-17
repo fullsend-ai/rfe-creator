@@ -49,16 +49,20 @@ def _cli(*args, **extra_env):
 
 class TestOthersDigest:
     def test_lists_every_create_stage_type_but_the_given_one(self):
-        for mine, other, entity in (
-            ("rfe", "initiative", "Initiative"),
-            ("initiative", "rfe", "RFE"),
+        for mine, others, entity in (
+            ("rfe", ["initiative", "react-shopping-cart"], "Initiative"),
+            ("initiative", ["rfe", "react-shopping-cart"], "RFE"),
+            ("react-shopping-cart", ["rfe", "initiative"], "RFE"),
         ):
+            first = others[0]
             result = _cli("classification", "--others", mine)
             assert result.returncode == 0, result.stderr
-            assert result.stdout.startswith(f"TYPES: {other}\n\n## {other} ({entity})\n"), mine
+            assert result.stdout.startswith(
+                f"TYPES: {', '.join(others)}\n\n## {first} ({entity})\n"
+            ), mine
             assert f"## {mine} (" not in result.stdout
             rows = json.loads(_cli("--json", "classification", "--others", mine).stdout)
-            assert [r["type"] for r in rows] == [other]
+            assert [r["type"] for r in rows] == others
 
     def test_is_not_gated_by_headless(self):
         """The review agents run in the pipeline's sandbox with the headless marker set; the
@@ -66,9 +70,9 @@ class TestOthersDigest:
         for extra in ({"CI": "true"}, {"RFE_CREATOR_HEADLESS": "1"}):
             result = _cli("classification", "--others", "rfe", **extra)
             assert result.returncode == 0, (extra, result.stderr)
-            assert result.stdout.startswith("TYPES: initiative\n"), extra
+            assert result.stdout.startswith("TYPES: initiative, react-shopping-cart\n"), extra
         flagged = _cli("classification", "--others", "rfe", "--headless")
-        assert flagged.stdout.startswith("TYPES: initiative\n")
+        assert flagged.stdout.startswith("TYPES: initiative, react-shopping-cart\n")
         plain = _cli("classification", CI="true")  # stage 1's form keeps its gate
         assert plain.stdout.startswith("HEADLESS")
 

@@ -26,7 +26,10 @@ import yaml
 
 # Add parent directory to path for artifact_utils
 sys.path.insert(0, os.path.dirname(__file__))
+import type_registry
 from artifact_utils import find_removed_context_yaml
+
+_TYPES = type_registry.load()
 
 
 def strip_frontmatter(content):
@@ -205,7 +208,7 @@ def main():
         "--batch", action="store_true", help="Scan all originals in the originals directory"
     )
     parser.add_argument(
-        "--type", choices=["rfe", "initiative"], default="rfe", help="Entry type (default: rfe)"
+        "--type", choices=_TYPES.choices(), default="rfe", help="Entry type (default: rfe)"
     )
     parser.add_argument("--verbose", action="store_true", help="Show missing lines")
     parser.add_argument("--json", action="store_true", help="Output as JSON")
@@ -216,15 +219,12 @@ def main():
     args = parser.parse_args()
 
     if args.batch:
-        if args.type == "initiative":
-            originals_dir = os.path.join("artifacts", "initiative-originals")
-            tasks_dir = os.path.join("artifacts", "initiatives")
-        else:
-            originals_dir = os.path.join("artifacts", "rfe-originals")
-            tasks_dir = os.path.join("artifacts", "rfe-tasks")
+        dirs = _TYPES.get(args.type).dirs()
+        originals_dir = dirs["originals"]
+        tasks_dir = dirs["tasks"]
 
         if not os.path.isdir(originals_dir):
-            print("No artifacts/rfe-originals/ directory found", file=sys.stderr)
+            print(f"No {originals_dir}/ directory found", file=sys.stderr)
             sys.exit(1)
 
         all_results = {}

@@ -90,7 +90,11 @@ SKELETON_DIR = ".claude/skills/rfe-review/prompts"
 GENERIC_SPEEDRUN = "rfe-speedrun"
 GENERIC_CREATE = "rfe-create"
 # Interactive skills poll through a second, non-empty prefix the descriptor cannot express.
-POLL_FILE_PREFIX = {"rfe": "tmp/rfe-poll-", "initiative": "tmp/initiative-poll-"}
+POLL_FILE_PREFIX = {
+    "rfe": "tmp/rfe-poll-",
+    "initiative": "tmp/initiative-poll-",
+    "react-shopping-cart": "tmp/react-shopping-cart-poll-",
+}
 # PR-5a: the rfe review skill resolves the rubric path from the descriptor at launch time.
 RUBRIC_PATH_GET = "python3 scripts/type_registry.py get rfe pipeline.rubric.path"
 RUBRIC_PATH_TOKEN = "{PROMPT_PATH}=.context/assess-rfe/<pipeline.rubric.path>"
@@ -562,7 +566,7 @@ class TestRegistryShape:
     # 70, 87, 102, 106, 124, 147, 148, 153-156, 162 MIGRATED)
 
     def test_shipped_types_in_argparse_order(self):
-        assert TYPES == ["rfe", "initiative"]
+        assert TYPES == ["rfe", "initiative", "react-shopping-cart"]
 
     @pytest.mark.parametrize(
         "name, live",
@@ -570,8 +574,6 @@ class TestRegistryShape:
             # The type-keyed dicts still spelled out by hand; a dict derived from the registry
             # (comprehension over names()) has this property by construction and is not listed.
             ("pipeline_state.PIPELINE_TYPES", pipeline_state.PIPELINE_TYPES),
-            ("compare_review_outputs._TYPE_CONFIG", compare_review_outputs._TYPE_CONFIG),
-            ("check_autofix_complete._TYPE_CONFIG", check_autofix_complete._TYPE_CONFIG),
         ],
     )
     def test_every_type_keyed_registry_has_exactly_the_shipped_types(self, name, live):
@@ -585,24 +587,6 @@ class TestRegistryShape:
             "scripts/frontmatter.py", "--schema-type"
         ):
             assert got == "list(SCHEMAS.keys())", got
-
-    @pytest.mark.parametrize(
-        "rel, flag",
-        [
-            ("scripts/compare_review_outputs.py", "--type"),  # :145
-            ("scripts/cleanup_partial_split.py", "--type"),  # :27
-            ("scripts/check_content_preservation.py", "--type"),  # :208
-        ],
-    )
-    def test_argparse_type_choices_are_registry_choices(self, rel, flag):
-        # rows: 159, 160, 161 — the literal lists still carried (25, 46, 53, 60, 124 MIGRATED)
-        # (check_revised.py / check_right_sized.py / check_autofix_complete.py hand-parse --type
-        # and validate it against the registry since PR-3a — no choices= to pin; the error path
-        # is covered by their own tests)
-        got = choices(rel, flag)
-        assert got, f"{rel}: no add_argument({flag!r}, choices=...) found"
-        for one in got:
-            pin("registry.choices()", f"{rel} {flag}", REG.choices(), one)
 
     @pytest.mark.parametrize(
         "rel, flag",
@@ -624,6 +608,9 @@ class TestRegistryShape:
             ("scripts/fetch_issue.py", "--type"),  # new in PR-2c (row 65): no literal list ever
             ("scripts/submit.py", "--type"),  # PR-2d (row 25; :365-370 at c1df503)
             ("scripts/split_submit.py", "--type"),  # PR-2d (row 46; :853-858 at c1df503)
+            ("scripts/compare_review_outputs.py", "--type"),  # row 159, react-shopping-cart
+            ("scripts/cleanup_partial_split.py", "--type"),  # row 160, react-shopping-cart
+            ("scripts/check_content_preservation.py", "--type"),  # row 161, react-shopping-cart
         ],
     )
     def test_migrated_argparse_choices_read_the_registry(self, rel, flag):
@@ -781,7 +768,9 @@ class TestSubmitTypeConfigs:
         assert "auto_approve_qualifies(review_data)" in read("scripts/split_submit.py")
         assert 'review_data.get("feasibility") == "feasible"' not in source
         assert "feasible" == list(ctx.labels["feasibility"])[0]
-        approved = ctx.jira["state_map"]["approved"]
+        # react-shopping-cart declares no approved state (TSTAPP's Story workflow has no
+        # Approved status): only --auto-approve needs it, and it is refused for that type.
+        approved = ctx.jira["state_map"].get("approved", "Approved")
         assert 'approved_status = desc.get("identity.jira.state_map.approved", None)' in source
         # Optional in the schema: only --auto-approve requires it, refused before any Jira call.
         assert "if args.auto_approve and not approved_status:" in source
@@ -1399,25 +1388,20 @@ class TestSmallRegistries:
             compare_review_outputs._TYPE_CONFIG[ctx.t],
         )
 
-    def test_cleanup_partial_split_inline_branch(self, ctx):
-        # rows: 160 — cleanup_partial_split.py:36-50,:92-97 (inline restatement)
+    def test_cleanup_partial_split_reads_the_descriptor(self, ctx):
+        # rows: 160 MIGRATED (react-shopping-cart) — cleanup_partial_split.py reads dirs,
+        # id_field and the task schema from the descriptor; the source form is pinned
         source = read("scripts/cleanup_partial_split.py")
-        assert f'os.path.join(ARTIFACTS_DIR, "{ctx.bare["tasks"]}")' in source
-        assert f'os.path.join(ARTIFACTS_DIR, "{ctx.bare["reviews"]}")' in source
-        assert f'id_field = "{ctx.id_field}"' in source
-        assert f'schema_type = "{ctx.task_schema}"' in source
-        if ctx.t == "initiative":
-            assert (
-                f'os.path.join(ARTIFACTS_DIR, "{ctx.bare["tasks"]}", f"{{parent_id}}.md")' in source
-            )
-        else:
-            assert "find_artifact_file_including_archived(ARTIFACTS_DIR, parent_id)" in source
+        assert 'dirs = desc.dirs("bare")' in source
+        assert "id_field = desc.id_field" in source
+        assert 'schema_type = f"{desc.name}-task"' in source
+        assert "find_task_file_including_archived(ARTIFACTS_DIR, parent_id, desc=desc)" in source
 
-    def test_check_content_preservation_branch(self, ctx):
-        # rows: 161 — check_content_preservation.py:219-224
+    def test_check_content_preservation_reads_the_descriptor(self, ctx):
+        # rows: 161 MIGRATED (react-shopping-cart) — the batch dirs come from the descriptor
         source = read("scripts/check_content_preservation.py")
-        assert f'os.path.join("artifacts", "{ctx.bare["originals"]}")' in source
-        assert f'os.path.join("artifacts", "{ctx.bare["tasks"]}")' in source
+        assert "dirs = _TYPES.get(args.type).dirs()" in source
+        assert 'originals_dir = dirs["originals"]' in source
 
 
 # ── generate_run_report.TYPE_CONFIG ───────────────────────────────────────────────────────────
@@ -1667,10 +1651,11 @@ class TestPipelineTypes:
             expected,
             cfg["SETUP"]["commands"],
         )
-        assert expected == [
-            f"bash scripts/bootstrap.sh --type {ctx.t}",
-            "bash scripts/fetch-architecture-context.sh",
-        ]
+        assert expected[0] == f"bash scripts/bootstrap.sh --type {ctx.t}"
+        assert expected[1].startswith("bash scripts/fetch-architecture-context.sh")
+        assert (expected[1] == "bash scripts/fetch-architecture-context.sh") is (
+            ctx.t in ("rfe", "initiative")
+        ), "rfe and initiative fetch the RHOAI default; a per-type source passes --repo"
 
     def test_assess_family(self, ctx):
         # rows: 110, 118 — pipeline_state.py:194-211,:236-245
@@ -1809,7 +1794,7 @@ class TestPipelineTypes:
         monkeypatch.chdir(tmp_path)
         if "alignment" not in ctx.dims:
             assert (
-                ctx.t == "rfe"
+                ctx.t != "initiative"
                 and pipeline_state._has_rhaistrat_parent("X", {"type": ctx.t}) is False
             )
             return
@@ -1906,7 +1891,7 @@ class TestPhaseChecks:
         assert not hasattr(check_review_progress, "_CREATE_BARRIER_TYPES")
         for t in TYPES:
             assert f"{_ctx(t).pp}create" in check_review_progress.PHASE_CHECKS
-        assert len(check_review_progress.PHASE_CHECKS) == 15
+        assert len(check_review_progress.PHASE_CHECKS) == 22
 
     def test_detect_fast_config_allowlist(self):
         # rows: 141 — check_review_progress.py _detect_fast; each ==
@@ -2402,7 +2387,7 @@ class TestSkillLayer:
         rubric = ctx.pipe["rubric"]
         assert 'get "$PIPELINE_TYPE" pipeline.rubric.repo' in sh
         assert f'ASSESS_REPO="{rubric["repo"]}"' in sh
-        var = "RUBRIC_FILE" if ctx.t == "rfe" else "INITIATIVE_RUBRIC"
+        var = "INITIATIVE_RUBRIC" if ctx.t == "initiative" else "RUBRIC_FILE"
         assert f'{var}="$CONTEXT_DIR/{rubric["path"]}"' in sh
         assert f'CONTEXT_DIR="{CONTEXT_DIR}"' in sh
         if ctx.t == "initiative":
@@ -2422,11 +2407,17 @@ class TestSkillLayer:
             assert rubric["export"] in skill(ctx.t, "create")
 
     def test_architecture_context_source_is_type_neutral(self, ctx):
-        # rows: 195 — fetch-architecture-context.sh takes no type; SETUP command 2; review Step 1.5
+        # rows: 195 — fetch-architecture-context.sh takes no type; a per-type source passes
+        # --repo/--path/--dest. SETUP command 2 and the review setup step (ARCH_FETCH) render the
+        # same context_sources entry.
         cs = ctx.pipe["context_sources"][1]
-        assert cs["bootstrap"] == "scripts/fetch-architecture-context.sh" and "args" not in cs
+        assert cs["name"] == "architecture-context"
+        assert cs["bootstrap"] == "scripts/fetch-architecture-context.sh"
+        assert ("args" in cs) is (ctx.t not in ("rfe", "initiative"))
         assert "--type" not in read(cs["bootstrap"])
-        assert f"bash {cs['bootstrap']}" in skill(ctx.t, "review")
+        command = type_registry.context_source_command(cs)
+        assert dict(launch(ctx.t, "review"))["ARCH_FETCH"] == command
+        assert command in skill(ctx.t, "review")
 
     def test_tmp_state_and_poll_file_names(self, ctx):
         # rows: 216 — config/ids files are f"tmp/{state_prefix}{stage}-..." (STATE_PREFIX) and
@@ -2445,7 +2436,7 @@ class TestSkillLayer:
             configs - allowed_cfg,
         )
         pin("pipeline.state_prefix + stage", "skills tmp/*-all-ids.txt", set(), ids - allowed_ids)
-        polls = set(re.findall(r"tmp/[a-z]+-poll-[a-z-]+", texts))
+        polls = set(re.findall(r"tmp/[a-z-]+?-poll-[a-z-]+", texts))
         assert polls and all(p.startswith(POLL_FILE_PREFIX[ctx.t]) for p in polls), polls
         assert dict(launch(ctx.t))["POLL_FILE_PREFIX"] == POLL_FILE_PREFIX[ctx.t]
 
@@ -2565,7 +2556,7 @@ class TestSkillLayer:
         commands = [
             ln for ln in texts.splitlines() if ln.lstrip().startswith(("python3 ", "bash "))
         ]
-        flags = [f for ln in commands for f in re.findall(r"--type ([a-z]+)", ln)]
+        flags = [f for ln in commands for f in re.findall(r"--type ([a-z][a-z-]*)", ln)]
         assert flags and set(flags) == {ctx.d["type"]}
         handoffs = re.findall(r'Skill\(skill: "(rfe-[a-z-]+)", args: "([^"]*)"\)', texts)
         assert {name for name, _ in handoffs} == {"rfe-auto-fix", "rfe-submit"}
@@ -3091,10 +3082,10 @@ class TestEvalConfigs:
         check = judges(ctx)["architecture_context_used"]["check"]
         assert "declared_irrelevant = bool(not_relevant_pattern and" in check
         assert "elif transcripts:" in check  # PR-4b: prose fallback only without capture
-        assert ("not_relevant_pattern = None" in check) is (ctx.t == "rfe")
+        assert ("not_relevant_pattern = None" in check) is (ctx.t != "initiative")
         assert ("not_relevant_pattern = re.compile(" in check) is (ctx.t == "initiative")
         assert ctx.ev["thresholds"]["architecture_context_used"]["min_pass_rate"] == (
-            1.0 if ctx.t == "rfe" else 0.85
+            0.85 if ctx.t == "initiative" else 1.0
         )
 
     def test_quality_judges(self, ctx):
@@ -3201,6 +3192,16 @@ PUBLISHED_CONTRACTS = {
             "*[Initiative Creator]* The following technical implementation details were removed "
             "from the Initiative description during review. This content may be useful as strategy "
             "context and is preserved here for reference:"
+        ),
+    },
+    # react-shopping-cart: strat-creator's intake for the storefront reads these (the demo).
+    "react-shopping-cart": {
+        "rubric_pass": "rsc-creator-autofix-rubric-pass",
+        "comment_prefix": "[Shop RFE Creator]",
+        "removed_context_preamble": (
+            "*[Shop RFE Creator]* The following implementation details were removed from the "
+            "Shop RFE description during review. They belong in the strategy (the HOW) and are "
+            "preserved here for reference:"
         ),
     },
 }

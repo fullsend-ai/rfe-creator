@@ -42,7 +42,9 @@ Works for every registered type: RFEs by default, Initiatives with --type initia
 /rfe-creator.update-deps   # Force update vendored dependencies
 ```
 
-Every skill takes `--type <type>` (`rfe` or `initiative`); without it the type is resolved from the ids you pass (`RHAIRFE-*` / `RFE-*` are RFEs, `RHAISTRAT-*` / `INIT-*` are Initiatives) and defaults to `rfe`. The dotted names of the original RFE skills (`/rfe.create`, `/rfe.review`, `/rfe.split`, `/rfe.submit`, `/rfe.speedrun`, `/rfe.auto-fix`) remain as compatibility aliases that run the same bodies. See [docs/working-with-work-item-types.md](docs/working-with-work-item-types.md) for how the type is chosen and what changes with it.
+Every skill takes `--type <type>` (`rfe`, `initiative` or `react-shopping-cart`); without it the type is resolved from the ids you pass (`RHAIRFE-*` / `RFE-*` are RFEs, `RHAISTRAT-*` / `INIT-*` are Initiatives) and defaults to `rfe`. The dotted names of the original RFE skills (`/rfe.create`, `/rfe.review`, `/rfe.split`, `/rfe.submit`, `/rfe.speedrun`, `/rfe.auto-fix`) remain as compatibility aliases that run the same bodies. See [docs/working-with-work-item-types.md](docs/working-with-work-item-types.md) for how the type is chosen and what changes with it.
+
+The `react-shopping-cart` type writes Shop RFEs for the react-shopping-cart demo storefront, filed as Stories in the TSTAPP Jira project.
 
 ## Work Item Types
 

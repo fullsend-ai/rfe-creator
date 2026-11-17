@@ -1,0 +1,1345 @@
+# GENERATED — do not edit by hand. Regenerate: python3 scripts/generate_eval_config.py
+# Sources: eval/config/skeleton.yaml (shared structure, checks and judge prose), types/react-shopping-cart/eval/fragment.yaml
+# (typed prose) and types/react-shopping-cart/type.yaml (identity, dirs, score fields, thresholds).
+name: react-shopping-cart-speedrun
+description: End-to-end Shop RFE pipeline — create, review, auto-fix, split, and submit Shop RFEs
+
+# Execution — how the skill processes test cases (runner-agnostic)
+execution:
+  mode: batch
+  skill: rfe-speedrun
+  arguments: --headless --dry-run --input batch.yaml --type react-shopping-cart
+  timeout: 12000          # 3 h 20 — the fullsend child's 180-minute agent budget plus 20 minutes of sandbox start, pre- and post-script (tests/test_eval_profiles.py pins the sum); the 29-case RFE batch ran past 150 minutes twice on 2026-11-12, 113 minutes of agent time on 2026-11-05
+  max_budget_usd: 100.0  # Per-invocation cost cap
+  env:
+    RFE_CREATOR_ENABLE_CONTEXT_HOOK: "1"  # the compaction-recovery hook (carried from .claude/settings.json) is opt-in
+
+# Runner — agent harness + runner-specific knobs
+runner:
+  type: claude-code
+  effort: high            # Claude Code reasoning effort: low | medium | high | xhigh | max
+
+# Models — defaults for each role (CLI flags override). A bare id is an Anthropic
+# model; `openrouter:/<slug>` on skill/subagent activates the harness's direct
+# OpenRouter transport (no proxy). The `providers` block is the one routing table for
+# the open-weights models under test: it is INERT while the roles are Anthropic and is
+# activated by the profiles under eval-profiles/ (or by `--model` AND `--subagent-model`
+# openrouter:/<slug> together: the base pins `subagent`, so `--model` alone is rejected).
+models:
+  skill: claude-opus-4-6
+  subagent: claude-opus-4-6
+  judge: claude-opus-4-6
+  providers:
+    openrouter:
+      api_key_env: OPENROUTER_API_KEY     # NAME of the variable holding the key, never a value
+      attribution:
+        referer: https://github.com/fullsend-ai/rfe-creator
+        title: rfe-creator eval
+      # The pinned provider SET per model, keyed by the bare OpenRouter slug; `order`
+      # values are provider SLUGS. Claude Code cannot put routing in a request, so the
+      # pins are never applied in flight by the harness: the preflight checks them against
+      # the catalog before the first request, and after the run every request served
+      # outside the set is reported in `routing.violations`. In flight, OpenRouter's own
+      # routing (or the account's ignored-providers setting) picks the endpoint at
+      # `enforcement: audit`; at `key-guardrail` the set becomes the allow-list of a
+      # per-run key, enforced server-side. Where enforcement is chosen — and the only
+      # place to switch it — is eval-profiles/openrouter.yaml. Re-verify a pin at
+      #   https://openrouter.ai/api/v1/models/<slug>/endpoints
+      routing:
+        defaults: { allow_fallbacks: true }
+        models:
+          z-ai/glm-5.2:
+            # The two fp8 hosts the clean 2026-07-20 run used. A run spread over
+            # fp4/unknown-quant hosts degraded glm's tool-call discipline (2026-07-22).
+            order: [novita, streamlake]
+            allow_fallbacks: false
+            quantizations: [fp8]
+          z-ai/glm-5.3-flash:
+            order: [z-ai, novita]         # the first-party host and Novita; both serve fp8
+            allow_fallbacks: false
+          deepseek/deepseek-v4-pro:
+            # fp8 set. WandB, the proxy-era second host, no longer exists on OpenRouter
+            # (2026-09-28); StreamLake fp8 takes its place, as for glm-5.2.
+            order: [novita, streamlake]
+            allow_fallbacks: false
+            quantizations: [fp8]
+          deepseek/deepseek-v4.1-flash:
+            # Single first-party endpoint; it reports quantization "unknown", so a
+            # quantizations pin would exclude it.
+            order: [deepseek]
+            allow_fallbacks: false
+          thinkingmachines/inkling:
+            order: [together]
+            allow_fallbacks: false
+          google/gemma-4-31b-it:
+            # 16-bit only (mixing fp8/fp4 in is not quality-consistent). Cerebras no
+            # longer lists the model and CoreWeave serves fp4 only (2026-09-28). Novita
+            # also lists bf16 but rejected >16384 output tokens at runtime, a hard 400 on
+            # Claude Code's 32k request (2026-07-24), so it is deliberately left out;
+            # several fp4/fp8 hosts cap output at 8-16k too. Crusoe is the usable bf16 host.
+            order: [crusoe]
+            allow_fallbacks: false
+            quantizations: [bf16]
+          qwen/qwen3.8-max-0902:
+            order: [alibaba]
+            allow_fallbacks: false
+          nvidia/nemotron-3-ultra-550b-a55b:
+            order: [baseten, deepinfra]
+            allow_fallbacks: false
+            quantizations: [fp4]
+          # moonshotai/kimi-k3 and qwen/qwen3.7-{plus,max} carry no pin. The proxy's
+          # `sort: throughput` cannot be sent from Claude Code; use the `:nitro`
+          # variant on the model id instead (openrouter:/moonshotai/kimi-k3:nitro).
+
+# Permissions for headless execution
+permissions:
+  allow:
+    - "Skill"
+    - "Agent"
+    - "Edit(tmp/rfe-assess/**)"
+  deny: []
+
+# MLflow logging target
+mlflow:
+  experiment: react-shopping-cart-speedrun-eval
+
+dataset:
+  path: eval/react-shopping-cart-dataset/cases
+  schema: |
+    Each case directory contains 2 files:
+
+    - input.yaml: Test input with fields:
+      - prompt (string): Concise problem statement (1-2 sentences)
+      - priority (string): Blocker/Critical/Major/Normal/Minor
+      - clarifying_context (string): Extended business context with
+        customer segments, justification, scope, success criteria
+
+    - annotations.yaml: Test metadata with fields:
+      - expected_scores (dict with what/why/open_to_how/not_a_task/right_sized, nullable floats)
+      - expected_total (nullable float, 0-10)
+      - expected_pass (nullable bool)
+      - expected_recommendation (nullable string: submit/revise/split/reject)
+      - expected_feasibility (nullable string)
+      - expected_needs_attention (nullable bool): the review's needs_attention
+        at the end of the run (after any revision), not at the first review
+      - expected_needs_attention_reason (nullable string, a regex): with
+        expected_needs_attention true and no named expected_classification,
+        the final review's needs_attention_reason must match it
+        (case-insensitive search)
+      - expected_classification (nullable)
+      - known_issues (list)
+      - score_tolerance (int, default 1)
+      - tags (list): free-form labels; `revision-expected` marks a
+        deliberately weak draft that the revision_coverage judge requires
+        the pipeline to auto-revise (see eval/README.md)
+      - difficulty (nullable string)
+
+inputs:
+  tools:
+    - match: |
+        Questions asked to the user via AskUserQuestion — typically
+        clarifying questions during rfe-create (customer segment,
+        business impact, problem definition, distinctness, success metrics).
+      prompt: |
+        Answer based on the test case context in input.yaml.
+        Use the 'clarifying_context' field for customer segments,
+        business justification, and scope details.
+        Use the 'prompt' field for the core problem statement.
+        Default: pick the first option or answer "yes" for confirmations.
+
+    - match: |
+        Any interaction with Jira — whether via MCP tools
+        (mcp__atlassian__*), Bash scripts calling the Jira REST API
+        (scripts/submit.py, scripts/fetch_issue.py), or any HTTP
+        requests to a Jira server.
+      prompt: |
+        The skill runs with --dry-run so Jira writes are skipped.
+        For reads/fetches: use input.yaml fields `prompt` and
+        `clarifying_context` to synthesize the issue description.
+        Jira fetches should not be needed in batch mode.
+        If a Jira fetch is attempted, return a merged description
+        built from `prompt` + `clarifying_context`.
+
+
+outputs:
+  - path: artifacts/react-shopping-cart-tasks
+    batch_pattern: "RSC-{n:03d}"
+    schema: |
+      Shop RFE task files in Markdown with YAML frontmatter.
+      Naming: RSC-NNN.md (new, pre-submission) or TSTAPP-NNNN.md (fetched).
+      Frontmatter fields (validated by scripts/frontmatter.py):
+        rfe_id, title, priority (Blocker/Critical/Major/Normal/Minor),
+        size (S/M/L/XL), status (Draft/Ready/Submitted/Archived),
+        parent_key (for split children), original_labels.
+      Body sections: Summary, Problem Statement, Affected Customers,
+      Business Justification, Acceptance Criteria, Success Criteria.
+
+  - path: artifacts/react-shopping-cart-reviews
+    batch_pattern: "RSC-{n:03d}"
+    schema: |
+      Review and assessment files for each Shop RFE.
+      Files per Shop RFE:
+        {ID}-review.md: Main review with YAML frontmatter containing:
+          rsc_id, score (0-10), pass (bool), recommendation
+          (submit/revise/split/reject/autorevise_reject), feasibility
+          (feasible/infeasible/indeterminate), auto_revised (bool),
+          needs_attention (bool), needs_attention_reason,
+          needs_attention_source (feasibility/alignment/rubric/agent, optional),
+          needs_attention_dimension (a score field, optional),
+          scores.what/why/open_to_how/not_a_task/right_sized (each 0-2),
+          before_score, before_scores (pre-revision scores).
+        {ID}-feasibility.md: Technical feasibility assessment with
+          blockers, strategy considerations, scope assessment.
+        {ID}-split-status.yaml: Written only for splits; contains
+          action (split/no-split), children list, reason.
+      Body of review: Assessor Feedback table (Criterion, Score, Notes),
+      Verdict, Feedback, Technical Feasibility, Strategy Considerations,
+      Revision History.
+
+  - path: artifacts/react-shopping-cart-originals
+    batch_pattern: "RSC-{n:03d}"
+    schema: |
+      Backup of original Shop RFE content before revisions. One file per Shop RFE:
+      {ID}.md containing the original body (no frontmatter). Used for
+      diffing and content preservation checks.
+
+  - path: artifacts/auto-fix-runs
+    batch_pattern: "*"
+    schema: |
+      Timestamped run reports from the auto-fix pipeline.
+      rsc-run-YYYYMMDD-HHMMSS.yaml: Structured YAML with run_id, started,
+        completed timestamps, batch_size, per_shop_rfe list (each with
+        id, recommendation, revision_cycles, needs_attention, needs_attention_source, needs_attention_reason),
+        before_scores_avg, after_scores_avg,
+        results (passed/failed/split/errors/retried/retry_successes).
+      rsc-run-YYYYMMDD-HHMMSS-report.html: Human-readable HTML companion
+        with diffs, scores, and revision analysis (scripts/generate_review_pdf.py).
+
+traces:
+  stdout: true
+  stderr: true
+  events: false
+  metrics: true
+
+judges:
+  # --- Inline checks ---
+
+  - name: files_exist
+    description: |
+      Verify the pipeline produced a task file and review file.
+    check: |
+      files = outputs.get("files", {})
+      tasks = [k for k in files if k.startswith("artifacts/react-shopping-cart-tasks/") and k.endswith(".md")]
+      reviews = [k for k in files if k.startswith("artifacts/react-shopping-cart-reviews/") and k.endswith("-review.md")]
+      errors = []
+      if not tasks:
+          errors.append("No task files in artifacts/react-shopping-cart-tasks/")
+      if not reviews:
+          errors.append("No review files in artifacts/react-shopping-cart-reviews/")
+      return (len(errors) == 0, "; ".join(errors) if errors else f"{len(tasks)} tasks, {len(reviews)} reviews")
+
+  - name: frontmatter_valid
+    description: |
+      Verify review files have valid YAML frontmatter with required fields,
+      correct value ranges (scores 0-2, total 0-10), valid recommendation enum,
+      and consistent pass logic (pass=true iff score>=7 AND no criterion is 0).
+    check: |
+      import yaml
+      files = outputs.get("files", {})
+      reviews = {k: v for k, v in files.items() if k.endswith("-review.md")}
+      if not reviews:
+          return (False, "No review files to check")
+      errors = []
+      checked = 0
+      for fname, content in sorted(reviews.items()):
+          parts = content.split('---', 2)
+          if len(parts) < 3:
+              errors.append(f"{fname}: missing frontmatter")
+              continue
+          try:
+              fm = yaml.safe_load(parts[1])
+          except yaml.YAMLError as e:
+              errors.append(f"{fname}: invalid YAML: {e}")
+              continue
+          checked += 1
+          for req in ['rsc_id', 'score', 'pass', 'recommendation', 'scores']:
+              if req not in fm:
+                  errors.append(f"{fname}: missing {req}")
+          score = fm.get('score')
+          if score is not None and not (0 <= score <= 10):
+              errors.append(f"{fname}: score {score} out of range")
+          scores = fm.get('scores', {})
+          criteria = ['what', 'why', 'open_to_how', 'not_a_task', 'right_sized']
+          for c in criteria:
+              s = scores.get(c)
+              if s is not None and s not in (0, 1, 2):
+                  errors.append(f"{fname}: scores.{c}={s} not in 0-2")
+          rec = fm.get('recommendation')
+          valid_recs = ['submit', 'revise', 'split', 'reject', 'autorevise_reject']
+          if rec and rec not in valid_recs:
+              errors.append(f"{fname}: invalid recommendation '{rec}'")
+          if all(scores.get(c) is not None for c in criteria) and score is not None:
+              total = sum(scores.get(c, 0) for c in criteria)
+              has_zero = any(scores.get(c) == 0 for c in criteria)
+              expected_pass = (total >= 7 and not has_zero)
+              if fm.get('pass') != expected_pass:
+                  errors.append(f"{fname}: pass={fm.get('pass')} inconsistent (total={total}, has_zero={has_zero})")
+      if checked == 0:
+          return (False, "No review files to check")
+      return (len(errors) == 0, "; ".join(errors[:5]) if errors else f"{checked} reviews valid")
+
+  - name: run_report_exists
+    description: |
+      Verify the auto-fix pipeline generated a structured run report
+      (YAML file in artifacts/auto-fix-runs/) with required fields.
+    check: |
+      import os
+      import yaml
+      files = outputs.get("files", {})
+      yamls = {k: v for k, v in files.items()
+               if k.startswith("artifacts/auto-fix-runs/") and k.endswith(".yaml")
+               and "-snapshot-" not in os.path.basename(k)}
+      if not yamls:
+          return (False, "No run report YAML found")
+      fname = sorted(yamls.keys())[-1]
+      try:
+          report = yaml.safe_load(yamls[fname])
+      except yaml.YAMLError as e:
+          return (False, f"{fname}: invalid YAML: {e}")
+      if not report:
+          return (False, f"{fname} is empty")
+      errors = []
+      for req in ['run_id', 'started', 'completed', 'per_shop_rfe']:
+          if req not in report:
+              errors.append(f"Missing field: {req}")
+      entries = report.get('per_shop_rfe', [])
+      if not entries:
+          errors.append("per_shop_rfe list is empty")
+      return (len(errors) == 0, "; ".join(errors) if errors else f"Report {fname}: {len(entries)} Shop RFEs tracked")
+
+  - name: recommendation_consistency
+    description: |
+      Cross-field semantic checks: pass/fail aligns with recommendation,
+      infeasible Shop RFEs are never recommended for submission.
+    check: |
+      import yaml
+      files = outputs.get("files", {})
+      reviews = {k: v for k, v in files.items() if k.endswith("-review.md")}
+      if not reviews:
+          return (False, "No review files to check")
+      errors = []
+      for fname, content in sorted(reviews.items()):
+          parts = content.split('---', 2)
+          if len(parts) < 3:
+              continue
+          try:
+              fm = yaml.safe_load(parts[1])
+          except yaml.YAMLError:
+              continue
+          passed = fm.get('pass')
+          rec = fm.get('recommendation', '')
+          feas = fm.get('feasibility', '')
+          if passed and rec in ('revise', 'reject', 'autorevise_reject'):
+              if feas == 'infeasible' and rec == 'reject':
+                  pass  # feasibility-based reject overrides rubric pass — valid
+              elif rec == 'revise' and fm.get('needs_attention'):
+                  pass  # marginal pass with needs_attention — revision is reasonable
+              else:
+                  errors.append(f"{fname}: pass=true but recommendation={rec}")
+          if not passed and rec == 'submit':
+              errors.append(f"{fname}: pass=false but recommendation=submit")
+          if feas == 'infeasible' and rec == 'submit':
+              errors.append(f"{fname}: feasibility=infeasible but recommendation=submit")
+      return (len(errors) == 0, "; ".join(errors[:5]) if errors else f"{len(reviews)} reviews consistent")
+
+  - name: revision_flag_consistency
+    description: |
+      Verify auto_revised agrees with the evidence. The flag drives the
+      auto-revised Jira label, so a revision the flag misses ships unlabeled.
+      Proof of a revision (a leftover review-state file, a recorded revision
+      history, a moved score, or a removed-context companion) fails an unset
+      flag; a saved original only clears a set one, since -originals/ is also the
+      fetch baseline for existing issues. Reads only shared artifacts, so the
+      identical check runs on both pipelines.
+    check: |
+      import json
+      import os
+
+      import yaml
+
+      files = outputs.get("files", {})
+      reviews = {k: v for k, v in files.items() if k.endswith("-review.md")}
+      if not reviews:
+          return (False, "No review files to check")
+      # Index by basename: the two pipelines use different directory names
+      # (rfe-tasks/rfe-originals vs initiatives/initiative-originals).
+      names = {os.path.basename(k) for k in files}
+      originals = {os.path.basename(k) for k in files if "-originals/" in k}
+      # revision_cycles per item from the shared run report. Iterate sorted and merge
+      # with max so a stale report can't nondeterministically mask a newer one's
+      # revision evidence with a 0.
+      cycles = {}
+      for k in sorted(files):
+          v = files[k]
+          if not (k.startswith("artifacts/auto-fix-runs/") and k.endswith(".yaml")):
+              continue
+          # Snapshot files (issue-snapshot-*, initiative-snapshot-*) are fetch
+          # artifacts, not run reports.
+          if "-snapshot-" in os.path.basename(k):
+              continue
+          try:
+              report = yaml.safe_load(v) or {}
+          except yaml.YAMLError:
+              continue
+          # A malformed report must skip this signal, not raise - an uncaught error
+          # drops the whole case from the 1.0 gate silently. Validate the nested
+          # shapes too: a non-list section or non-int revision_cycles would otherwise
+          # raise a TypeError below.
+          if not isinstance(report, dict):
+              continue
+          entries = []
+          for key in ("per_rfe", "per_initiative", "per_shop_rfe"):
+              section = report.get(key)
+              if isinstance(section, list):
+                  entries += section
+          for entry in entries:
+              if not isinstance(entry, dict):
+                  continue
+              item = entry.get("id")
+              if not isinstance(item, str) or not item:
+                  continue
+              rc = entry.get("revision_cycles")
+              if isinstance(rc, bool) or not isinstance(rc, int):
+                  rc = 0
+              cycles[item] = max(cycles.get(item, 0), rc)
+      errors = []
+      checked = 0
+      for fname, content in sorted(reviews.items()):
+          # Frontmatter is the leading ---...--- block; split on the closing fence
+          # only, so a literal --- inside a field value cannot truncate it.
+          if not content.startswith("---"):
+              continue
+          end = content.find("\n---", 3)
+          if end == -1:
+              continue
+          try:
+              fm = yaml.safe_load(content[3:end]) or {}
+          except yaml.YAMLError:
+              continue
+          if not isinstance(fm, dict):
+              continue
+          item_id = fm.get("rfe_id") or fm.get("initiative_id") or fm.get("rsc_id")
+          # A malformed id (list/dict) is truthy but unhashable; require a real
+          # string so cycles.get(item_id) below cannot raise and silently drop
+          # the case from the 1.0 gate.
+          if not isinstance(item_id, str) or not item_id:
+              continue
+          checked += 1
+          # Legacy artifacts stored the flag as `revised`; artifact_utils migrates it
+          # to `auto_revised` on read, but this parses raw YAML, so fall back here.
+          flag = bool(fm["auto_revised"] if "auto_revised" in fm else fm.get("revised"))
+          # Strong: proof a revision happened. Any of these with the flag unset is a
+          # missed revision (the flag drives the auto-revised Jira label, so a missed
+          # one ships unlabeled). Each both clears a set flag and raises an unset one,
+          # so it must never fire without a real revision.
+          strong = []
+          state = files.get(os.path.join(os.path.dirname(fname), f"{item_id}-review-state.json"))
+          if state is not None:
+              # restore() deletes the state file once a re-review cycle completes, so
+              # one left on disk is a save/restore cycle that never finished.
+              strong.append("leftover review-state file")
+              if isinstance(state, str):
+                  try:
+                      parsed = json.loads(state)
+                  except ValueError:
+                      parsed = None
+                  if isinstance(parsed, dict):
+                      history = parsed.get("revision_history")
+                      # Normally a string; guard non-str so .strip() cannot raise.
+                      if history.strip() if isinstance(history, str) else history:
+                          strong.append("review-state records a revision")
+          before, score = fm.get("before_score"), fm.get("score")
+          if before is not None and score is not None and before != score:
+              strong.append(f"before_score {before} != score {score}")
+          before_scores, cur_scores = fm.get("before_scores"), fm.get("scores")
+          if before_scores is not None and cur_scores is not None and before_scores != cur_scores:
+              strong.append("before_scores != scores")
+          # Written only when a revision removes content, so its presence proves a
+          # revision even if the re-score landed on the same number.
+          if f"{item_id}-removed-context.yaml" in names:
+              strong.append("removed-context companion")
+          # Cross-check only: the run report derives revision_cycles from auto_revised
+          # itself, so cycles>0 already implies the flag was set at report time. It
+          # cannot witness a never-set flag (the signals above do that); it only
+          # catches a run-report / frontmatter divergence.
+          if cycles.get(item_id, 0) > 0:
+              strong.append(f"run report revision_cycles={cycles[item_id]}")
+          # Weak: clears a set flag but cannot raise an unset one. A saved original is
+          # not proof - -originals/ is also the fetch baseline for existing Jira
+          # issues, so treating it as proof would false-fail on the 1.0 gate.
+          weak = list(strong)
+          if f"{item_id}.md" in originals:
+              weak.append("pre-revision original saved")
+          if strong and not flag:
+              errors.append(f"{item_id}: auto_revised=false but revised ({'; '.join(strong)})")
+          elif flag and not weak:
+              errors.append(f"{item_id}: auto_revised=true with no trace of a revision")
+      if checked == 0:
+          return (False, "No review files to check")
+      return (
+          len(errors) == 0,
+          "; ".join(errors[:5]) if errors else f"{checked} reviews: auto_revised matches evidence",
+      )
+  - name: needs_attention_expectation
+    description: |
+      Compare each final review's needs_attention with the case's
+      expected_needs_attention annotation (the flag at the end of the run,
+      after any revision). A case without the annotation, or with a null
+      one, is not checked. A flag whose source is `classification` (stage 2
+      of classification: the item reads as another type) does not count
+      against an expected `false` unless its reason carries another concern
+      after the classification sentence (`likely a <entity>: <evidence>;
+      consider /rfe-create --type <type>` alone is discounted, the same
+      sentence followed by `; <another concern>` is not): the expectation is
+      about the item's own quality path, and `classification_signal` judges
+      the filing. On an expected `true` where the case's
+      expected_classification names a type (present, not `none`), only a
+      flag whose reason names `--type <that type>` satisfies it: a flag for
+      another reason (feasibility, rubric) fails, so the misfiled case's
+      recall is not satisfied by an unrelated concern. Without
+      expected_classification, or with `none`, the plain boolean applies, and
+      the optional expected_needs_attention_reason (a regex) adds one more
+      requirement: the flag's needs_attention_reason must match it
+      (re.search, case-insensitive), so a case that pins one concern is not
+      satisfied by an unrelated flag. When the flag is missing and the
+      annotation is set, the message names the created task's title, so an
+      anchor lost at create time reads differently from a missed flag.
+    check: |
+      import re
+
+      import yaml
+
+      ann = outputs.get("annotations")
+      expected = ann.get("expected_needs_attention") if isinstance(ann, dict) else None
+      if not isinstance(expected, bool):
+          return (True, "no expected_needs_attention annotation")
+      expected_classification = ann.get("expected_classification")
+      expected_classification = (
+          str(expected_classification).strip() if expected_classification is not None else ""
+      )
+      if expected_classification.lower() == "none":
+          expected_classification = ""
+      # The classification sentence alone, as the review rules build it. The evidence may
+      # itself contain semicolons, so the pattern anchors on the tail: with the greedy
+      # ".+" the last "; consider /rfe-create --type <type>" clause has to end the reason,
+      # so a concern appended after it (separated by "; ") makes the reason carry more
+      # than the filing and does not match.
+      sentence_only = re.compile(
+          r"likely an? .+; consider /rfe-create --type [a-z][a-z0-9_-]+[.\s]*", re.S
+      )
+      names_expected = (
+          re.compile(rf"--type {re.escape(expected_classification)}(?![a-z0-9_-])")
+          if expected_classification
+          else None
+      )
+      expected_reason = ann.get("expected_needs_attention_reason")
+      reason_pattern = (
+          str(expected_reason).strip() if expected and expected_reason is not None else ""
+      )
+      reason_re = None
+      if reason_pattern:
+          try:
+              reason_re = re.compile(reason_pattern, re.IGNORECASE)
+          except re.error as exc:
+              return (False, f"invalid expected_needs_attention_reason {reason_pattern!r}: {exc}")
+      files = outputs.get("files", {})
+      reviews = {k: v for k, v in files.items() if k.endswith("-review.md")}
+      if not reviews:
+          return (False, "No review files to check")
+
+      def task_title(review_name):
+          # The <ID>.md task file of an <ID>-review.md review, wherever it sits in the run.
+          wanted = review_name.rsplit("/", 1)[-1][: -len("-review.md")] + ".md"
+          for name, text in sorted(files.items()):
+              if name.rsplit("/", 1)[-1] != wanted or not text.startswith("---"):
+                  continue
+              close = text.find("\n---", 3)
+              if close == -1:
+                  continue
+              try:
+                  meta = yaml.safe_load(text[3:close]) or {}
+              except yaml.YAMLError:
+                  continue
+              if isinstance(meta, dict) and meta.get("title"):
+                  return str(meta["title"]).strip()
+          return None
+
+      errors = []
+      for fname, content in sorted(reviews.items()):
+          # Frontmatter is the leading ---...--- block; split on the closing fence
+          # only, so a literal --- inside a field value cannot truncate it.
+          if not content.startswith("---"):
+              continue
+          end = content.find("\n---", 3)
+          if end == -1:
+              continue
+          try:
+              fm = yaml.safe_load(content[3:end]) or {}
+          except yaml.YAMLError:
+              continue
+          if not isinstance(fm, dict):
+              continue
+          actual = fm.get("needs_attention") is True
+          reason = str(fm.get("needs_attention_reason") or "").strip()
+          if actual and expected is False:
+              if fm.get("needs_attention_source") == "classification" and sentence_only.fullmatch(reason):
+                  actual = False  # the filing alone is stage 2's call, judged by classification_signal
+          elif actual and expected is True and names_expected is not None:
+              if not names_expected.search(reason):
+                  errors.append(f"{fname}: flagged, but not as a misfiled {expected_classification}")
+                  continue
+          elif actual and expected is True and reason_re is not None:
+              if not reason_re.search(reason):
+                  errors.append(
+                      f"{fname}: flagged, but the reason does not match {reason_pattern}: {reason[:160]}"
+                  )
+                  continue
+          if actual != expected:
+              message = f"{fname}: needs_attention={actual}, expected {expected}"
+              if expected is True and reason_re is not None:
+                  message += f" (task title: {task_title(fname)})"
+              errors.append(message)
+      return (
+          len(errors) == 0,
+          "; ".join(errors[:5]) if errors else f"{len(reviews)} reviews: needs_attention={expected} as expected",
+      )
+  - name: classification_signal
+    description: |
+      Stage 2 of classification (design section 6, AISDLC-191/192): compare the
+      final review's misfiled-item flag with the case's expected_classification
+      annotation. `none` means no review may carry a classification flag (the
+      regular cases and the genuinely ambiguous ones: precision); a type name
+      means some review must carry one whose reason names that type
+      (`consider /rfe-create --type <type>`). A case without the annotation is
+      not checked. Stage 1 never runs headless: a `pass --type to override`
+      notice in the run's stdout fails the case.
+    check: |
+      import re
+
+      import yaml
+
+      ann = outputs.get("annotations")
+      expected = ann.get("expected_classification") if isinstance(ann, dict) else None
+      if expected is None or str(expected).strip() == "":
+          return (True, "no expected_classification annotation")
+      expected = str(expected).strip()
+      # The notice line the create body prints, not the rule that quotes it (the
+      # skill text writes it with a `<t>` placeholder, which must not match).
+      stdout = outputs.get("stdout", "") or ""
+      if re.search(r"^\s*Type: [a-z][a-z0-9_-]+ — pass --type to override", stdout, re.M):
+          return (False, "the create step classified the idea in a headless run")
+      files = outputs.get("files", {})
+      reviews = {k: v for k, v in files.items() if k.endswith("-review.md")}
+      if not reviews:
+          return (False, "No review files to check")
+      flagged = []
+      unreadable = []
+      for fname, content in sorted(reviews.items()):
+          if not content.startswith("---"):
+              unreadable.append(fname)
+              continue
+          end = content.find("\n---", 3)
+          if end == -1:
+              unreadable.append(fname)
+              continue
+          try:
+              fm = yaml.safe_load(content[3:end]) or {}
+          except yaml.YAMLError:
+              unreadable.append(fname)
+              continue
+          if not isinstance(fm, dict):
+              unreadable.append(fname)
+              continue
+          reason = str(fm.get("needs_attention_reason") or "")
+          if fm.get("needs_attention_source") == "classification" or "consider /rfe-create --type" in reason:
+              flagged.append((fname, fm.get("needs_attention_source"), reason))
+      if expected == "none":
+          if flagged:
+              fname, source, reason = flagged[0]
+              return (False, f"{fname}: flagged as misfiled (source={source}): {reason[:160]}")
+          if unreadable:
+              return (False, f"{unreadable[0]}: review frontmatter unreadable, classification state unknown")
+          return (True, f"{len(reviews)} reviews, none flagged as misfiled")
+      hits = [f for f in flagged if f"--type {expected}" in f[2]]
+      if hits:
+          return (True, f"{hits[0][0]}: flagged, likely {expected}")
+      if unreadable:
+          return (False, f"{unreadable[0]}: review frontmatter unreadable, classification state unknown")
+      if flagged:
+          return (False, f"{flagged[0][0]}: flagged but names another type: {flagged[0][2][:160]}")
+      return (False, f"no review flagged the item as a misfiled {expected}")
+
+  - name: revision_coverage
+    description: |
+      Verify the run exercised the revise/reassess path. When every draft passes
+      first review, revision_quality scores "the decision not to revise" 4-5 and
+      revision_flag_consistency passes vacuously, so nothing fails when revision
+      coverage is zero. A case tagged `revision-expected` (a deliberately weak
+      draft) passes only with evidence its item was revised; untagged cases
+      pass, but in a multi-item run that holds a tagged case every case fails
+      when neither it nor the shared run report shows a single revised item, so
+      untagged-but-revised items still count towards run coverage. A run that
+      holds no tagged case (quick mode's first two cases, a --cases subset, a
+      Jira-sourced batch) proves nothing about the revise path by revising
+      nothing, so there, as in a single-item run (Harbor task, execution.mode:
+      case), the tag alone decides. The run's cases are the entries of the
+      case_order.yaml the harness copies into the run (batch mode) together
+      with the directories next to this case's, so a case that left no artifact
+      still counts; their tags are read from the dataset in arguments.dataset_dir.
+      Reads shared artifacts and dataset annotations only, so the identical
+      check runs on both pipelines.
+    arguments:
+      # The dataset the run's cases come from, relative to the project root:
+      # where the check reads the sibling cases' tags.
+      dataset_dir: eval/react-shopping-cart-dataset/cases
+    check: |
+      import os
+      import re
+
+      import yaml
+
+      TAG = "revision-expected"
+      # What a template leaves under "## Revision History" when nothing happened.
+      EMPTY_HISTORY = {"", "none", "n/a", "no revisions", "no revision"}
+      # Agents decorate the placeholder ("None (first pass).", "none — first pass",
+      # "No revisions yet"): the placeholder followed only by an explicit empty
+      # qualifier is still empty. Anything else after it — "None of the HOW content
+      # survived; rewrote it", "None: rewrote the scope boundaries" — is a real entry.
+      EMPTY_HISTORY_PREFIX = re.compile(
+          r"^(none|n/a|no revisions?)"
+          r"(\s*[(\[—–:;,-]?\s*"
+          r"((on |the )?first pass|initial (pass|review)|yet|so far|to date"
+          r"|no revisions?|not (yet )?revised|no changes?)"
+          r"[)\]]?\s*)?$"
+      )
+
+      files = outputs.get("files", {})
+      # _modified/ mirrors in-place edits of the same paths; skip them so the
+      # basename indexes below cannot be overwritten by a duplicate.
+      files = {k: v for k, v in files.items() if not k.startswith("_modified/")}
+      reviews = {k: v for k, v in files.items() if k.endswith("-review.md")}
+      if not reviews:
+          return (False, "No review files to check")
+
+      def split_front(content):
+          """(frontmatter dict or None, body) of a ---...--- fronted document."""
+          if not isinstance(content, str):
+              return None, ""
+          if not content.startswith("---"):
+              return None, content
+          # Split on the closing fence only, so a literal --- inside a field
+          # value cannot truncate the frontmatter.
+          end = content.find("\n---", 3)
+          if end == -1:
+              return None, content
+          try:
+              fm = yaml.safe_load(content[3:end]) or {}
+          except yaml.YAMLError:
+              fm = None
+          return (fm if isinstance(fm, dict) else None), content[end + 4:]
+
+      def norm(text):
+          return re.sub(r"\s+", " ", text).strip()
+
+      # Index by basename: the two pipelines use different directory names
+      # (rfe-tasks/rfe-originals vs initiatives/initiative-originals).
+      names = {os.path.basename(k) for k in files}
+      originals = {os.path.basename(k): v for k, v in files.items() if "-originals/" in k}
+      tasks = {
+          os.path.basename(k): v
+          for k, v in files.items()
+          if k.endswith(".md") and "-originals/" not in k and "-reviews/" not in k
+      }
+      # Run-level coverage from the shared run report(s): the report lists every
+      # item of the batch, so any one case can see whether the run revised
+      # anything at all. Merge with OR across reports so a stale report cannot
+      # mask a newer one's evidence.
+      report_revised = {}
+      # Ids listed under an intermediary's `children`; an entry that is nobody's
+      # child is one of the run's input items.
+      report_children = set()
+      for k in sorted(files):
+          v = files[k]
+          if not (k.startswith("artifacts/auto-fix-runs/") and k.endswith(".yaml")):
+              continue
+          # Snapshot files (issue-snapshot-*, initiative-snapshot-*) are fetch
+          # artifacts, not run reports.
+          if "-snapshot-" in os.path.basename(k):
+              continue
+          # Undecodable files arrive as a {"_binary": True} marker, not text.
+          if not isinstance(v, str):
+              continue
+          try:
+              report = yaml.safe_load(v) or {}
+          except yaml.YAMLError:
+              continue
+          # A malformed report must skip this signal, not raise - an uncaught
+          # error drops the whole case from the pass-rate denominator silently.
+          if not isinstance(report, dict):
+              continue
+          entries = []
+          for key in ("per_rfe", "per_initiative", "per_shop_rfe"):
+              section = report.get(key)
+              if isinstance(section, list):
+                  entries += section
+          for entry in entries:
+              if not isinstance(entry, dict):
+                  continue
+              item = entry.get("id")
+              if not isinstance(item, str) or not item:
+                  continue
+              rc = entry.get("revision_cycles")
+              if isinstance(rc, bool) or not isinstance(rc, int):
+                  rc = 0
+              before, after = entry.get("before_score"), entry.get("after_score")
+              moved = before is not None and after is not None and before != after
+              revised = rc > 0 or entry.get("auto_revised") is True or moved
+              report_revised[item] = report_revised.get(item, False) or revised
+              kids = entry.get("children")
+              if isinstance(kids, list):
+                  report_children.update(c for c in kids if isinstance(c, str))
+      run_revised = sorted(i for i, r in report_revised.items() if r)
+      # A report describing exactly one input item (its split children, if any,
+      # do not add inputs) is a single-case run: Harbor task or
+      # execution.mode: case. There "the run revised nothing" says nothing
+      # about coverage, so the run-level check below does not apply.
+      single_item_run = len([i for i in report_revised if i not in report_children]) == 1
+      coverage = f"run coverage {len(run_revised)}/{len(report_revised)} report items"
+      if single_item_run:
+          coverage += " (single-item run: tag decides)"
+
+      # Per-case evidence, keyed by item id so a review and its companions merge.
+      evidence = {}
+      for fname, content in sorted(reviews.items()):
+          fm, body = split_front(content)
+          if fm is None:
+              continue
+          item_id = fm.get("rfe_id") or fm.get("initiative_id") or fm.get("rsc_id")
+          # Require a real string id so the dict lookups below cannot raise.
+          if not isinstance(item_id, str) or not item_id:
+              continue
+          found = evidence.setdefault(item_id, [])
+          # Legacy artifacts stored the flag as `revised`.
+          flag = fm["auto_revised"] if "auto_revised" in fm else fm.get("revised")
+          if flag is True:
+              found.append("auto_revised=true")
+          before, score = fm.get("before_score"), fm.get("score")
+          if before is not None and score is not None and before != score:
+              found.append(f"before_score {before} != score {score}")
+          before_scores, cur_scores = fm.get("before_scores"), fm.get("scores")
+          if before_scores is not None and cur_scores is not None and before_scores != cur_scores:
+              found.append("before_scores != scores")
+          # -originals/ is written before an auto-revision edits the task, so an
+          # original whose body differs from the current task is a revision.
+          # Compare bodies only (frontmatter moves for other reasons) with
+          # whitespace normalised so a reflow does not count.
+          orig, task = originals.get(f"{item_id}.md"), tasks.get(f"{item_id}.md")
+          if isinstance(orig, str) and isinstance(task, str):
+              if norm(split_front(orig)[1]) != norm(split_front(task)[1]):
+                  found.append("originals body differs from task")
+          # Written only when a revision removes content.
+          if f"{item_id}-removed-context.yaml" in names or f"{item_id}-removed-context.md" in names:
+              found.append("removed-context companion")
+          # restore() deletes the review-state file once a re-review cycle
+          # completes, so one left on disk is a revision cycle that ran.
+          if f"{item_id}-review-state.json" in names:
+              found.append("leftover review-state file")
+          if report_revised.get(item_id):
+              found.append("run report records a revision")
+          # A Revision History section holding anything but the template's
+          # "none" placeholder was written by a revision (restore() prepends the
+          # saved history, so the placeholder may appear alongside real entries).
+          # The section runs to the next level-1/2 heading: entries may use ###.
+          m = re.search(r"^#{2,3}\s+Revision History\s*$(.*?)(?=^#{1,2}\s|\Z)", body, re.M | re.S)
+          if m:
+              lines = [
+                  re.sub(r"^[\s\-*_>]+|[\s\-*_.]+$", "", ln).lower()
+                  for ln in m.group(1).splitlines()
+              ]
+              if any(
+                  ln not in EMPTY_HISTORY and not EMPTY_HISTORY_PREFIX.match(ln)
+                  for ln in lines
+              ):
+                  found.append("non-empty Revision History")
+      if not evidence:
+          return (False, "No review files to check")
+      revised = {i: e for i, e in evidence.items() if e}
+
+      # annotations is the case's dataset annotations.yaml, loaded by the harness
+      # next to files/inputs; a case without one is simply untagged.
+      ann = outputs.get("annotations")
+      tags = ann.get("tags") if isinstance(ann, dict) else None
+      tags = [str(t) for t in tags] if isinstance(tags, list) else []
+      tagged = TAG in tags
+
+      # Whether any case of the run promised a revision. The run's cases are
+      # the entries of the run's case_order.yaml (execute.py copies it from the
+      # workspace in batch mode: every case the run was given, artifacts or
+      # not) together with the directories next to this one's (collect.py
+      # makes one per case that left an artifact, even a lost one); their tags
+      # live in the dataset the judge
+      # is configured with (arguments.dataset_dir, relative to the project
+      # root: tried against the working directory, then against each ancestor
+      # of the run, which lives under the project). True: a tagged case is in
+      # the run, or a sibling's annotations exist but cannot be read (the run
+      # may hold a tagged case, so the rule applies and a damaged dataset fails
+      # loudly on a zero-revision run). False: at least one sibling was read,
+      # none is tagged and none is unreadable (quick mode's first two cases, a
+      # --cases subset). None: the dataset describes none of the run's cases (a
+      # Jira-sourced batch, whose generated cases live elsewhere) or the run
+      # context or dataset could not be located. A sibling without an
+      # annotations.yaml is not described by the dataset: untagged, as the
+      # harness treats it. Returns (verdict, note); the note names the reason
+      # on None and the unreadable files on an unreadable True. On False and
+      # None the tag alone decides below; a tagged case still fails on its own
+      # evidence, and on any shipped dataset three of them failing breach the
+      # 0.92 gate (test_threshold_arithmetic), so a broken revise path stays
+      # visible without the run-level rule.
+      def run_holds_tagged_case():
+          if tagged:
+              return (True, "")
+          case_dir = outputs.get("case_dir")
+          if not isinstance(case_dir, str) or not case_dir:
+              return (None, "no case_dir in the record")
+          dataset_dir = arguments.get("dataset_dir") if isinstance(arguments, dict) else None
+          if not isinstance(dataset_dir, str) or not dataset_dir:
+              return (None, "arguments.dataset_dir unset")
+          cases_root = os.path.dirname(case_dir)
+          try:
+              siblings = {
+                  e for e in os.listdir(cases_root) if os.path.isdir(os.path.join(cases_root, e))
+              }
+          except OSError:
+              siblings = None
+          # The run's roster, when the harness left it: a list of {case_id} (or
+          # plain ids). Ids are directory names; anything else is ignored, a NUL
+          # included: open() raises ValueError on it, which the loop below would
+          # otherwise read as an unreadable sibling and fail an untagged run on.
+          listed = set()
+          try:
+              with open(os.path.join(os.path.dirname(cases_root), "case_order.yaml"), encoding="utf-8") as f:
+                  order = yaml.safe_load(f)
+          except (OSError, ValueError, yaml.YAMLError):
+              order = None
+          for entry in order if isinstance(order, list) else []:
+              cid = entry.get("case_id") if isinstance(entry, dict) else entry
+              if (
+                  isinstance(cid, str)
+                  and cid not in ("", ".", "..")
+                  and not any(ch in cid for ch in ("/", os.sep, "\x00"))
+              ):
+                  listed.add(cid)
+          if siblings is None and not listed:
+              return (None, "the run's cases directory is not readable")
+          siblings = sorted((siblings or set()) | listed)
+          roots = [dataset_dir]
+          probe = cases_root
+          for _ in range(8):
+              parent = os.path.dirname(probe)
+              if parent == probe:
+                  break
+              probe = parent
+              roots.append(os.path.join(probe, dataset_dir))
+          root = next((r for r in roots if os.path.isdir(r)), None)
+          if root is None:
+              return (
+                  None,
+                  f"dataset dir {dataset_dir} not found from the working directory"
+                  " or the run's ancestors",
+              )
+          seen = False
+          unreadable = []
+          for sibling in siblings:
+              path = os.path.join(root, sibling, "annotations.yaml")
+              try:
+                  with open(path, encoding="utf-8") as f:
+                      ann = yaml.safe_load(f) or {}
+              except (FileNotFoundError, NotADirectoryError):
+                  continue
+              except (OSError, ValueError, yaml.YAMLError):
+                  unreadable.append(f"{sibling}/annotations.yaml")
+                  continue
+              seen = True
+              sibling_tags = ann.get("tags") if isinstance(ann, dict) else None
+              if isinstance(sibling_tags, list) and TAG in [str(t) for t in sibling_tags]:
+                  return (True, "")
+          if unreadable:
+              return (True, "sibling annotations unreadable: " + ", ".join(unreadable))
+          if seen:
+              return (False, "")
+          return (None, "dataset describes none of the run's cases")
+
+      run_tagged, run_note = run_holds_tagged_case()
+      if not single_item_run:
+          if run_tagged is None:
+              coverage += f" (run-level rule skipped, {run_note}: tag decides)"
+          elif run_tagged and run_note:
+              coverage += f" ({run_note})"
+          elif not run_tagged:
+              coverage += " (no revision-expected case in the run: tag decides)"
+
+      # Loud run-level failure: a case of the run promised a revision and
+      # nothing in the whole run was revised, so the revise/reassess path went
+      # untested and every downstream revision judge is vacuous. Every case
+      # fails on this branch, by design: a missing report or a multi-item batch
+      # with zero revisions fails every case. A single-item run, and a run
+      # without a tagged case, are decided by the tag alone.
+      if not revised and not run_revised and not single_item_run and run_tagged:
+          return (False, f"revise path never exercised: no revision evidence in this case and {coverage}")
+      if tagged and not revised:
+          return (False, f"tagged {TAG} but no revision evidence for {', '.join(sorted(evidence))}; {coverage}")
+      if revised:
+          detail = "; ".join(f"{i}: {', '.join(e)}" for i, e in sorted(revised.items()))
+          return (True, f"revised ({detail}); {coverage}")
+      return (True, f"not revised (untagged); {coverage}")
+  - name: pipeline_flow
+    description: |
+      Verify expected execution flow from stdout: all phases ran,
+      no errors or unexpected file deletions during Phase 1.
+      Note: phase detection uses string matching on stdout, which is
+      inherently fragile — if log messages change, update the patterns
+      below. A future improvement would be to emit stable phase markers
+      from the skills (e.g. "## Phase: create") for reliable detection.
+    check: |
+      import re
+      stdout = outputs.get("stdout", "")
+      if not stdout:
+          return (False, "No stdout captured")
+      errors = []
+      # Only flag tracebacks that indicate real failures — skip non-fatal ones
+      # from tool interception (PermissionError, hook denials) or missing optionals
+      fatal_tb_pattern = re.compile(
+          r'Traceback \(most recent call last\):.*?(?:Error|Exception): .+',
+          re.DOTALL
+      )
+      non_fatal_patterns = [
+          re.compile(r'PermissionError'),
+          re.compile(r'\bhook\b'),
+          re.compile(r'tool_handlers'),
+          re.compile(r'mcp__atlassian'),
+          re.compile(r'JIRA_SERVER'),
+          re.compile(r'FileNotFoundError:.*\.context/'),
+          re.compile(r'ModuleNotFoundError'),
+      ]
+      for tb in fatal_tb_pattern.finditer(stdout):
+          tb_text = tb.group()
+          if not any(p.search(tb_text) for p in non_fatal_patterns):
+              # Extract last line (the actual error) for the rationale
+              last_line = tb_text.strip().split('\n')[-1]
+              errors.append(f"Fatal traceback: {last_line[:120]}")
+      if "rm artifacts/react-shopping-cart-tasks/" in stdout:
+          errors.append("Shop RFE task file deleted during execution")
+      phases_found = []
+      if "Phase 1" in stdout or "Phase 1:" in stdout or "rfe-create" in stdout.lower():
+          phases_found.append("create")
+      if "auto-fix" in stdout.lower() or "AUTOFIX" in stdout or "Batch " in stdout:
+          phases_found.append("auto-fix")
+      if "submit" in stdout.lower() or "Phase 3" in stdout:
+          phases_found.append("submit")
+      if len(phases_found) < 3:
+          errors.append(f"Only found phases: {phases_found}; expected create + auto-fix + submit")
+      return (len(errors) == 0, "; ".join(errors) if errors else f"Phases: {', '.join(phases_found)}")
+
+  - name: architecture_context_used
+    description: |
+      Verify that every feasibility review was grounded in architecture
+      context. Primary evidence is behavioral: the subagent transcript that
+      wrote each feasibility file must show a successful Read/Grep/Glob of
+      .context/architecture-context. Prose matching ("architecture context
+      was not available") is only a fallback for runs without transcript
+      capture — it both false-positives (an agent borrowing the phrase for
+      an unrelated note, e.g. a missing comments file) and false-negatives
+      (an agent that silently skipped the docs).
+    check: |
+      import glob, json, os, re
+      files = outputs.get("files", {})
+      feasibility = {k: v for k, v in files.items()
+                     if k.endswith("-feasibility.md")}
+      if not feasibility:
+          return (False, "No feasibility files found")
+      docs_dir = re.compile(r"\.context/architecture-context(?![\w.\-])")
+      no_ctx_pattern = re.compile(
+          r'architecture context was not available|no architecture context was available',
+          re.IGNORECASE
+      )
+      not_relevant_pattern = None  # this type never declares architecture context irrelevant
+      # Transcripts live at the run root in batch mode; per-case mode and
+      # batch runs with traces.events route (copies of) them into
+      # cases/<id>/subagents/. Search both, dedupe by filename (routing
+      # copies, so the same transcript can appear in both places).
+      case_dir = outputs.get("case_dir") or ""
+      run_dir = os.path.dirname(os.path.dirname(case_dir))
+      transcripts = list({os.path.basename(p): p for p in sorted(
+          glob.glob(os.path.join(case_dir, "subagents", "*.jsonl"))
+          + glob.glob(os.path.join(run_dir, "subagents", "*.jsonl"))
+      )}.values())
+      basenames = {os.path.basename(f): f for f in feasibility}
+      # writer_hits[basename] = doc reads of the transcript(s) that wrote it
+      writer_hits = {}
+      for path in transcripts:
+          try:
+              with open(path, encoding="utf-8", errors="replace") as fh:
+                  raw = fh.read()
+          except OSError:
+              continue
+          mentioned = [b for b in basenames if b in raw]
+          if not mentioned:
+              continue
+          wrote = set()
+          hits = 0
+          pending = {}
+          for line in raw.splitlines():
+              try:
+                  ev = json.loads(line)
+              except ValueError:
+                  continue
+              msg = ev.get("message") if isinstance(ev, dict) else None
+              if not isinstance(msg, dict):
+                  continue
+              for b in msg.get("content") or []:
+                  if not isinstance(b, dict):
+                      continue
+                  if b.get("type") == "tool_use":
+                      tool_input = str(b.get("input", {}))
+                      if b.get("name") in ("Write", "Edit"):
+                          for base in mentioned:
+                              if base in tool_input:
+                                  wrote.add(base)
+                      if (b.get("name") in ("Read", "Grep", "Glob")
+                              and docs_dir.search(tool_input)):
+                          pending[b.get("id")] = True
+                  elif (b.get("type") == "tool_result"
+                          and b.get("tool_use_id") in pending):
+                      pending.pop(b.get("tool_use_id"))
+                      if b.get("is_error"):
+                          continue
+                      content = b.get("content")
+                      text = content if isinstance(content, str) else json.dumps(content)
+                      if len(text) >= 200:
+                          hits += 1
+          for base in wrote:
+              writer_hits[base] = max(writer_hits.get(base, 0), hits)
+      errors = []
+      evidenced = 0
+      assumed = 0
+      not_relevant = 0
+      for fname, content in sorted(feasibility.items()):
+          base = os.path.basename(fname)
+          declared_irrelevant = bool(not_relevant_pattern and not_relevant_pattern.search(content))
+          if base in writer_hits:
+              if writer_hits[base] > 0:
+                  evidenced += 1
+              elif declared_irrelevant:
+                  not_relevant += 1
+              else:
+                  errors.append(f"{fname}: writer subagent never read "
+                                ".context/architecture-context")
+          elif declared_irrelevant:
+              not_relevant += 1
+          elif transcripts:
+              # Transcripts were captured but none wrote this file: no evidence,
+              # and the prose fallback is only for runs without capture.
+              errors.append(f"{fname}: no writer transcript among "
+                            f"{len(transcripts)} captured")
+          elif no_ctx_pattern.search(content):
+              errors.append(f"{fname}: architecture context not used")
+          else:
+              assumed += 1
+      msg = f"{evidenced} grounded via transcript evidence"
+      if assumed:
+          msg += f", {assumed} assumed via prose fallback (no transcript)"
+      if not_relevant:
+          msg += f", {not_relevant} not relevant (ok)"
+      return (len(errors) == 0, "; ".join(errors) if errors else msg)
+
+  # --- LLM judges ---
+
+  - name: react-shopping-cart_quality
+    description: |
+      Assess the quality of produced Shop RFE task files against the 5 rubric
+      criteria and whether the pipeline's own scores are well-calibrated.
+    score_range: [1, 5]
+    prompt: |
+      You are an independent evaluator assessing the quality of an automated
+      RFE (Request for Enhancement) creation pipeline.
+
+      Here are the produced artifacts:
+
+      {{ outputs }}
+
+      Assess the Shop RFE quality across these criteria, then provide a single
+      overall score 1-5.
+
+      **Quality criteria** (the Shop RFE should):
+      - Describe a clear business need (WHAT) — user-centric, not task-like
+      - Be justified with evidence (WHY) — named customers, revenue impact
+      - Not prescribe implementation (no HOW) — platform vocabulary is OK,
+        but "must use X" is not
+      - Describe a need, not an activity (Not a Task)
+      - Be right-sized for a single strategy feature
+
+      **Calibration** — check the pipeline's own rubric scores in the review
+      file (scores.what/why/open_to_how/not_a_task/right_sized, each 0-2).
+      Do they match what the Shop RFE content warrants?
+
+      Score 1-5:
+      - **5**: Exemplary Shop RFE — all criteria strong, pipeline scores accurate
+      - **4**: Good — meets most criteria, pipeline scores within ±1
+      - **3**: Adequate — noticeable quality issues or pipeline miscalibration
+      - **2**: Below standard — multiple quality issues or scores systematically off
+      - **1**: Poor — fails basic Shop RFE standards or pipeline scores unreliable
+
+  - name: revision_quality
+    description: |
+      Assess whether auto-revisions improved the Shop RFE without losing content.
+      Compares original (artifacts/react-shopping-cart-originals/) vs revised (artifacts/react-shopping-cart-tasks/).
+    score_range: [1, 5]
+    prompt: |
+      You are an independent evaluator assessing the quality of automated
+      Shop RFE revisions. The pipeline may have auto-revised some Shop RFEs to improve
+      their rubric scores.
+
+      Here are the produced artifacts:
+
+      {{ outputs }}
+
+      Compare the original Shop RFE (in artifacts/react-shopping-cart-originals/) against the
+      revised version (in artifacts/react-shopping-cart-tasks/) and the pipeline's review
+      (in artifacts/react-shopping-cart-reviews/).
+
+      First, check the review frontmatter for `auto_revised` and
+      `before_score`/`score`. This tells you whether a revision happened
+      and how scores changed.
+
+      **If no revision was performed** (auto_revised: false or no originals
+      in artifacts/react-shopping-cart-originals/): assess the pipeline's *decision* not to
+      revise. If the Shop RFE is already high quality (score ≥ 8) and doesn't
+      have critical issues, skipping revision is correct — score 4-5. Only
+      score low if the Shop RFE has clear problems the pipeline should have fixed.
+
+      **If a revision was performed**: compare original vs revised and assess:
+
+      **Revision quality**: Did revisions genuinely improve the RFE?
+      Clarified requirements, strengthened justification, reframed
+      prescriptive content? Or just cosmetic/lateral changes?
+
+      **Content fidelity**: Was important business content preserved?
+      Customer names, requirements, justification data intact?
+      Or was critical content lost during revision?
+
+      **Reframing quality**: When prescriptive/HOW content was reframed,
+      was the intent preserved while removing implementation bias?
+      Or was it simply deleted without reframing the underlying need?
+
+      Score 1-5:
+      - **5**: Excellent — revision substantially improved the Shop RFE (or
+        correctly skipped for an already-excellent Shop RFE)
+      - **4**: Good — beneficial changes with minor content shifts (or
+        correctly skipped for a strong Shop RFE with only minor gaps)
+      - **3**: Mixed — some improvements but also introduced issues or lost specificity
+      - **2**: Marginal — cosmetic changes, no real quality improvement, or minor content loss
+      - **1**: Harmful — revision made the Shop RFE worse, lost critical information
+
+  # --- Pairwise (used with --baseline) ---
+
+  - name: pairwise
+    description: Blind A/B comparison of Shop RFE pipeline output quality across runs
+    prompt_file: types/react-shopping-cart/eval/pairwise-judge.md
+
+thresholds:
+  files_exist:
+    min_pass_rate: 1.0
+  frontmatter_valid:
+    min_pass_rate: 1.0
+  run_report_exists:
+    min_pass_rate: 1.0
+  recommendation_consistency:
+    min_pass_rate: 1.0
+  revision_flag_consistency:
+    min_pass_rate: 1.0
+  # needs_attention_expectation: 1.0 over the annotated cases. Expected true on case-027 (only the
+  # classification flag naming the Initiative satisfies it) and, since issue
+  # #299, on case-029: a well-formed need under a title that does not describe
+  # it, with a draft note left in the text, so the body passes and the flag is
+  # the only signal the case produces (source rubric or agent, not
+  # classification). One miss fails the gate by design: the rules say a concern
+  # the review records that the scores do not reflect sets the flag. The
+  # production reviewer missed exactly that on RHAIRFE-3899 (2026-11-12) while
+  # the parallel dry reviewer of the same slot flagged it; the case's first
+  # baseline is the eval run of the PR that added it. The optional
+  # expected_needs_attention_reason (a regex, case-insensitive search against
+  # the final review's needs_attention_reason) keeps an unrelated flag from
+  # satisfying the case: case-029 sets (?i)\btitle\b. When the flag is missing
+  # the judge message names the created task's title, so a title lost at create
+  # time reads differently from a missed flag.
+  needs_attention_expectation:
+    min_pass_rate: 1.0
+  # revision_coverage: with 29 cases of which 6 are tagged revision-expected (case-021 to
+  # case-026), 4 of 6 revised leaves 2 failures -> 27/29 = 0.931 (pass); 3 of 6
+  # revised leaves 3 failures -> 26/29 = 0.897 (fail). case-026 (a maintenance
+  # checklist with no business evidence) calibrated on 2026-09-21 as a
+  # one-revision pass: first review 5/10 (WHY 0, not_a_task 0), revised once to
+  # 9/10 — the reviser pads WHY to 1 with a generic segment despite the draft's
+  # do-not-pad anchor, so an "unfixable WHY" cannot be engineered reliably.
+  # Second-revision coverage (AISDLC-45) comes instead from drafts whose first
+  # revision does not pass: RFE-024 reached cycle 2 in both 2026-09-21 rfe runs
+  # and RFE-021 in one. The 2-failure slack is shared:
+  # a tagged draft the create step repairs on its own, a tagged draft the
+  # first review rejects or splits instead of revising (correct pipeline
+  # behaviour, but it never enters the revise path and leaves no evidence),
+  # and any case without a review file each consume one failure. Calibrated on
+  # two live 5-case runs (2026-09-07): drafts weak only by wording were
+  # repaired at create time in 4 of 5; drafts with an in-character "no
+  # customer evidence, do not pad" anchor were revised in 5 of 5. A multi-item run that
+  # holds a tagged case and revised nothing fails every case (0.0). Single-item runs
+  # (Harbor tasks, execution.mode: case) and runs without a tagged case (quick
+  # mode's first two cases, a --cases subset, a Jira-sourced batch) skip the
+  # run-level check and are decided by the tag alone. Untagged cases otherwise
+  # always pass.
+  revision_coverage:
+    min_pass_rate: 0.92
+  pipeline_flow:
+    min_pass_rate: 1.0
+  architecture_context_used:
+    min_pass_rate: 1.0
+  react-shopping-cart_quality:
+    min_mean: 3.5
+  revision_quality:
+    min_mean: 3.5
+  # classification_signal: stage 2 of classification (AISDLC-191/192): a case's expected_classification
+  # is none (must not be flagged), the type the item really is (must be flagged,
+  # naming it) or absent (not checked: the boundary cases case-015 and case-017,
+  # which read as programmes filed as RFEs). The check has two cases of its own:
+  # case-027, an Initiative described as an RFE (must be flagged "likely an
+  # Initiative"), and case-028, a genuinely ambiguous idea (must not be flagged);
+  # every other annotated case must not be flagged either, so the check measures
+  # precision over the dataset as well. With 29 cases, 0.92 allows 2 failures,
+  # which makes this threshold a precision gate: the misfiled case's recall is
+  # pinned by needs_attention_expectation at 1.0, which on a case whose
+  # expected_classification names a type accepts only the classification flag
+  # naming that type (expected_needs_attention: true on case-027).
+  # Baseline 2026-11-03 (run 2026-11-03-opus-4-6 on ef82342, eval pipeline
+  # 3021822252): 27/28 = 0.964. Precision was perfect — no regular or weak-draft
+  # case flagged — and the one miss was case-027 itself: the reviewer read the
+  # RFE template's shape (problem statement, named customers, acceptance
+  # criteria) as evidence of an RFE, called a three-team, three-quarter
+  # programme under an Outcome "clearly an RFE" and recommended a split. The
+  # rules now say to judge the substance rather than the shape and name that
+  # split as the misfiled case. Second run with the sharpened rule, 2026-11-03 (run 2026-11-03-opus-4-6 on
+  # be79aef, eval pipeline 3023147047): 28/28. case-027 was flagged "likely an
+  # Initiative: names several teams in a joint programme ..." under source
+  # classification (the split stays recommended, as the rules require) and no
+  # other case was flagged; needs_attention_expectation 1.0. The value stays at
+  # 0.92.
+  classification_signal:
+    min_pass_rate: 0.92

@@ -129,7 +129,10 @@ class TestTypeValidation:
 
         _, stderr, rc = _run("--type", "epic")
         assert rc == 2
-        assert stderr == "ERROR: unknown --type 'epic' (registered types: rfe, initiative)\n"
+        assert stderr == (
+            "ERROR: unknown --type 'epic' (registered types: rfe, initiative, "
+            "react-shopping-cart)\n"
+        )
 
     def test_unknown_type_rejected_before_skip_bootstrap(self, fake_checkout):
         """Validation stays ahead of the RFE_SKIP_BOOTSTRAP short-circuit."""
@@ -138,7 +141,7 @@ class TestTypeValidation:
             ["bash", SCRIPT, "--type", "bogus"], capture_output=True, text=True, env=env
         )
         assert result.returncode == 2
-        assert "registered types: rfe, initiative" in result.stderr
+        assert "registered types: rfe, initiative, react-shopping-cart" in result.stderr
         assert result.stdout == ""
 
     def test_drop_in_type_is_accepted(self, fake_checkout, drop_in_root):
@@ -160,7 +163,7 @@ class TestTypeValidation:
             ["bash", SCRIPT, "--type", "bogus"], capture_output=True, text=True, env=env
         )
         assert result.returncode == 2
-        assert "(registered types: rfe, initiative, memo)" in result.stderr
+        assert "(registered types: rfe, initiative, memo, react-shopping-cart)" in result.stderr
 
     @staticmethod
     def _env_with_python3(shim_dir):
@@ -191,7 +194,8 @@ class TestTypeValidation:
         )
         assert result.returncode == 2
         assert result.stderr == (
-            "ERROR: unknown --type 'bogus' (registered types: rfe, initiative)\n"
+            "ERROR: unknown --type 'bogus' (registered types: rfe, initiative, "
+            "react-shopping-cart)\n"
         )
 
     def test_python_without_yaml_still_validates_the_type(self, fake_checkout, tmp_path):
@@ -218,7 +222,10 @@ class TestTypeValidation:
             ["bash", SCRIPT, "--type", "epic"], capture_output=True, text=True, env=env
         )
         assert result.returncode == 2
-        assert result.stderr == "ERROR: unknown --type 'epic' (registered types: rfe, initiative)\n"
+        assert result.stderr == (
+            "ERROR: unknown --type 'epic' (registered types: rfe, initiative, "
+            "react-shopping-cart)\n"
+        )
 
     def test_unreadable_registry_without_a_types_root_exits_2(self, fake_checkout, tmp_path):
         """Both sources gone — the script copied away from the repo, so neither

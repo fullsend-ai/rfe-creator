@@ -95,10 +95,11 @@ class TestClassificationDigest:
         result = _cli("classification")
         assert result.returncode == 0, result.stderr
         out = result.stdout
-        assert out.startswith("TYPES: rfe, initiative\n\n## rfe (RFE)\n")
+        assert out.startswith("TYPES: rfe, initiative, react-shopping-cart\n\n## rfe (RFE)\n")
         assert "\n## initiative (Initiative)\n" in out
+        assert "\n## react-shopping-cart (Shop RFE)\n" in out
         for key in ("Summary:", "Driver:", "Signals:", "Counter-signals:", "Examples:\n- "):
-            assert out.count(key) == 2, key
+            assert out.count(key) == 3, key
         rfe = yaml.safe_load((TYPES_ROOT / "rfe" / "type.yaml").read_text())["classification"]
         assert f"Summary: {rfe['summary']}" in out
         assert "Signals: " + "; ".join(rfe["signals"]) in out
@@ -108,7 +109,7 @@ class TestClassificationDigest:
         result = _cli("--json", "classification")
         assert result.returncode == 0, result.stderr
         rows = json.loads(result.stdout)
-        assert [r["type"] for r in rows] == ["rfe", "initiative"]
+        assert [r["type"] for r in rows] == ["rfe", "initiative", "react-shopping-cart"]
         for row in rows:
             assert set(row) == {
                 "type",
@@ -125,7 +126,7 @@ class TestClassificationDigest:
         extra = _drop_in(tmp_path / "extra")
         result = _cli("classification", "--extra-roots", str(extra))
         assert result.returncode == 0, result.stderr
-        assert result.stdout.startswith("TYPES: rfe, docs, initiative\n")
+        assert result.stdout.startswith("TYPES: rfe, docs, initiative, react-shopping-cart\n")
         assert "## docs (Doc)\nSummary: A request for product documentation" in result.stdout
 
     def test_a_type_without_the_block_or_the_create_stage_is_left_out(self, tmp_path):
@@ -134,7 +135,7 @@ class TestClassificationDigest:
             extra = _drop_in(root, **kwargs)
             result = _cli("classification", "--extra-roots", str(extra))
             assert result.returncode == 0, result.stderr
-            assert result.stdout.startswith("TYPES: rfe, initiative\n"), kwargs
+            assert result.stdout.startswith("TYPES: rfe, initiative, react-shopping-cart\n"), kwargs
             assert "docs" not in result.stdout, kwargs
 
     def test_headless_runs_get_no_digest(self):
@@ -160,7 +161,7 @@ class TestClassificationDigest:
     def test_python_api_matches_the_cli(self):
         reg = type_registry.load(root=TYPES_ROOT, extra_roots=[], env={})
         rows = type_registry.classification_digest(reg)
-        assert [r["type"] for r in rows] == ["rfe", "initiative"]
+        assert [r["type"] for r in rows] == ["rfe", "initiative", "react-shopping-cart"]
         assert type_registry.render_classification_digest(rows) == _cli("classification").stdout
         assert type_registry.render_classification_digest([]).startswith("TYPES: none")
 

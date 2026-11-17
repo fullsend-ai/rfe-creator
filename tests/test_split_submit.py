@@ -379,7 +379,7 @@ class TestSplitConfigProjection:
             [sys.executable, SCRIPT, "--help"], capture_output=True, text=True, env=env
         )
         assert r.returncode == 0, r.stderr
-        assert "{rfe,epic,initiative}" in r.stdout
+        assert "{rfe,epic,initiative,react-shopping-cart}" in r.stdout
         # The epic fixture never splits (no split_link_type, state_map {}), so a split of one
         # is refused up front — before the scan that would otherwise report no epic files.
         r = subprocess.run(
@@ -719,7 +719,7 @@ class TestSplitFactsGuards:
             [sys.executable, SCRIPT, "--help"], capture_output=True, text=True, env=env
         )
         assert r.returncode == 0, r.stderr
-        assert "{rfe,initiative,rfe2}" in r.stdout
+        assert "{rfe,initiative,react-shopping-cart,rfe2}" in r.stdout
         for chosen, other in (("rfe2", "rfe"), ("rfe", "rfe2")):
             r = subprocess.run(
                 [sys.executable, SCRIPT, "RHAIRFE-1", "--dry-run", "--type", chosen]

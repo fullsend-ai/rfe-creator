@@ -126,19 +126,19 @@ class TestSchemas:
 class TestNeedsAttentionSourceFields:
     """AISDLC-442: the optional source / dimension of a needs_attention flag."""
 
-    @pytest.mark.parametrize("t", ["rfe", "initiative"])
+    @pytest.mark.parametrize("t", ["rfe", "initiative", "react-shopping-cart"])
     def test_dimension_enum_is_the_types_score_fields(self, t):
         spec = SCHEMAS[f"{t}-review"]["needs_attention_dimension"]
         assert spec["enum"] == list(_TYPES.get(t).score_fields)
         assert spec["required"] is False
 
-    @pytest.mark.parametrize("t", ["rfe", "initiative"])
+    @pytest.mark.parametrize("t", ["rfe", "initiative", "react-shopping-cart"])
     def test_source_enum(self, t):
         spec = SCHEMAS[f"{t}-review"]["needs_attention_source"]
         assert spec["enum"] == ["feasibility", "alignment", "rubric", "classification", "agent"]
         assert spec["required"] is False
 
-    @pytest.mark.parametrize("t", ["rfe", "initiative"])
+    @pytest.mark.parametrize("t", ["rfe", "initiative", "react-shopping-cart"])
     def test_no_default_so_existing_reviews_gain_no_keys(self, t):
         for field in ("needs_attention_source", "needs_attention_dimension"):
             assert "default" not in SCHEMAS[f"{t}-review"][field]
@@ -1481,7 +1481,7 @@ class TestTypeForProbesTheTaskFrontmatter:
         )
         _write("artifacts/rfe-tasks/KONFLUX-2.md", _task_fm("rfe_id", "KONFLUX-2", type="rfe"))
         found = _TYPES.candidates("KONFLUX-1")
-        assert found.provisional and found.names == ["rfe", "initiative"]
+        assert found.provisional and found.names == ["rfe", "initiative", "react-shopping-cart"]
         assert artifact_utils._type_for("KONFLUX-1").name == "initiative"
         assert artifact_utils._type_for("KONFLUX-2").name == "rfe"
         # No task file, or one that declares nothing: today's default.
@@ -1877,8 +1877,15 @@ class TestPartialDropInTypes:
         import json
 
         names, schemas, table, owner_local, owner_key, detected = json.loads(result.stdout)
-        assert names == ["rfe", "docs", "initiative"]
-        assert schemas == ["rfe-task", "rfe-review", "initiative-task", "initiative-review"]
+        assert names == ["rfe", "docs", "initiative", "react-shopping-cart"]
+        assert schemas == [
+            "rfe-task",
+            "rfe-review",
+            "initiative-task",
+            "initiative-review",
+            "react-shopping-cart-task",
+            "react-shopping-cart-review",
+        ]
         assert all(not s.startswith("docs-") for _, s in table)
         assert (owner_local, owner_key, detected) == ("docs", "docs", None)
 

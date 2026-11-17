@@ -331,6 +331,9 @@ def _detect_fast(explicit_flag):
         "tmp/initiative-review-config.yaml",
         "tmp/initiative-split-config.yaml",
         "tmp/initiative-speedrun-config.yaml",
+        "tmp/rsc-review-config.yaml",
+        "tmp/rsc-split-config.yaml",
+        "tmp/rsc-speedrun-config.yaml",
     ):
         if os.path.exists(cfg):
             try:

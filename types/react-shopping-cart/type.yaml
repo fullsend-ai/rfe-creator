@@ -1,0 +1,155 @@
+# types/react-shopping-cart/type.yaml — the react-shopping-cart work-item type descriptor.
+# Contract: types/_schema/type.schema.json. A WHAT/WHY request from the store owner / merch team for
+# the react-shopping-cart demo storefront (github.com/fullsend-ai/react-shopping-cart), submitted as a
+# Story in Jira project TSTAPP. strat-creator adds the HOW on the same issue; fullsend's code agent
+# implements it on /fs-code. Copied from types/rfe; every value that names the type, the tracker or a
+# collision-prone prefix is this type's own, the shared rubric (assess-rfe) is reused unchanged.
+schema_version: 1
+type: react-shopping-cart
+display: { entity: Shop RFE, entity_plural: Shop RFEs }
+kind: work-item
+
+classification:
+  summary: A change a store owner or merch team wants in the react-shopping-cart storefront — the WHAT and WHY of one shopper-facing need, small enough to ship as one pull request
+  driver: the store owner or merch team running the react-shopping-cart demo store
+  signals:
+    - names the shop, its catalog, a product, the product filter, sizes or the shopping cart
+    - a shopper cannot find, filter, compare or buy something in the store today
+    - a product the merch team wants listed, priced or presented differently
+    - what the shopper sees on the storefront once it ships
+  counter_signals:
+    - an AI platform capability for customers deploying models, pipelines or clusters
+    - a store-wide relaunch, a new region or a program spanning several quarters
+    - exact catalog JSON, file paths or component code with no shopper need behind it
+  examples:
+    - Shoppers should see how close their cart is to free shipping
+    - The merch team wants accessories such as backpacks listed without a size
+    - Shoppers want to narrow the catalog to Red Hat branded products
+
+identity:
+  tracker: jira
+  jira:
+    project: TSTAPP
+    issue_type: Story
+    key_prefixes: ["TSTAPP-"]
+    split_link_type: "Work item split"                  # site-wide link type, present on redhat.atlassian.net
+    state_map:
+      # approved: absent — the TSTAPP Story workflow is New, Refinement, In Progress, Closed (no Approved status); --auto-approve is refused
+      close_superseded: { transition: Closed, resolution: Obsolete }
+  local_prefix: "RSC-"
+  local_id_pattern: '^RSC-\d+$'
+  id_field: rsc_id
+
+dirs:
+  tasks: artifacts/react-shopping-cart-tasks
+  originals: artifacts/react-shopping-cart-originals
+  reviews: artifacts/react-shopping-cart-reviews
+index: { enabled: false }
+companions:
+  comments: true
+  removed_context: true
+
+conventions:
+  type_label: Shop RFE
+  label_prefix: rsc-creator
+  labels:
+    rubric_pass: rsc-creator-autofix-rubric-pass        # strat-creator's intake for this type reads it
+    ignore: rsc-creator-ignore
+    split_quarantine: rsc-creator-split-quarantine
+    split_child_marker: "rsc-creator-split-child-{parent}-{child_id}-{fingerprint}"
+    needs_attention: rsc-creator-needs-attention
+    auto_created: rsc-creator-auto-created
+    auto_revised: rsc-creator-auto-revised
+    split_result: rsc-creator-split-result
+    split_original: rsc-creator-split-original
+    feasibility:
+      feasible: rsc-creator-feasibility-pass
+      infeasible: rsc-creator-feasibility-fail
+      indeterminate: rsc-creator-feasibility-unknown
+  comment_prefix: "[Shop RFE Creator]"
+  removed_context_preamble: "*[Shop RFE Creator]* The following implementation details were removed from the Shop RFE description during review. They belong in the strategy (the HOW) and are preserved here for reference:"
+  query_default: 'project = TSTAPP AND issuetype = Story'
+  parent_key_patterns: ['RSC-\d+', 'TSTAPP-\d+']
+
+schema:
+  task:
+    extra_fields:
+      size: { type: string, required: false, enum: [S, M, L, XL], default: null }
+    priority:
+      enum: [Blocker, Critical, Major, Normal, Minor, Undefined]
+      map_to_tracker: {}
+  review:
+    score_fields: [what, why, open_to_how, not_a_task, right_sized]   # the assess-rfe rubric, reused
+    extra_fields: {}
+    extra_rules: []
+
+pipeline:
+  stages: [create, review, submit, split, auto-fix, speedrun]
+  context_sources:
+    - { name: assess-rubric, bootstrap: scripts/bootstrap.sh, args: ["--type", "react-shopping-cart"], required: true }
+    - name: architecture-context
+      bootstrap: scripts/fetch-architecture-context.sh
+      args: ["--repo", "https://github.com/fullsend-ai/react-shopping-cart", "--path", "docs/architecture", "--dest", ".context/react-shopping-cart-architecture"]
+      required: false
+  poll_prefix: "rsc-"
+  state_prefix: "rsc-"
+  scorer_agent: rfe-scorer                              # the assess-rfe scorer, shared with rfe (same rubric)
+  prompts:
+    template: types/react-shopping-cart/template.md
+    create_guidance: types/react-shopping-cart/prompts/create-guidance.md
+    review_rules: types/react-shopping-cart/prompts/review-rules.md
+    review_sections: types/react-shopping-cart/prompts/review-sections.md
+    revise_rules: types/react-shopping-cart/prompts/revise-rules.md
+    split_rules: types/react-shopping-cart/prompts/split-rules.md
+  dimensions:
+    - name: feasibility
+      prompt: types/react-shopping-cart/dimensions/feasibility.md
+      blocking: true
+  rubric:
+    repo: https://github.com/fullsend-ai/assess-rfe     # must equal every other external rubric (validate_types cross rule 6)
+    ref: "d8391ae379fba0497164550e3a33495bc2007aa2"
+    path: skills/assess-rfe/scripts/agent_prompt.md
+    export: artifacts/rfe-rubric.md
+  resplit: { score_field: right_sized, below: 2 }
+
+batch: { extra_fields: [] }
+snapshot:
+  prefix: "rsc-snapshot-"
+  report_prefix: "rsc-run-"
+  results_subdir: "react-shopping-cart-tstapp"
+reporting:
+  item_key: per_shop_rfe
+  criterion_labels: { what: WHAT, why: WHY, open_to_how: HOW, not_a_task: Not-a-task, right_sized: Right-sized }
+  criterion_short_labels: { what: WHAT, why: WHY, open_to_how: HOW, not_a_task: Task, right_sized: Scope }
+  before_score_name_map:
+    WHY: why
+    WHAT: what
+    HOW: open_to_how
+    "Open to HOW": open_to_how
+    Not-a-task: not_a_task
+    "Not a task": not_a_task
+    Right-sized: right_sized
+    Right-sizing: right_sized
+    NAT: not_a_task
+    RS: right_sized
+  pdf: { extra_fields: [] }
+  run_report: { extra_entry_fields: [needs_attention, needs_attention_source, needs_attention_reason] }
+eval:
+  config: eval-react-shopping-cart.yaml
+  dataset: eval/react-shopping-cart-dataset/cases
+  mlflow_experiment: react-shopping-cart-speedrun-eval
+  timeout: 12000
+  thresholds:
+    files_exist: { min_pass_rate: 1.0 }
+    frontmatter_valid: { min_pass_rate: 1.0 }
+    run_report_exists: { min_pass_rate: 1.0 }
+    recommendation_consistency: { min_pass_rate: 1.0 }
+    revision_flag_consistency: { min_pass_rate: 1.0 }
+    needs_attention_expectation: { min_pass_rate: 1.0 }
+    revision_coverage: { min_pass_rate: 0.92 }
+    pipeline_flow: { min_pass_rate: 1.0 }
+    architecture_context_used: { min_pass_rate: 1.0 }
+    react-shopping-cart_quality: { min_mean: 3.5 }
+    revision_quality: { min_mean: 3.5 }
+    classification_signal: { min_pass_rate: 0.92 }
+  annotations_extra: [expected_classification]

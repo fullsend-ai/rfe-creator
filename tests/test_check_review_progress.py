@@ -1042,7 +1042,17 @@ class TestSkillBarrierUsage:
         assert self._dimension_polls(self._rendered(t, "review"))
         assert f"{pp}create" in _phases_used_rendered(self._rendered(t, "speedrun"))
 
-    @pytest.mark.parametrize("t", REG.names())
+    # Only the types that predate the generic bodies have legacy bodies to compare against.
+    @pytest.mark.parametrize(
+        "t",
+        [
+            n
+            for n in REG.names()
+            if os.path.isdir(
+                os.path.join(os.path.dirname(__file__), "fixtures", "legacy-prompts", n)
+            )
+        ],
+    )
     def test_generic_bodies_poll_as_much_as_the_legacy_bodies(self, t):
         blocking = [d for d in REG.get(t).get("pipeline.dimensions") if d.get("blocking", True)]
         for stage in ("review", "split"):
@@ -1081,6 +1091,13 @@ _TODAYS_PHASES = [
     "initiative-review",
     "initiative-revise",
     "initiative-alignment",
+    "rsc-fetch",
+    "rsc-create",
+    "rsc-assess",
+    "rsc-feasibility",
+    "rsc-review",
+    "rsc-revise",
+    "rsc-split",
 ]
 
 

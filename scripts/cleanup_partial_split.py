@@ -8,16 +8,17 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import type_registry
 from artifact_utils import (
-    find_artifact_file_including_archived,
     find_review_file,
+    find_task_file_including_archived,
     read_frontmatter,
-    scan_initiative_task_files,
-    scan_task_files,
+    scan_tasks,
     update_frontmatter,
 )
 
 ARTIFACTS_DIR = os.path.join(os.getcwd(), "artifacts")
+_TYPES = type_registry.load()
 
 
 def main():
@@ -25,29 +26,22 @@ def main():
     parser.add_argument("parent_id", help="Parent ID (e.g. RHAIRFE-100 or RHAISTRAT-100)")
     parser.add_argument(
         "--type",
-        choices=["rfe", "initiative"],
+        choices=_TYPES.choices(),
         default="rfe",
         help="Artifact type (default: rfe)",
     )
     args = parser.parse_args()
 
     parent_id = args.parent_id
-
-    if args.type == "initiative":
-        tasks_dir = os.path.join(ARTIFACTS_DIR, "initiatives")
-        reviews_dir = os.path.join(ARTIFACTS_DIR, "initiative-reviews")
-    else:
-        tasks_dir = os.path.join(ARTIFACTS_DIR, "rfe-tasks")
-        reviews_dir = os.path.join(ARTIFACTS_DIR, "rfe-reviews")
+    desc = _TYPES.get(args.type)
+    dirs = desc.dirs("bare")
+    tasks_dir = os.path.join(ARTIFACTS_DIR, dirs["tasks"])
+    reviews_dir = os.path.join(ARTIFACTS_DIR, dirs["reviews"])
 
     # 1. Find and delete orphan children
     deleted = []
-    if args.type == "initiative":
-        all_tasks = scan_initiative_task_files(ARTIFACTS_DIR)
-        id_field = "initiative_id"
-    else:
-        all_tasks = scan_task_files(ARTIFACTS_DIR)
-        id_field = "rfe_id"
+    all_tasks = scan_tasks(ARTIFACTS_DIR, desc)
+    id_field = desc.id_field
 
     for path, data in all_tasks:
         if data.get("parent_key") != parent_id:
@@ -89,12 +83,8 @@ def main():
 
     # 3. Un-archive the parent
     restored = ""
-    if args.type == "initiative":
-        parent_path = os.path.join(ARTIFACTS_DIR, "initiatives", f"{parent_id}.md")
-        schema_type = "initiative-task"
-    else:
-        parent_path = find_artifact_file_including_archived(ARTIFACTS_DIR, parent_id)
-        schema_type = "rfe-task"
+    parent_path = find_task_file_including_archived(ARTIFACTS_DIR, parent_id, desc=desc)
+    schema_type = f"{desc.name}-task"
 
     if parent_path and os.path.isfile(parent_path):
         fm, _ = read_frontmatter(parent_path)

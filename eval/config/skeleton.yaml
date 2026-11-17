@@ -422,7 +422,7 @@ judges:
           if not isinstance(report, dict):
               continue
           entries = []
-          for key in ("per_rfe", "per_initiative"):
+          for key in ("per_rfe", "per_initiative", "per_shop_rfe"):
               section = report.get(key)
               if isinstance(section, list):
                   entries += section
@@ -452,7 +452,7 @@ judges:
               continue
           if not isinstance(fm, dict):
               continue
-          item_id = fm.get("rfe_id") or fm.get("initiative_id")
+          item_id = fm.get("rfe_id") or fm.get("initiative_id") or fm.get("rsc_id")
           # A malformed id (list/dict) is truthy but unhashable; require a real
           # string so cycles.get(item_id) below cannot raise and silently drop
           # the case from the 1.0 gate.
@@ -822,7 +822,7 @@ judges:
           if not isinstance(report, dict):
               continue
           entries = []
-          for key in ("per_rfe", "per_initiative"):
+          for key in ("per_rfe", "per_initiative", "per_shop_rfe"):
               section = report.get(key)
               if isinstance(section, list):
                   entries += section
@@ -858,7 +858,7 @@ judges:
           fm, body = split_front(content)
           if fm is None:
               continue
-          item_id = fm.get("rfe_id") or fm.get("initiative_id")
+          item_id = fm.get("rfe_id") or fm.get("initiative_id") or fm.get("rsc_id")
           # Require a real string id so the dict lookups below cannot raise.
           if not isinstance(item_id, str) or not item_id:
               continue

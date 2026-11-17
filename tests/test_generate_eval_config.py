@@ -457,7 +457,7 @@ class TestShippedConfigs:
         shutil.copy(REPO_ROOT / gen.SKELETON_RELPATH, repo / gen.SKELETON_RELPATH)
         assert gen.main(["--check", "--repo-root", str(repo)]) == 1
         err = capsys.readouterr().err
-        assert "eval.yaml is out of date" in err and "2 config(s) out of date" in err
+        assert "eval.yaml is out of date" in err and "3 config(s) out of date" in err
         assert gen.main(["--repo-root", str(repo)]) == 0
         assert (repo / "eval.yaml").is_file() and (repo / "eval-initiative.yaml").is_file()
         assert gen.main(["--check", "--repo-root", str(repo)]) == 0

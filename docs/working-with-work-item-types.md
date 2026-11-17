@@ -10,12 +10,13 @@ Initiative end to end.
 A work item type is the kind of thing you are filing. It decides which Jira project and issue
 type the ticket lands in, which template the skill writes to, which clarifying questions it
 asks, how the review scores the item, which labels show up in Jira, and where the files go in
-your working directory. Two types are registered:
+your working directory. Three types are registered:
 
 | Type | Jira project | Jira issue type | Purpose | Jira key | Id before submit |
 |---|---|---|---|---|---|
 | RFE | RHAIRFE | Feature Request | A business need from the user's perspective: the WHAT and the WHY, never the HOW. | `RHAIRFE-1234` | `RFE-001` |
 | Initiative | RHAISTRAT | Initiative | A team commitment: a scoped body of work with a clear objective and the evidence for why it matters. It sits between a strategic Outcome and the Epics. | `RHAISTRAT-12345` | `INIT-001` |
+| Shop RFE | TSTAPP | Story | A change the store owner wants in the react-shopping-cart demo storefront: the WHAT and the WHY of one shopper-facing need. Pass `--type react-shopping-cart`. | `TSTAPP-12` | `RSC-001` |
 
 A new item carries a local id (`RFE-001`, `INIT-001`) until it is submitted; submit renames it
 to the Jira key the ticket was created under.

@@ -53,7 +53,7 @@ STRAT_INPUTS_FIXTURE = FIXTURES_TYPES_ROOT / "strategy-inputs.yaml"
 # A live repo file to stand in for an embedded (repo: self) rubric in D3 tests.
 SELF_RUBRIC_PATH = ".claude/skills/rfe-review/prompts/review-agent.md"
 SHIPPED = ("rfe", "initiative")
-OK_LINE = "OK: 2 type(s) valid: rfe, initiative\n"
+OK_LINE = "OK: 3 type(s) valid: rfe, initiative, react-shopping-cart\n"
 
 RFE_RUBRIC = "skills/assess-rfe/scripts/agent_prompt.md"
 INITIATIVE_RUBRIC = "skills/assess-initiative/scripts/agent_prompt.md"
@@ -254,7 +254,7 @@ class TestShipped:
     def test_python_api_ok(self):
         report = _validate(TYPES_ROOT)
         assert report.ok, report.lines()
-        assert report.types == ["rfe", "initiative"]
+        assert report.types == ["rfe", "initiative", "react-shopping-cart"]
         assert report.findings == []
 
     def test_cli_exit_0_and_ok_line(self):
@@ -268,7 +268,7 @@ class TestShipped:
         assert result.returncode == 0
         assert json.loads(result.stdout) == {
             "ok": True,
-            "types": ["rfe", "initiative"],
+            "types": ["rfe", "initiative", "react-shopping-cart"],
             "errors": [],
         }
 
@@ -1470,7 +1470,8 @@ class TestVerify:
         result = _cli("--verify", "--type", "nope")
         assert result.returncode == 1
         assert result.stdout == (
-            "VERIFY FAILED: type 'nope' — unknown type 'nope' (available: rfe, initiative)\n"
+            "VERIFY FAILED: type 'nope' — unknown type 'nope' (available: rfe, initiative, "
+            "react-shopping-cart)\n"
         )
 
     def test_verify_requires_type(self):
@@ -1633,6 +1634,7 @@ class TestMissingJsonschema:
         assert type_registry.load(root=TYPES_ROOT, extra_roots=[], env={}).names() == [
             "rfe",
             "initiative",
+            "react-shopping-cart",
         ]
 
     # Gate 3 runs in the pipeline's sandbox, which has PyYAML and no dev dependency: the
@@ -2197,15 +2199,20 @@ class TestExtraTypes:
     def test_third_type_is_discovered_and_passes_gate_1(self, tmp_path):
         extra = _third_type(tmp_path / "extra")
         reg = type_registry.load(root=TYPES_ROOT, extra_roots=[extra], env={})
-        assert reg.names() == ["rfe", "docs", "initiative"]
+        assert reg.names() == ["rfe", "docs", "initiative", "react-shopping-cart"]
         report = _validate(TYPES_ROOT, extra_roots=[extra])
         assert report.ok, report.lines()
-        assert report.types == ["rfe", "docs", "initiative"]
+        assert report.types == ["rfe", "docs", "initiative", "react-shopping-cart"]
 
     def test_third_type_via_env_variable(self, tmp_path):
         extra = _third_type(tmp_path / "extra")
         env = {"RFE_CREATOR_EXTRA_TYPES": str(extra)}
-        assert type_registry.load(root=TYPES_ROOT, env=env).names() == ["rfe", "docs", "initiative"]
+        assert type_registry.load(root=TYPES_ROOT, env=env).names() == [
+            "rfe",
+            "docs",
+            "initiative",
+            "react-shopping-cart",
+        ]
         report = validate_all(root=TYPES_ROOT, env=env, repo_root=REPO_ROOT)
         assert report.ok, report.lines()
 
@@ -2213,13 +2220,18 @@ class TestExtraTypes:
         extra = _third_type(tmp_path / "extra")
         result = _cli(env={"RFE_CREATOR_EXTRA_TYPES": str(extra)})
         assert result.returncode == 0, result.stdout + result.stderr
-        assert result.stdout == "OK: 3 type(s) valid: rfe, docs, initiative\n"
+        assert result.stdout == "OK: 4 type(s) valid: rfe, docs, initiative, react-shopping-cart\n"
 
     def test_cli_with_extra_roots_option(self, tmp_path):
         extra = _third_type(tmp_path / "extra")
         result = _cli("--extra-roots", str(extra), "--json")
         assert result.returncode == 0, result.stdout + result.stderr
-        assert json.loads(result.stdout)["types"] == ["rfe", "docs", "initiative"]
+        assert json.loads(result.stdout)["types"] == [
+            "rfe",
+            "docs",
+            "initiative",
+            "react-shopping-cart",
+        ]
 
     def test_third_type_verify(self, tmp_path):
         extra = _third_type(tmp_path / "extra")
@@ -2233,12 +2245,21 @@ class TestExtraTypes:
         extra = _third_type(tmp_path / "extra")
         trailing = _cli("--extra-roots", str(extra) + os.pathsep, "--json")
         assert trailing.returncode == 0, trailing.stdout + trailing.stderr
-        assert json.loads(trailing.stdout)["types"] == ["rfe", "docs", "initiative"]
+        assert json.loads(trailing.stdout)["types"] == [
+            "rfe",
+            "docs",
+            "initiative",
+            "react-shopping-cart",
+        ]
         explicit_empty = _cli(
             "--extra-roots", "", "--json", env={"RFE_CREATOR_EXTRA_TYPES": str(extra)}
         )
         assert explicit_empty.returncode == 0, explicit_empty.stdout + explicit_empty.stderr
-        assert json.loads(explicit_empty.stdout)["types"] == ["rfe", "initiative"]
+        assert json.loads(explicit_empty.stdout)["types"] == [
+            "rfe",
+            "initiative",
+            "react-shopping-cart",
+        ]
 
     def test_headless_gate_applies_to_the_validator(self, tmp_path):
         """PR1-05: under a CI marker the env seam is honoured only for allowlisted roots."""
@@ -2248,7 +2269,7 @@ class TestExtraTypes:
             env={"RFE_CREATOR_EXTRA_TYPES": str(extra), "CI": "true"},
             repo_root=REPO_ROOT,
         )
-        assert gated.ok and gated.types == ["rfe", "initiative"]
+        assert gated.ok and gated.types == ["rfe", "initiative", "react-shopping-cart"]
         allowed = validate_all(
             root=TYPES_ROOT,
             env={
@@ -2258,7 +2279,7 @@ class TestExtraTypes:
             },
             repo_root=REPO_ROOT,
         )
-        assert allowed.ok and allowed.types == ["rfe", "docs", "initiative"]
+        assert allowed.ok and allowed.types == ["rfe", "docs", "initiative", "react-shopping-cart"]
         cli = _cli(env={"RFE_CREATOR_EXTRA_TYPES": str(extra), "GITHUB_ACTIONS": "true"})
         assert cli.returncode == 0, cli.stdout + cli.stderr
         assert cli.stdout == OK_LINE
