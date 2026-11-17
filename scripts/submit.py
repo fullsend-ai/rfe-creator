@@ -441,6 +441,20 @@ def _cleared_attention_label(cfg, review_data, original_labels):
     return [label] if label in (original_labels or []) else []
 
 
+def _held_rubric_label(cfg, rec, original_labels):
+    """The rubric-pass label to take off an existing item a ``reclassify`` review holds.
+
+    The label builder only withholds the label on a reclassify, it never removes one the
+    issue already carries (a pass from an earlier review, since found misfiled), and a
+    retained label would leave a held item eligible for downstream intake that keys on it.
+    Conditional removal, like the cleared needs-attention label: only a label actually in
+    original_labels, and only for a reclassify."""
+    label = cfg["rubric_pass_label"]
+    if rec == "reclassify" and label and label in (original_labels or []):
+        return [label]
+    return []
+
+
 def _is_stall_escalation(error):
     """True for the review errors the pipeline's wave stall guard leaves on an item it gave
     up on (docs/wave-stall-guard.md): ``split_not_attempted: wave stalled ...`` and the
@@ -1996,6 +2010,7 @@ def main():
                             feasibility_labels=cfg["feasibility_labels"],
                         )
                     no_change_remove += _cleared_attention_label(cfg, review_data, original_labels)
+                    no_change_remove += _held_rubric_label(cfg, rec, original_labels)
                     has_work = no_change_labels or no_change_remove
                     plan.append(
                         {
@@ -2207,6 +2222,7 @@ def main():
                     feasibility_labels=cfg["feasibility_labels"],
                 )
             strip_labels += _cleared_attention_label(cfg, review_data, original_labels)
+            strip_labels += _held_rubric_label(cfg, rec, original_labels)
 
         action = f"Update {item_id}" if is_existing else "Create"
         plan.append(

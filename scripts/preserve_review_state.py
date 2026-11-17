@@ -227,6 +227,9 @@ def restore(rfe_id, keep_state=False):
             fm_updates["needs_attention"] = True
             fm_updates["needs_attention_source"] = "classification"
             fm_updates["needs_attention_reason"] = saved_reason
+            # The held-item rule keys on the recommendation alone (submit, revise, split and
+            # auto-approval never look at the flag), so the re-raised flag must carry it.
+            fm_updates["recommendation"] = "reclassify"
         elif fresh_source != "classification" and isinstance(saved_reason, str) and saved_reason:
             fresh_reason = current.get("needs_attention_reason")
             fresh_reason = fresh_reason if isinstance(fresh_reason, str) else ""

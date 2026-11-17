@@ -351,7 +351,10 @@ def test_restore_re_raises_the_classification_flag_on_a_fresh_review(
     assert fm["needs_attention"] is True
     assert fm["needs_attention_source"] == "classification"
     assert fm["needs_attention_reason"].startswith("likely an Initiative:")
-    assert fm["pass"] is True and fm["recommendation"] == "submit"  # nothing else moved
+    # The re-raised flag carries the hold itself: every downstream gate keys on the
+    # recommendation, so a flag next to `submit` would still be revised, split or approved.
+    assert fm["recommendation"] == "reclassify"
+    assert fm["pass"] is True  # nothing else moved
 
 
 def test_restore_keeps_a_fresh_classification_flag_of_its_own(workdir):

@@ -1450,6 +1450,51 @@ class TestApprovedTransition:
         assert "Would post needs-attention comment" in stdout
         assert self.RECLASSIFY_NOTE in stdout
 
+    @pytest.mark.parametrize("body_changed", [False, True], ids=["label-only", "update"])
+    def test_reclassify_removes_an_existing_rubric_pass_label(self, art_dir, body_changed):
+        """An issue that passed an earlier review (it carries the rubric-pass label) and is
+        now found misfiled loses the label, on both existing-issue write paths: the label
+        builder only withholds the label, so without the removal the held item keeps it."""
+        original = "Original content.\n"
+        current = "Revised content.\n" if body_changed else original
+        _write(f"{art_dir}/rfe-originals/RHAIRFE-1234.md", original)
+        _write(
+            f"{art_dir}/rfe-tasks/RHAIRFE-1234.md",
+            "---\nrfe_id: RHAIRFE-1234\ntitle: Test RFE\npriority: Major\nstatus: Ready\n"
+            f"original_labels:\n- rfe-creator-autofix-rubric-pass\n---\n{current}",
+        )
+        _write(
+            f"{art_dir}/rfe-reviews/RHAIRFE-1234-review.md",
+            self._reclassify_review(
+                "RHAIRFE-1234", auto_revised="true" if body_changed else "false"
+            ),
+        )
+
+        stdout, stderr, rc = _run_submit(art_dir, ["--auto-approve"])
+        assert rc == 0, stderr
+        assert ("Update RHAIRFE-1234" if body_changed else "Label only") in stdout
+        assert "Remove: rfe-creator-autofix-rubric-pass" in stdout
+        assert "Would transition to Approved" not in stdout
+
+    def test_submit_recommendation_keeps_an_existing_rubric_pass_label(self, art_dir):
+        """The removal is the reclassify hold's alone: a review that recommends submit on an
+        issue already carrying the label leaves it in place."""
+        body = "Same content.\n"
+        _write(f"{art_dir}/rfe-originals/RHAIRFE-1234.md", body)
+        _write(
+            f"{art_dir}/rfe-tasks/RHAIRFE-1234.md",
+            "---\nrfe_id: RHAIRFE-1234\ntitle: Test RFE\npriority: Major\nstatus: Ready\n"
+            f"original_labels:\n- rfe-creator-autofix-rubric-pass\n---\n{body}",
+        )
+        _write(
+            f"{art_dir}/rfe-reviews/RHAIRFE-1234-review.md",
+            REVIEW_FM.format(rfe_id="RHAIRFE-1234", auto_revised="false"),
+        )
+
+        stdout, stderr, rc = _run_submit(art_dir)
+        assert rc == 0, stderr
+        assert "Remove: rfe-creator-autofix-rubric-pass" not in stdout
+
     def test_reclassify_comment_is_forced_past_an_existing_label(self, art_dir):
         """The needs-attention comment is normally skipped when the issue already carried the
         label at fetch (an earlier flag). A reclassify forces it: the comment is the one place
