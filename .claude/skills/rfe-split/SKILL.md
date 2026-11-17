@@ -145,7 +145,7 @@ Check right-sized scores. For each child:
 python3 scripts/frontmatter.py read {REVIEWS_DIR}/<child_ID>-review.md
 ```
 
-If any child scores below {RESPLIT_BELOW}/2 on `scores.{RESPLIT_FIELD}` (the descriptor's `pipeline.resplit` threshold — the same rule the headless pipeline's `check_right_sized.py` applies):
+If any child scores below {RESPLIT_BELOW}/2 on `scores.{RESPLIT_FIELD}` (the descriptor's `pipeline.resplit` threshold — the same rule the headless pipeline's `check_right_sized.py` applies), unless its review's `recommendation` is `reclassify` (the child reads as another work item type and is held for a human; a second split would bury that verdict):
 
 1. **Re-split**: Launch a split agent for the offending child (same prompt as Split Step 1)
 2. **Wait** for the agent to complete

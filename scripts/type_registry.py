@@ -1627,6 +1627,7 @@ LAUNCH_KEYS = (
     "RESPLIT_BELOW",
     "LABEL_PREFIX",
     "NEEDS_ATTENTION_LABEL",
+    "TYPE_CONFIRMED_LABEL",
     "VERDICT_LABELS",
     "QUERY_DEFAULT",
     "CONTEXT_DIR",
@@ -1848,6 +1849,13 @@ def launch_vars(desc, stage):
             ("RESPLIT_BELOW", str(resplit.get("below", ""))),
             ("LABEL_PREFIX", desc.get("conventions.label_prefix")),
             ("NEEDS_ATTENTION_LABEL", labels.get("needs_attention", "")),
+            (
+                # The human exit of the misfiled-item check (review-rules stage 2): the review
+                # agent skips the check when the task's original_labels carry this label. Read
+                # by the review prompt only, never by a script; empty when the type names none.
+                "TYPE_CONFIRMED_LABEL",
+                labels.get("type_confirmed", ""),
+            ),
             (
                 # The verdict-label families of the declared dimensions (conventions.labels
                 # keyed by a dimension name): what the submit body documents and the scripts

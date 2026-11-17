@@ -293,6 +293,7 @@ Based on the output:
 - **All pass**: Tell the user {ENTITY_PLURAL} are ready for `/rfe-submit --type {TYPE}`.
 - **Some need revision**: List the remaining issues (from summary output). Tell the user to edit artifacts and re-run `/rfe-review --type {TYPE}`.
 - **Some recommend split**: Tell the user to run `/rfe-split --type {TYPE} <ID>` for those IDs.
+- **Held as misfiled** (`RECLASSIFY=N`): quote the review's `needs_attention_reason`; `/rfe-submit` only labels and comments them.
 - **Errors**: Report which IDs had errors and suggest retrying.
 
 $ARGUMENTS
