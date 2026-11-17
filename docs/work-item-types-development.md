@@ -185,4 +185,9 @@ behaviour change, Q3), `rubric.ref` is the full SHA `bootstrap.sh` checks out an
 `query_default` has no consumer, `auto_created`/`auto_revised`/`split_result`/`split_original` are
 emitted labels (first-class keys), `split_child_marker` lower-cases `{parent}`/`{child_id}`,
 `skip_stub` carries both `result` and `reason`, prompts point at today's live skill paths until
-PR-5, `local_id_pattern` uses one backslash, and `eval.thresholds` is the verbatim judge map.
+PR-5, `local_id_pattern` uses one backslash, `eval.thresholds` is the verbatim judge map, and
+stage 2 of §6 sets `recommendation: reclassify` (held for a human: not revised, split or
+approved; label-only at submit; its own run-report count) where the design said "changes no
+routing" — the item is still neither relabelled nor moved, and a human confirms the filing
+with `conventions.labels.type_confirmed`, a key the design did not have (the `reclassify`
+recommendation, 2026-11-17).

@@ -276,7 +276,7 @@ If headless, output the counts line and stop. If interactive, output:
 - Passed: N
 - Failed: N
 - Split: N (into M children)
-- Held for reclassification: N
+- Held for a human as misfiled (`reclassify`): N
 
 ### Submitted
 - {KEY_PREFIX}NNNN: <title> [created/updated/dry-run]

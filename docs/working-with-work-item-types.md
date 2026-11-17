@@ -132,7 +132,7 @@ expected one, and a query that names no project is not checked.
 ### Labels in Jira
 
 The pipeline sets these labels on the tickets it creates or updates. They are exact strings;
-the last two rows are the ones a human sets or clears.
+the last three rows are the ones a human sets or clears.
 
 | Meaning | RFE | Initiative |
 |---|---|---|
@@ -147,6 +147,7 @@ the last two rows are the ones a human sets or clears.
 | Alignment verdict | none | `initiative-alignment-strong`, `initiative-alignment-partial`, `initiative-alignment-weak` |
 | Keep this ticket out of batch runs for good (set by a human) | `rfe-creator-ignore` | `initiative-ignore` |
 | Parked after a split failed partway (a human removes it) | `rfe-creator-split-quarantine` | `initiative-split-quarantine` |
+| You confirmed the type; the review stops suggesting another one (set by a human; takes effect at the next review of the ticket, not on its own) | `rfe-creator-type-confirmed` | `initiative-type-confirmed` |
 
 ## When the wrong type was picked
 
@@ -158,8 +159,10 @@ How to tell:
 - The ticket: an RFE is created in RHAIRFE, an Initiative in RHAISTRAT.
 - The review: an item that reads as the other type comes back flagged for attention with a
   note that starts `likely an Initiative:` or `likely an RFE:`, the evidence in one line, and
-  the `/rfe-create --type ...` command to file it under the right type. The scores and the
-  recommendation are unchanged; the note is advice, not a verdict.
+  the `/rfe-create --type ...` command to file it under the right type. The scores are
+  unchanged and the recommendation is `reclassify`: the item is held for you — not revised,
+  not split, not approved — and an existing ticket gets the needs-attention label and a
+  comment in Jira. Nothing moves it; the decision is yours.
 
 What to do:
 
@@ -173,7 +176,17 @@ What to do:
 - Once a ticket exists in Jira under the wrong project, no skill moves it: close it in Jira and
   file it again with the right `--type`. That is also the answer to the review's `likely an
   Initiative:` or `likely an RFE:` note on an existing ticket; if you disagree with the note,
-  leave the ticket where it is and clear the needs-attention label, the review will not move it.
+  leave the ticket where it is, clear the needs-attention label and add
+  `rfe-creator-type-confirmed` (`initiative-type-confirmed` for an Initiative): the next review
+  skips the check and scores the ticket like any other. The label alone does not trigger a
+  review — only an edited description, `--reprocess` or `/rfe-review <KEY>` does, and the
+  review reads the labels the fetch recorded, so `/rfe-review <KEY>` sees the new label from a
+  clean workspace (or after removing the local task file), not from one that already holds
+  the ticket.
+- A held ticket is left as it was when the review found it: labels and a comment, no new text.
+  The one exception is a ticket the same run had already revised before a later review held
+  it: that revision is published, with the auto-revised and needs-attention labels, so the
+  text you read in Jira is the improved one and the comment still says why it is held.
 
 ## Worked example: file an Initiative
 
@@ -201,14 +214,17 @@ Objective, Problem Statement and Scope sections. Edit the file by hand if you li
 The review scores WHAT, WHY, Scope, HOW and Right-sized, checks technical feasibility, checks
 strategic alignment when a RHAISTRAT parent is set, and revises the file itself for the problems
 it can fix (up to two passes). It writes `artifacts/initiative-reviews/INIT-001-review.md` with
-the score, a `recommendation` (`submit`, `revise`, `split`, `reject`, or `autorevise_reject` when
-a revision scored lower than the text it replaced), `feasibility`, `alignment` and
-`needs_attention`, and ends by telling you one of three things: the item is ready for
+the score, a `recommendation` (`submit`, `revise`, `split`, `reject`, `reclassify` when the item
+reads as another type, or `autorevise_reject` when a revision scored lower than the text it
+replaced), `feasibility`, `alignment` and
+`needs_attention`, and ends by telling you one of four things: the item is ready for
 `/rfe-submit --type initiative`; edit the file and re-run `/rfe-review --type initiative INIT-001`;
-or run `/rfe-split --type initiative INIT-001` because the item is too big. Whichever it says,
+run `/rfe-split --type initiative INIT-001` because the item is too big; or the item is held as
+misfiled (`reclassify`) and `/rfe-submit` would only label and comment it. Whichever it says,
 read `needs_attention` and its reason in the review file first: a reason that starts
-`likely an RFE:` means the item reads as an RFE, whatever it scored, and the right move is
-`/rfe-create --type rfe` with the same text, deleting the Initiative file.
+`likely an RFE:` means the item reads as an RFE, whatever it scored (the review marks it
+`reclassify` and leaves the text alone), and the right move is `/rfe-create --type rfe` with
+the same text, deleting the Initiative file.
 
 ### 3. Submit
 

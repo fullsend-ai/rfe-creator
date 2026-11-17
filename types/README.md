@@ -106,7 +106,7 @@ asserts that every differing or one-sided leaf falls under one of these keys:
 | Identity | `type`, `display.entity`, `display.entity_plural`, `identity.jira.{project,issue_type,key_prefixes}`, `identity.{local_prefix,local_id_pattern,id_field}` |
 | Classification | `classification.{summary,driver,signals,counter_signals,examples}` (§6; "Classification block" below) |
 | Layout | `dirs.{tasks,originals,reviews}`, `index.enabled`, `companions.comments`, `batch.extra_fields`, `snapshot.{prefix,report_prefix,results_subdir}` (`results_subdir` = the type's subtree of the shared results repository: `''` the root for `rfe`, grandfathered; every other type `<type>-<project lowercased>`, `initiative-rhoaieng/` for initiative, so a second deployment of the type against another Jira project gets its own subtree) |
-| Conventions | `conventions.{type_label,label_prefix,comment_prefix,removed_context_preamble,query_default,parent_key_patterns}`, `conventions.labels.*` (every reserved key; `alignment.*` only when an alignment dimension exists; `opt_in` only for a type production selects by label — Initiative `initiative-autofix-opt-in` — the value rfe-autofixer's selection JQL and strat-creator's intake should read through `type_registry.py get <type> conventions.labels.opt_in` rather than copy; read by no rfe-creator script) |
+| Conventions | `conventions.{type_label,label_prefix,comment_prefix,removed_context_preamble,query_default,parent_key_patterns}`, `conventions.labels.*` (every reserved key; `alignment.*` only when an alignment dimension exists; `type_confirmed` the human exit of the review's misfiled-item check — set by a human, read by the review prompt as the `TYPE_CONFIRMED_LABEL` launch var, composed by no script; `opt_in` only for a type production selects by label — Initiative `initiative-autofix-opt-in` — the value rfe-autofixer's selection JQL and strat-creator's intake should read through `type_registry.py get <type> conventions.labels.opt_in` rather than copy; read by no rfe-creator script) |
 | Schema | `schema.task.extra_fields` (rfe adds `size`), `schema.review.{score_fields,extra_fields,extra_rules}` |
 | Pipeline | `pipeline.{poll_prefix,state_prefix,scorer_agent}`, `pipeline.prompts.*`, `pipeline.dimensions[]` (name/prompt/blocking/condition/skip_stub), `pipeline.rubric.{ref,path,export}`, `pipeline.context_sources[].args` (the `--type` argument) |
 | Reporting | `reporting.{item_key,criterion_labels,criterion_short_labels,before_score_name_map,pdf.extra_fields,run_report.extra_entry_fields}` |
@@ -140,11 +140,26 @@ create-stage types' blocks (allowed in headless runs: it asks nothing), and when
 review rules say the item reads as one of them it flags the item with
 `needs_attention_source=classification` and a reason starting `likely a <entity>: …; consider
 /rfe-create --type <t>`, in the review file, the review report and the run report (which carries
-`needs_attention_source` and `needs_attention_reason` per item since AISDLC-191); scores,
-recommendation, type and labels stay what the rules decide, nothing is routed, relabelled or
-moved, and the flag is never cleared automatically: `preserve_review_state.py` carries it across the
-re-review (the reviser may have reshaped the text into the filed type, so the fresh review would not
-raise it again) and the review report shows the source before the reason. The eval's `classification_signal` check (AISDLC-192) compares the
+`needs_attention_source` and `needs_attention_reason` per item since AISDLC-191), and sets
+`recommendation: reclassify` in place of whatever the recommendation list decided (the
+Initiative's weak-alignment case keeps source `alignment` and still recommends `reclassify`):
+the item is neither revised (`filter_for_revision.py` skips it) nor split, is never
+auto-approved (`auto_approve_qualifies` requires `submit`), reaches `submit.py` Phase 2 as a
+label-only item (needs-attention label and comment, no rubric-pass label; a body the run had
+already revised before the verdict is published under the Update path, auto-revised label
+included) and is counted under `reclassify` in the run report; scores, type and labels stay
+what the rules decide, nothing is relabelled or moved, and the flag is never cleared
+automatically. The item is neither revised nor re-reviewed in the run, so the flag has nothing
+to survive there; `preserve_review_state.py`'s classification carry remains for a review that
+flagged without recommending `reclassify`, and the review report shows the source before the
+reason. A human confirms the filing with the type's `conventions.labels.type_confirmed` label
+(`rfe-creator-type-confirmed`, `initiative-type-confirmed`; reserved in the schema, rendered
+as the `TYPE_CONFIRMED_LABEL` launch var, composed and read by no script): the next review of
+the item skips the check. The agent reads it from the task's `original_labels`, so the label
+takes effect at the next re-review — a description edit, `--reprocess` or `/rfe-review <KEY>`
+from a workspace that fetches the ticket afresh — never on its own: labels are not part of the snapshot hash, and a label-only submit marks
+the item processed. It is not `conventions.labels.ignore`, which keeps the ticket out of every
+later run. The eval's `classification_signal` check (AISDLC-192) compares the
 final review's flag with each case's `expected_classification` annotation, `none` on every regular
 case and on the genuinely ambiguous ones, the real type on the two misfiled cases per dataset. Gate 1 checks the block, with or without jsonschema: the
 known keys only, the required fields present and the list bounds, a non-empty summary, non-blank
@@ -558,6 +573,10 @@ stays byte-identical:
 |---|---|---|
 | `needs_attention_source` | `feasibility`, `alignment`, `rubric`, `classification`, `agent` | The review agent, whenever it sets `needs_attention=true` (`.claude/skills/rfe-review/prompts/review-agent.md` Step 4, rules in `types/<t>/prompts/review-rules.md`). Scripts that raise the flag themselves (`pipeline_state.py`, `verify_phase.py`, `reconcile_reviews.py`, `submit.py` holds) leave it unset |
 | `needs_attention_dimension` | one of the type's `schema.review.score_fields` (the schema enum follows the descriptor) | The review agent, when the source is `feasibility` or `rubric`; a prescriptive-HOW feasibility note is `open_to_how` |
+
+A `classification` source always comes with `recommendation: reclassify` (and so does the
+Initiative's misfiled-with-weak-alignment case, whose source stays `alignment`): the item is
+held for a human, as "Classification block" above describes.
 
 Consumer: REASSESS_FIXUP runs `check_revised.py --batch --clear-addressed-attention`, which clears
 the flag (`needs_attention=false`, `needs_attention_reason=null`, both fields removed) when the
