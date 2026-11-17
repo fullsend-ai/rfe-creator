@@ -397,6 +397,8 @@ def test_restore_appends_the_saved_classification_to_a_fresh_flag_of_another_sou
     assert "alignment is weak: no outcome named" in fm["needs_attention_reason"]
     assert "likely an Initiative" in fm["needs_attention_reason"]
     assert fm["needs_attention_reason"].count("likely an Initiative") == 1
+    # the carried classification call holds the item even behind another source's flag
+    assert fm["recommendation"] == "reclassify"
 
 
 def test_restore_tolerates_a_state_file_without_the_classification_key(workdir):
@@ -450,6 +452,7 @@ def test_classification_flag_survives_two_re_review_cycles(workdir):
     fm, _ = read_frontmatter(path)
     assert fm["needs_attention_source"] == "feasibility"
     assert fm["needs_attention_reason"] == f"feasibility note; {sentence}"
+    assert fm["recommendation"] == "reclassify"
 
     prs.save(item_id)
     _write(path, _fresh_review(id_field, item_id, scores))

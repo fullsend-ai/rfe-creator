@@ -125,9 +125,12 @@ class TestReviewPromptStageTwo:
         assert "the recommendation is `reclassify` in that case too" in paragraph
         assert "the recommendation," not in paragraph  # it no longer "stays what the rules decide"
         # the human exit comes first: a confirmed type skips the check
-        assert paragraph.index("lists `{TYPE_CONFIRMED_LABEL}` under `original_labels`") < (
-            paragraph.index("When the rules in `{RULES_PATH}`")
-        )
+        # (and only when the label is non-empty: an empty one never skips)
+        assert paragraph.index(
+            "When `{TYPE_CONFIRMED_LABEL}` is non-empty and the task frontmatter you read in "
+            "Step 1 lists it verbatim under `original_labels`"
+        ) < paragraph.index("When the rules in `{RULES_PATH}`")
+        assert "If `{TYPE_CONFIRMED_LABEL}` is empty, never skip." in paragraph
         assert "skip this check and record nothing for it" in paragraph
         assert "the review neither relabels nor moves the item" in paragraph
         assert (
@@ -262,7 +265,9 @@ class TestTypeConfirmedLabel:
             prompt = REVIEW_AGENT.read_text()
             for key, value in type_registry.launch_vars(desc, "review"):
                 prompt = prompt.replace("{" + key + "}", value)
-            assert f"lists `{label}` under `original_labels`" in prompt, name
+            assert f"When `{label}` is non-empty and" in prompt, name
+            assert "lists it verbatim under `original_labels`" in prompt, name
+            assert f"If `{label}` is empty, never skip." in prompt, name
 
     def test_the_key_is_reserved_in_the_schema_and_read_by_no_script(self):
         schema = json.loads((TYPES_ROOT / "_schema" / "type.schema.json").read_text())

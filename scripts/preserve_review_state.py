@@ -233,6 +233,9 @@ def restore(rfe_id, keep_state=False):
         elif fresh_source != "classification" and isinstance(saved_reason, str) and saved_reason:
             fresh_reason = current.get("needs_attention_reason")
             fresh_reason = fresh_reason if isinstance(fresh_reason, str) else ""
+            # Same hold rule as above: the other source keeps its flag, but the carried
+            # classification call must still keep the item out of revise, split and approve.
+            fm_updates["recommendation"] = "reclassify"
             if classification_sentence(fresh_reason) is None:
                 fm_updates["needs_attention_reason"] = (
                     f"{fresh_reason}; {saved_reason}" if fresh_reason else saved_reason
