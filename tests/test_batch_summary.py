@@ -109,7 +109,28 @@ class TestCountsTally:
         assert "PASSED=1" in counts
         assert "FAILED=2" in counts
         assert "SPLIT=1" in counts
+        assert "RECLASSIFY=0" in counts
         assert "ERRORS=0" in counts
+
+    def test_reclassify_is_counted_on_the_summary_line(self, workspace):
+        """A reclassify verdict (held for a human) gets its own count on the BATCH_DONE line;
+        it is still PASSED or FAILED by its pass, as the line always reported, and the detail
+        line names the verdict."""
+        write_frontmatter(
+            str(workspace / "artifacts/rfe-reviews/RHAIRFE-100-review.md"),
+            {**RFE_REVIEW_PASS, "recommendation": "reclassify"},
+            "rfe-review",
+        )
+        write_frontmatter(
+            str(workspace / "artifacts/rfe-reviews/RHAIRFE-200-review.md"),
+            {**RFE_REVIEW_FAIL},
+            "rfe-review",
+        )
+        out, _, rc = _run(["RHAIRFE-100", "RHAIRFE-200"], cwd=str(workspace))
+        assert rc == 0
+        counts = out.splitlines()[0]
+        assert counts == "TOTAL=2 PASSED=1 FAILED=1 SPLIT=0 RECLASSIFY=1 ERRORS=0"
+        assert "RHAIRFE-100: reclassify (8/10" in out
 
     def test_counts_only_suppresses_detail(self, workspace):
         write_frontmatter(
@@ -293,7 +314,7 @@ class TestIdsFile:
         open(ids_file, "w").close()
         out, err, rc = _run(["--counts-only", "--ids-file", ids_file], cwd=str(workspace))
         assert rc == 0, err
-        assert out.splitlines() == ["TOTAL=0 PASSED=0 FAILED=0 SPLIT=0 ERRORS=0"]
+        assert out.splitlines() == ["TOTAL=0 PASSED=0 FAILED=0 SPLIT=0 RECLASSIFY=0 ERRORS=0"]
 
     def test_no_ids_and_no_ids_file_is_still_a_usage_error(self, workspace):
         _, err, rc = _run(["--counts-only"], cwd=str(workspace))

@@ -2456,6 +2456,106 @@ class TestApprovedTransition:
             for c in comments["comments"]
         )
 
+    RECLASSIFY_REASON = (
+        "likely an Initiative: several teams over several quarters; "
+        "consider /rfe-create --type initiative"
+    )
+
+    def _reclassify_review(self, rfe_id):
+        return _review(
+            rfe_id,
+            needs_attention="true",
+            extra_fields=(
+                "needs_attention_source: classification\n"
+                f"needs_attention_reason: '{self.RECLASSIFY_REASON}'\n"
+            ),
+        ).replace("recommendation: submit", "recommendation: reclassify")
+
+    def _seed_snapshot(self, art_dir, issues):
+        snap_dir = os.path.join(art_dir, "auto-fix-runs")
+        os.makedirs(snap_dir, exist_ok=True)
+        path = os.path.join(snap_dir, "issue-snapshot-20260401-000000.yaml")
+        with open(path, "w") as f:
+            yaml.dump(
+                {
+                    "query_timestamp": "2026-04-01T00:00:00Z",
+                    "timestamp": "2026-04-01T00:00:01Z",
+                    "issues": issues,
+                },
+                f,
+                default_flow_style=False,
+                sort_keys=False,
+            )
+        return path
+
+    def test_reclassify_recommended_rfe_is_labelled_and_commented_not_approved(self, art_dir, jira):
+        """--auto-approve + a passing, feasible review recommending reclassify (the
+        misfiled-item rule) on an unchanged body: the Label-only path adds the needs-attention
+        and feasibility-pass labels and nothing else, posts exactly one comment carrying the
+        filing advice, approves nothing, sets the task Submitted and marks the snapshot entry
+        processed — the live record bootstrap_snapshot must agree with."""
+        body = "Original."
+        jira.create("RHAIRFE-1234", "Test RFE", body)
+        snap_path = self._seed_snapshot(art_dir, {"RHAIRFE-1234": "old-hash"})
+        _write(f"{art_dir}/rfe-originals/RHAIRFE-1234.md", body)
+        _write(
+            f"{art_dir}/rfe-tasks/RHAIRFE-1234.md",
+            "---\nrfe_id: RHAIRFE-1234\ntitle: Test RFE\n"
+            f"priority: Major\nstatus: Ready\n---\n{body}",
+        )
+        _write(
+            f"{art_dir}/rfe-reviews/RHAIRFE-1234-review.md",
+            self._reclassify_review("RHAIRFE-1234"),
+        )
+
+        r = _run_submit(art_dir, jira.url, ["--auto-approve"])
+        assert r.returncode == 0, r.stderr
+        assert "Transitioned to Approved" not in r.stdout
+        assert "reclassify recommended: left to a human" in r.stdout
+
+        issue = jira.get("RHAIRFE-1234")
+        assert set(issue["fields"]["labels"]) == {
+            "rfe-creator-needs-attention",
+            "rfe-creator-feasibility-pass",
+        }
+        assert issue["fields"]["status"]["name"] != "Approved"
+        comments = jira.request("GET", "/rest/api/3/issue/RHAIRFE-1234/comment")["comments"]
+        bodies = [json.dumps(c["body"]) for c in comments]
+        assert len(bodies) == 1
+        assert "flagged for human review" in bodies[0]
+        assert "consider /rfe-create --type initiative" in bodies[0]
+        assert "automatically transitioned to Approved" not in bodies[0]
+        assert _read_frontmatter(f"{art_dir}/rfe-tasks/RHAIRFE-1234.md")["status"] == "Submitted"
+        with open(snap_path) as f:
+            entry = yaml.safe_load(f)["issues"]["RHAIRFE-1234"]
+        assert entry["processed"] is True
+
+    def test_reclassify_recommended_new_rfe_is_created_flagged_not_approved(self, art_dir, jira):
+        """A misfiled NEW item is created in this project with the flag on it (there is no
+        hold path for a creation): auto-created, needs-attention and feasibility-pass labels,
+        the comment with the filing advice, no rubric-pass label, not Approved."""
+        _write(f"{art_dir}/rfe-tasks/RFE-001.md", TASK_FM.format(rfe_id="RFE-001"))
+        _write(f"{art_dir}/rfe-reviews/RFE-001-review.md", self._reclassify_review("RFE-001"))
+
+        r = _run_submit(art_dir, jira.url, ["--auto-approve"])
+        assert r.returncode == 0, r.stderr
+        assert "Transitioned to Approved" not in r.stdout
+
+        issues = jira.search("project = RHAIRFE")
+        assert len(issues) == 1
+        issue = jira.get(issues[0]["key"])
+        assert set(issue["fields"]["labels"]) == {
+            "rfe-creator-auto-created",
+            "rfe-creator-needs-attention",
+            "rfe-creator-feasibility-pass",
+        }
+        assert issue["fields"]["status"]["name"] != "Approved"
+        key = issue["key"]
+        comments = jira.request("GET", f"/rest/api/3/issue/{key}/comment")["comments"]
+        bodies = [json.dumps(c["body"]) for c in comments]
+        assert len(bodies) == 1
+        assert "consider /rfe-create --type initiative" in bodies[0]
+
     def test_new_rfe_transitions_to_approved(self, art_dir, jira):
         """--auto-approve + new RFE with passing review → Approved."""
         _write(f"{art_dir}/rfe-tasks/RFE-001.md", TASK_FM.format(rfe_id="RFE-001"))

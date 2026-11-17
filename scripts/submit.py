@@ -22,6 +22,10 @@ pass it. An interactive submit (the /rfe-submit skill) passes neither and keeps 
 path: a user who edited the task file by hand is making a manual revision. --hold-splits
 records a split recommendation (comment, needs-attention label, ``split_held:`` on the
 parent's review) without executing it; a later run without the switch executes it (§5.12).
+A ``reclassify`` recommendation (the review's misfiled-item rule) is never approved or revised
+here, in any mode: the item gets its needs-attention label and comment and is left to a human;
+a new local item (RFE-NNN / INIT-NNN) is still created, in this type's project, with the flag
+on it for the human to move.
 
 Environment variables:
     JIRA_SERVER  Jira server URL (e.g. https://mysite.atlassian.net)
@@ -1838,13 +1842,26 @@ def main():
         # its `pass` and `feasibility` fields say. A `split` recommendation blocks the
         # transition (#251): a split-recommended item reaching Phase 2 was not split in
         # this run (aborted before SPLIT, or skipped), so it gets its labels only and the
-        # plan says why.
+        # plan says why. A `reclassify` recommendation (the review's misfiled-item rule)
+        # blocks it too, in every mode: the item is labelled and commented, never approved,
+        # and the plan says why — the rubric-pass label is withheld whether or not this run
+        # approves, so the interactive dry run names the hold as well (the split note is
+        # gated on --auto-approve only because its text is about the transition).
         auto_approve = auto_approve_qualifies(review_data)
-        split_note = (
-            "split recommended but not split in this run: not auto-approved"
-            if args.auto_approve and rec == "split"
-            else None
-        )
+        plan_note = None
+        if args.auto_approve and rec == "split":
+            plan_note = "split recommended but not split in this run: not auto-approved"
+        elif rec == "reclassify":
+            plan_note = (
+                "reclassify recommended: left to a human (needs-attention label and comment, "
+                "no rubric-pass label, not auto-approved)"
+            )
+        # The needs-attention comment is the one place the human sees the filing advice
+        # (`consider /rfe-create --type <t>`), so a reclassify posts it even when the issue
+        # already carried the label at fetch (an earlier flag of another source). Same
+        # trade-off the interrupted-revision hold accepts: a submit replayed over the same
+        # artifacts posts the comment again.
+        attn_force = rec == "reclassify"
 
         # Skip rejected items
         if rec in ("reject", "autorevise_reject"):
@@ -1997,7 +2014,8 @@ def main():
                             "original_labels": original_labels,
                             "auto_approve": auto_approve,
                             "jira_status": jira_status,
-                            "note": split_note,
+                            "attn_force": attn_force,
+                            "note": plan_note,
                         }
                     )
                     continue
@@ -2135,6 +2153,8 @@ def main():
                     "jira_key": jira_key,
                     # Posted once per hold, and also when the item already carried the
                     # needs-attention label at fetch: the reason (nothing published) is new.
+                    # A reclassify entry forces the comment the same way (attn_force in the
+                    # plan loop); both accept that a replayed submit posts it again.
                     "attn_reason": None if already_held else reason,
                     "attn_force": not already_held,
                     "original_labels": original_labels,
@@ -2207,7 +2227,8 @@ def main():
                 "auto_approve": auto_approve,
                 "jira_status": jira_status,
                 "lift_hold": lift_fields,
-                "note": split_note,
+                "attn_force": attn_force,
+                "note": plan_note,
             }
         )
 

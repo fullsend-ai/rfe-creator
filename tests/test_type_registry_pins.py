@@ -1997,6 +1997,7 @@ class TestArtifactSchemas:
             "split",
             "reject",
             "autorevise_reject",
+            "reclassify",
         ]
         pin(
             "list(conventions.labels.feasibility)",

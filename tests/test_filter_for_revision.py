@@ -12,7 +12,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
-from artifact_utils import write_frontmatter  # noqa: E402
+from artifact_utils import read_frontmatter, write_frontmatter  # noqa: E402
 
 SCRIPT = os.path.join(os.path.dirname(__file__), "..", "scripts", "filter_for_revision.py")
 
@@ -136,6 +136,21 @@ class TestScoreRegressionBlocking:
         assert "INIT-001" not in out
         assert "regressed" in stderr
 
+    def test_reclassify_is_skipped_before_the_regression_rule(self, workspace):
+        """Contrast with test_rfe_score_regression_blocks: a reclassify review whose score is
+        below before_score keeps its verdict. The reclassify check runs first, so the hold is
+        never rewritten to autorevise_reject (which submit.py treats as a reject: no
+        needs-attention label, no comment) and the id is not emitted."""
+        path = str(workspace / "artifacts/rfe-reviews/RFE-001-review.md")
+        data = {**RFE_REVIEW_DATA, "recommendation": "reclassify", "score": 4, "before_score": 6}
+        write_frontmatter(path, data, "rfe-review")
+        out, stderr, rc = _run(["RFE-001"], cwd=str(workspace))
+        assert rc == 0
+        assert out == ""
+        assert "regressed" not in stderr
+        fm, _ = read_frontmatter(path)
+        assert fm["recommendation"] == "reclassify"
+
 
 class TestFilterLogic:
     def test_passing_skipped(self, workspace):
@@ -171,6 +186,29 @@ class TestFilterLogic:
             str(workspace / "artifacts/rfe-reviews/RFE-001-review.md"), data, "rfe-review"
         )
         out, _, rc = _run(["RFE-001"], cwd=str(workspace))
+        assert rc == 0
+        assert out == ""
+
+    def test_reclassify_skipped(self, workspace):
+        """A reclassify verdict (the misfiled-item rule) is held for a human whatever its pass
+        says: a failing, feasible reclassify review is never routed to a revise wave."""
+        data = {**RFE_REVIEW_DATA, "recommendation": "reclassify"}
+        write_frontmatter(
+            str(workspace / "artifacts/rfe-reviews/RFE-001-review.md"), data, "rfe-review"
+        )
+        out, _, rc = _run(["RFE-001"], cwd=str(workspace))
+        assert rc == 0
+        assert out == ""
+
+    def test_initiative_reclassify_skipped(self, workspace):
+        """The filter owns every revise selection for both types, split children included."""
+        data = {**INITIATIVE_REVIEW_DATA, "recommendation": "reclassify"}
+        write_frontmatter(
+            str(workspace / "artifacts/initiative-reviews/INIT-001-review.md"),
+            data,
+            "initiative-review",
+        )
+        out, _, rc = _run(["INIT-001"], cwd=str(workspace))
         assert rc == 0
         assert out == ""
 

@@ -1354,6 +1354,131 @@ class TestApprovedTransition:
         assert "rfe-creator-autofix-rubric-pass" not in stdout
         assert "split recommended but not split in this run: not auto-approved" in stdout
 
+    RECLASSIFY_REASON = (
+        "likely an Initiative: several teams over several quarters; "
+        "consider /rfe-create --type initiative"
+    )
+    RECLASSIFY_NOTE = (
+        "reclassify recommended: left to a human (needs-attention label and comment, "
+        "no rubric-pass label, not auto-approved)"
+    )
+
+    def _reclassify_review(self, rfe_id, auto_revised="false"):
+        return (
+            REVIEW_FM.format(rfe_id=rfe_id, auto_revised=auto_revised)
+            .replace("recommendation: submit", "recommendation: reclassify")
+            .replace(
+                "needs_attention: false",
+                "needs_attention: true\nneeds_attention_source: classification\n"
+                f"needs_attention_reason: '{self.RECLASSIFY_REASON}'",
+            )
+        )
+
+    @pytest.mark.parametrize("flags", [["--auto-approve"], []], ids=["auto-approve", "plain"])
+    def test_reclassify_recommendation_label_only_not_approved(self, art_dir, flags):
+        """A passing, feasible review that recommends reclassify (the misfiled-item rule) on
+        an existing issue with an unchanged body is a regular label-only item: needs-attention
+        and feasibility labels, no rubric-pass label, no transition, the comment with the
+        filing advice — and the note names the hold in every mode, since the rubric-pass
+        label is withheld whether or not the run approves."""
+        body = "Same content.\n"
+        _write(f"{art_dir}/rfe-originals/RHAIRFE-1234.md", body)
+        _write(
+            f"{art_dir}/rfe-tasks/RHAIRFE-1234.md",
+            "---\nrfe_id: RHAIRFE-1234\ntitle: Test RFE\n"
+            f"priority: Major\nstatus: Ready\n---\n{body}",
+        )
+        _write(
+            f"{art_dir}/rfe-reviews/RHAIRFE-1234-review.md",
+            self._reclassify_review("RHAIRFE-1234"),
+        )
+
+        stdout, stderr, rc = _run_submit(art_dir, flags)
+        assert rc == 0, stderr
+        assert "Label only" in stdout
+        assert "rfe-creator-needs-attention" in stdout
+        assert "rfe-creator-feasibility-pass" in stdout
+        assert "rfe-creator-autofix-rubric-pass" not in stdout
+        assert "Would transition to Approved" not in stdout
+        assert "Would post needs-attention comment" in stdout
+        assert self.RECLASSIFY_NOTE in stdout
+        assert "split recommended" not in stdout
+
+    def test_reclassify_new_item_is_created_flagged_not_approved(self, art_dir):
+        """A misfiled NEW item has no label-only path: it is created in this type's project
+        with the auto-created, needs-attention and feasibility labels and the comment, no
+        rubric-pass label and no transition — a creation with the flag on it for a human to
+        move, not a hold."""
+        _write(f"{art_dir}/rfe-tasks/RFE-001.md", TASK_FM.format(rfe_id="RFE-001"))
+        _write(f"{art_dir}/rfe-reviews/RFE-001-review.md", self._reclassify_review("RFE-001"))
+
+        stdout, stderr, rc = _run_submit(art_dir, ["--auto-approve"])
+        assert rc == 0, stderr
+        assert "Would create RHAIRFE Feature Request" in stdout
+        assert "rfe-creator-auto-created" in stdout
+        assert "rfe-creator-needs-attention" in stdout
+        assert "rfe-creator-feasibility-pass" in stdout
+        assert "rfe-creator-autofix-rubric-pass" not in stdout
+        assert "Would transition to Approved" not in stdout
+        assert "Would post needs-attention comment" in stdout
+        assert self.RECLASSIFY_NOTE in stdout
+
+    def test_reclassify_on_a_revised_body_publishes_the_revision_flagged(self, art_dir):
+        """A body the run revised before a later review held it (cycle-0 revise, cycle-1
+        reclassify) has no label-only path: it takes the Update path and the improved text is
+        published with the auto-revised and needs-attention labels, the comment and the note —
+        still no rubric-pass label and no transition (types/README.md, state-machine §5.13)."""
+        _write(f"{art_dir}/rfe-originals/RHAIRFE-1234.md", "Original content.\n")
+        _write(
+            f"{art_dir}/rfe-tasks/RHAIRFE-1234.md",
+            "---\nrfe_id: RHAIRFE-1234\ntitle: Test RFE\n"
+            "priority: Major\nstatus: Ready\n---\nRevised content.\n",
+        )
+        _write(
+            f"{art_dir}/rfe-reviews/RHAIRFE-1234-review.md",
+            self._reclassify_review("RHAIRFE-1234", auto_revised="true"),
+        )
+
+        stdout, stderr, rc = _run_submit(art_dir, ["--auto-approve"])
+        assert rc == 0, stderr
+        assert "Update RHAIRFE-1234" in stdout
+        assert "Label only" not in stdout
+        assert "rfe-creator-auto-revised" in stdout
+        assert "rfe-creator-needs-attention" in stdout
+        assert "rfe-creator-autofix-rubric-pass" not in stdout
+        assert "Would transition to Approved" not in stdout
+        assert "Would post needs-attention comment" in stdout
+        assert self.RECLASSIFY_NOTE in stdout
+
+    def test_reclassify_comment_is_forced_past_an_existing_label(self, art_dir):
+        """The needs-attention comment is normally skipped when the issue already carried the
+        label at fetch (an earlier flag). A reclassify forces it: the comment is the one place
+        the human sees the filing advice. The same artifacts with a plain advisory flag keep
+        the skip, so the force is the recommendation's alone."""
+        body = "Same content.\n"
+        _write(f"{art_dir}/rfe-originals/RHAIRFE-1234.md", body)
+        _write(
+            f"{art_dir}/rfe-tasks/RHAIRFE-1234.md",
+            "---\nrfe_id: RHAIRFE-1234\ntitle: Test RFE\npriority: Major\nstatus: Ready\n"
+            f"original_labels:\n- rfe-creator-needs-attention\n---\n{body}",
+        )
+        review_path = f"{art_dir}/rfe-reviews/RHAIRFE-1234-review.md"
+        _write(review_path, self._reclassify_review("RHAIRFE-1234"))
+        stdout, stderr, rc = _run_submit(art_dir)
+        assert rc == 0, stderr
+        assert "Would post needs-attention comment" in stdout
+
+        _write(
+            review_path,
+            REVIEW_FM.format(rfe_id="RHAIRFE-1234", auto_revised="false").replace(
+                "needs_attention: false",
+                "needs_attention: true\nneeds_attention_reason: 'Needs a human look.'",
+            ),
+        )
+        stdout, stderr, rc = _run_submit(art_dir)
+        assert rc == 0, stderr
+        assert "Would post needs-attention comment" not in stdout
+
     def test_no_flag_no_transition(self, art_dir):
         """Without --auto-approve → no transition even if review passes."""
         body = "Original.\n"

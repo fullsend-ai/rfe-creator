@@ -104,7 +104,8 @@
         "revise",
         "split",
         "reject",
-        "autorevise_reject"
+        "autorevise_reject",
+        "reclassify"
       ]
     },
     "feasibility": {
@@ -315,7 +316,8 @@
         "revise",
         "split",
         "reject",
-        "autorevise_reject"
+        "autorevise_reject",
+        "reclassify"
       ]
     },
     "feasibility": {

@@ -659,6 +659,52 @@ class TestAutoApproveIntegration:
         issue = jira.get("RHAISTRAT-1234")
         assert issue["fields"]["status"]["name"] != "Approved"
 
+    def test_reclassify_recommended_initiative_is_labelled_and_commented_not_approved(
+        self, art_dir, jira
+    ):
+        """--auto-approve + an unchanged Initiative whose review says reclassify (it reads as
+        an RFE): the Label-only path adds the needs-attention, feasibility-pass and alignment
+        labels, posts one comment with the filing advice under the Initiative prefix, approves
+        nothing and sets the task Submitted."""
+        jira.create("RHAISTRAT-1234", "Test Initiative", "Original.", issue_type="Initiative")
+        _write(f"{art_dir}/initiative-originals/RHAISTRAT-1234.md", "Original.")
+        _write(
+            f"{art_dir}/initiatives/RHAISTRAT-1234.md",
+            "---\ninitiative_id: RHAISTRAT-1234\ntitle: Test Initiative\n"
+            "priority: Major\nstatus: Ready\n---\nOriginal.",
+        )
+        review = _review(
+            "RHAISTRAT-1234",
+            needs_attention="true",
+            extra_fields=(
+                "needs_attention_source: classification\n"
+                "needs_attention_reason: 'likely an RFE: one feature for one team; "
+                "consider /rfe-create --type rfe'\n"
+            ),
+        ).replace("recommendation: submit", "recommendation: reclassify")
+        _write(f"{art_dir}/initiative-reviews/RHAISTRAT-1234-review.md", review)
+
+        r = _run_submit(art_dir, jira.url, ["--auto-approve"])
+        assert r.returncode == 0, r.stderr
+        assert "Transitioned to Approved" not in r.stdout
+        assert "reclassify recommended: left to a human" in r.stdout
+
+        issue = jira.get("RHAISTRAT-1234")
+        assert set(issue["fields"]["labels"]) == {
+            "initiative-needs-attention",
+            "initiative-feasibility-pass",
+            "initiative-alignment-strong",
+        }
+        assert issue["fields"]["status"]["name"] != "Approved"
+        comments = jira.request("GET", "/rest/api/3/issue/RHAISTRAT-1234/comment")["comments"]
+        bodies = [json.dumps(c["body"]) for c in comments]
+        assert len(bodies) == 1
+        assert "[Initiative Creator]" in bodies[0]
+        assert "This Initiative has been flagged for human review" in bodies[0]
+        assert "consider /rfe-create --type rfe" in bodies[0]
+        fm = _read_frontmatter(f"{art_dir}/initiatives/RHAISTRAT-1234.md")
+        assert fm["status"] == "Submitted"
+
 
 class TestInfeasibleSubmit:
     def test_infeasible_initiative_submitted_with_fail_label(self, art_dir, jira):

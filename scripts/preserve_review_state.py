@@ -157,6 +157,10 @@ def save(rfe_id):
         # AISDLC-191: a classification flag ("likely an Initiative ...") is a human's call,
         # never cleared automatically; the re-review reads the revised text, which may no
         # longer read as the other type, so the flag survives only through this file.
+        # The recommendation is NOT carried: a review that says `reclassify` is never
+        # revised (filter_for_revision.py skips it first) and never re-reviewed within a
+        # run (collect_recommendations.py --reassess buckets it DONE), so the verdict is
+        # never overwritten and there is nothing to restore.
         "classification_flag": _classification_flag(data),
     }
 

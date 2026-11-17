@@ -20,12 +20,13 @@ TRAILING = "ERROR: --type requires a value; registered types: rfe, initiative\n"
 USAGE = "Usage: check_right_sized.py [--type rfe|initiative] ID1 [ID2 ...]\n"
 
 
-def _write_review(reviews_dir, item_id, right_sized, id_field="rfe_id"):
+def _write_review(reviews_dir, item_id, right_sized, id_field="rfe_id", recommendation="revise"):
     os.makedirs(reviews_dir, exist_ok=True)
     scores = "" if right_sized is None else f"  right_sized: {right_sized}\n"
     with open(os.path.join(reviews_dir, f"{item_id}-review.md"), "w") as f:
         f.write(
-            f"---\n{id_field}: {item_id}\nscore: 6\npass: false\nrecommendation: revise\n"
+            f"---\n{id_field}: {item_id}\nscore: 6\npass: false\n"
+            f"recommendation: {recommendation}\n"
             f"scores:\n  what: 2\n  why: 2\n{scores}---\nReview body.\n"
         )
 
@@ -57,6 +58,19 @@ class TestResplit:
         )
         assert code == 0
         assert out == "RESPLIT=RHAIRFE-1 RHAIRFE-3\n"
+        assert err == ""
+
+    def test_a_reclassify_child_is_never_resplit(self, workspace, monkeypatch, capsys):
+        """A child whose review recommends reclassify (the misfiled-item rule) is held for a
+        human: the hold outranks the size rule, so an undersized score does not put it on the
+        RESPLIT line — a second split would bury the verdict on an archived intermediary
+        (state-machine reference §5.13). A sibling with the same score is still re-split."""
+        _write_review("artifacts/rfe-reviews", "RHAIRFE-1", 0, recommendation="reclassify")
+        _write_review("artifacts/rfe-reviews", "RHAIRFE-2", 0)
+        _write_review("artifacts/rfe-reviews", "RHAIRFE-3", 1, recommendation="reclassify")
+        code, out, err = _main(monkeypatch, capsys, "RHAIRFE-1", "RHAIRFE-2", "RHAIRFE-3")
+        assert code == 0
+        assert out == "RESPLIT=RHAIRFE-2\n"
         assert err == ""
 
     def test_missing_score_and_malformed_review_are_skipped(self, workspace, monkeypatch, capsys):

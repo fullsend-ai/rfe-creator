@@ -261,8 +261,8 @@ def check_id(phase, rfe_id, since=None):
             return "pending"
         if data.get("auto_revised"):
             return "completed"
-        if data.get("recommendation") == "split":
-            return "completed"  # revise agent can't fix right-sizing
+        if data.get("recommendation") in ("split", "reclassify"):
+            return "completed"  # revise agent can't fix right-sizing or a misfiled item
         return "pending"
     return "completed"
 

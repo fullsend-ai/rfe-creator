@@ -4,10 +4,12 @@
 Supports both RFE IDs (RHAIRFE-*, RFE-*) and Initiative IDs (RHAISTRAT-*, INIT-*).
 
 For each ID:
+- If recommendation=reclassify: skip (held for a human; checked first so the regression
+  rule never rewrites the verdict to autorevise_reject)
 - If score < before_score: sets recommendation=autorevise_reject (revision made it worse)
 - If pass=true: skip (already passing)
 - If feasibility=infeasible: skip (can't be fixed by revision)
-- If recommendation=reject or autorevise_reject: skip
+- If recommendation=reject, autorevise_reject or split: skip
 - Otherwise: include in output for revision
 
 Usage:
@@ -56,6 +58,12 @@ def main():
         feasibility = data.get("feasibility", "feasible")
         recommendation = data.get("recommendation", "revise")
 
+        # Held for a human (the review's misfiled-item rule): never revised, and checked
+        # before the regression rule so the verdict is never rewritten to autorevise_reject
+        # (submit.py would then treat the item as a reject: no label, no comment).
+        if recommendation == "reclassify":
+            continue
+
         # Check for score regression
         if before_score is not None and score < before_score:
             update_frontmatter(review_path, {"recommendation": "autorevise_reject"}, schema)
@@ -71,7 +79,7 @@ def main():
         if feasibility == "infeasible":
             continue
 
-        if recommendation in ("reject", "autorevise_reject", "split"):
+        if recommendation in ("reject", "autorevise_reject", "split", "reclassify"):
             continue
 
         revise_ids.append(rfe_id)

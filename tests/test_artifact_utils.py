@@ -1290,7 +1290,8 @@ class TestLookupsUseDetect:
 
 class TestAutoApproveQualifies:
     """The one auto-approve gate (submit.py and split_submit.py): no error, pass, feasible,
-    and a ``submit`` recommendation (#251); an absent recommendation counts as ``submit``."""
+    and a ``submit`` recommendation (#251; a ``reclassify`` one, the misfiled-item hold, is
+    refused the same way); an absent recommendation counts as ``submit``."""
 
     PASSING = {"pass": True, "feasibility": "feasible", "recommendation": "submit"}
 
@@ -1301,7 +1302,9 @@ class TestAutoApproveQualifies:
         review = {k: v for k, v in self.PASSING.items() if k != "recommendation"}
         assert auto_approve_qualifies(review)
 
-    @pytest.mark.parametrize("rec", ["split", "revise", "reject", "autorevise_reject"])
+    @pytest.mark.parametrize(
+        "rec", ["split", "revise", "reject", "autorevise_reject", "reclassify"]
+    )
     def test_other_recommendations_do_not_qualify(self, rec):
         assert not auto_approve_qualifies({**self.PASSING, "recommendation": rec})
 

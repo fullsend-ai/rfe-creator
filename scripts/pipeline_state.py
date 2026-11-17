@@ -1392,9 +1392,10 @@ def advance(state, dry_run=False):
             f"python3 scripts/collect_recommendations.py {type_flag} {' '.join(active_ids)}"
         )
         split_ids = _parse_line_ids(out, "SPLIT")
-        # Build summary counts from collect output
+        # Build summary counts from collect output. RECLASSIFY ids are counted, not routed:
+        # like SUBMIT they stay in the active set through BATCH_DONE to REPORT and submit.
         counts = {}
-        for key in ("SUBMIT", "SPLIT", "REVISE", "REJECT", "ERRORS"):
+        for key in ("SUBMIT", "SPLIT", "REVISE", "REJECT", "RECLASSIFY", "ERRORS"):
             ids = _parse_line_ids(out, key)
             counts[key.lower()] = len(ids)
         stats = " ".join(f"{k}={v}" for k, v in counts.items())

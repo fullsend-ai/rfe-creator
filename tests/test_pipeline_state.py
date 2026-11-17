@@ -1072,6 +1072,23 @@ class TestCollect:
         next_phase, _ = ps.advance(state)
         assert next_phase == "BATCH_DONE"
 
+    def test_reclassify_is_counted_not_routed(self, tmp_dir, monkeypatch):
+        """A reclassify verdict (the review's misfiled-item rule) is held for a human: it is
+        reported in the COLLECT stats under its own key, never written to the split set, and
+        stays in the active set so REPORT and submit.py label and comment it."""
+        write_ids("tmp/pipeline-active-ids.txt", ["RHAIRFE-1", "RHAIRFE-2"])
+        monkeypatch.setattr(
+            ps,
+            "_run_script",
+            lambda cmd: "SUBMIT=RHAIRFE-1\nSPLIT=\nREVISE=\nREJECT=\nRECLASSIFY=RHAIRFE-2\nERRORS=",
+        )
+        state = make_state(phase="COLLECT")
+        next_phase, summary = ps.advance(state)
+        assert next_phase == "BATCH_DONE"
+        assert read_ids("tmp/pipeline-split-ids.txt") == []
+        assert "submit=1" in summary and "reclassify=1" in summary and "errors=0" in summary
+        assert read_ids("tmp/pipeline-active-ids.txt") == ["RHAIRFE-1", "RHAIRFE-2"]
+
     def test_reconciles_before_routing(self, tmp_dir, monkeypatch):
         """AISDLC-33: saved review state is re-applied and cap-exhausted items flagged before
         collect_recommendations reads the reviews; the summary says what changed."""

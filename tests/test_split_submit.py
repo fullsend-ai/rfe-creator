@@ -607,6 +607,44 @@ class TestInitiativeDryRun:
         assert out.rstrip().endswith("Done.")
         assert not os.path.exists(f"{art}/rfes.md")
 
+    def test_a_reclassify_child_is_created_flagged_and_not_approved(self, tmp_path):
+        """A child whose review says reclassify (the misfiled-item rule) is created with its
+        needs-attention label and comment and its verdict labels, but no rubric-pass label and
+        no transition: the shared gate refuses it as it refuses a split."""
+        art = str(tmp_path)
+        _write(f"{art}/initiatives/RHAISTRAT-2000.md", INITIATIVE_PARENT)
+        for i in (1, 2):
+            _write(f"{art}/initiatives/INIT-{i:03d}.md", INITIATIVE_CHILD.format(num=i))
+        desc = split_submit._TYPES.get("initiative")
+        review = _review_fields(
+            desc,
+            "INIT-001",
+            recommendation="reclassify",
+            needs_attention=True,
+            needs_attention_source="classification",
+            needs_attention_reason=(
+                "likely an RFE: one feature for one team; consider /rfe-create --type rfe"
+            ),
+            alignment="strong",
+        )
+        _write(f"{art}/initiative-reviews/INIT-001-review.md", _fm(review))
+
+        r = subprocess.run(
+            [sys.executable, SCRIPT, "RHAISTRAT-2000", "--dry-run", "--type", "initiative"]
+            + ["--artifacts-dir", art],
+            capture_output=True,
+            text=True,
+            env=_clean_env(),
+        )
+        assert r.returncode == 0, r.stderr
+        out = r.stdout
+        assert (
+            "initiative-needs-attention, initiative-feasibility-pass, initiative-alignment-strong"
+        ) in out
+        assert "initiative-autofix-rubric-pass" not in out
+        assert "Would post needs-attention comment" in out
+        assert "to Approved" not in out
+
 
 class TestSplitFactsGuards:
     """identity.jira.split_link_type and state_map.close_superseded are optional in the schema
@@ -1162,6 +1200,20 @@ class TestApproveChildWarnings:
         assert "Transitioned RHAIRFE-7 to Approved" in out.out
         assert "Posted auto-approve comment" not in out.out
         assert "approval comment failed (RuntimeError: HTTP 503)" in out.err
+
+    def test_a_reclassify_recommendation_is_not_transitioned(self, monkeypatch, capsys):
+        """The shared gate refuses a reclassify child as it refuses a split one: no fetch, no
+        transition, no comment — the child keeps its labels and is left to a human."""
+        monkeypatch.setattr(
+            split_submit, "get_issue", lambda *a, **k: pytest.fail("must not fetch")
+        )
+        monkeypatch.setattr(
+            split_submit, "transition_issue", lambda *a, **k: pytest.fail("must not transition")
+        )
+        review = {**self.PASSING, "recommendation": "reclassify"}
+        split_submit._approve_child("srv", "u", "t", "RHAIRFE-7", review, self.CONFIG, False)
+        out = capsys.readouterr()
+        assert out.out == "" and out.err == ""
 
     def test_already_approved_child_is_skipped(self, monkeypatch, capsys):
         monkeypatch.setattr(
