@@ -123,7 +123,12 @@ threshold_notes:
     (several teams, several quarters, a theme, workstreams; the targeted gap
     and its anchors unchanged) and annotated expected_classification none, so
     a flag on one of them is now a precision miss here and a coverage miss
-    above, not a legitimate reading.
+    above, not a legitimate reading. Re-run on the reshaped drafts the same day
+    (run 2026-11-18-opus-4-6-fullsend on cacc600, eval pipeline 3083660763): 22/23 = 0.957, the gate held. All five reshaped drafts entered the
+    revise path (case-017 and case-018 passed after one revision, case-019,
+    case-020 and case-021 stayed below pass with feasibility or rubric flags,
+    none was held); the one miss is case-007 again, drafted at 9 and passed
+    first review, so its dictated stack never reached the reviser.
   classification_signal: |
     stage 2 of classification (AISDLC-191/192): a case's expected_classification
     is none (must not be flagged), the type the item really is (must be flagged,
@@ -172,8 +177,13 @@ threshold_notes:
     reusable UX component as one deliverable for one team", the first
     precision miss on an annotated case. The unannotated weak drafts
     case-018, case-020 and case-021, and case-006, were flagged too and, under
-    the rule, held instead of revised (revision_coverage above). The value
-    stays at 0.92.
+    the rule, held instead of revised (revision_coverage above). Re-run on the
+    reshaped drafts (run 2026-11-18-opus-4-6-fullsend on cacc600, eval pipeline 3083660763): 22/23 again, a different miss: case-003 (expected
+    none, a global search UI and API) was flagged "likely an RFE: a single
+    user-facing capability with one natural owner"; case-004 and the five
+    reshaped drafts were not flagged, case-022 was flagged and held (score 10).
+    One none case per run reads as an RFE to the Initiative reviewer, a
+    different one each time. The value stays at 0.92.
   recommendation_consistency: |
     1.0: one inconsistent review fails the run by design. Besides the
     pass/recommendation and feasibility rules, since 2026-11-17 the check pins
@@ -190,7 +200,8 @@ threshold_notes:
     case-022 scored 10, passed, recommendation reclassify under source
     classification; five more reviews held items the same way (case-004,
     case-006, case-018, case-020, case-021, all "likely an RFE"), each with
-    the flag, so the two-way rule held on all six.
+    the flag, so the two-way rule held on all six. Re-run on the reshaped drafts
+    (run 2026-11-18-opus-4-6-fullsend on cacc600, eval pipeline 3083660763): 23/23, two reclassify reviews (case-003, case-022), both flagged.
     A reviewer that flags but keeps split or revise fails here, not in
     classification_signal. The weak-alignment composite (source alignment with
     the classification sentence appended, types/initiative/prompts/review-rules.md)
