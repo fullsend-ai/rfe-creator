@@ -1551,10 +1551,16 @@ def main():
         return ""
 
     def revision_rejected(r):
-        """Check if auto-revision was rejected (score decreased or explicit rejection)."""
+        """Check if auto-revision was rejected (score decreased or explicit rejection).
+
+        A ``reclassify`` verdict is never a rejection: filter_for_revision.py skips it
+        before the score-regression rule, so a body revised before the verdict keeps its
+        recommendation and is published under submit's Update path, flagged. The hold
+        shows as the needs-attention banner, not as "original description kept"."""
         return (
             r.get("auto_revised")
             and not r.get("is_split_child")
+            and r.get("recommendation") != "reclassify"
             and (
                 r.get("recommendation") == "autorevise_reject"
                 or r["after_total"] < r["before_total"]

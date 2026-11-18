@@ -737,3 +737,50 @@ class TestNeedsAttentionSource:
         assert "feasibility: likely" not in html
         # the unsourced flag keeps its bare reason (tooltip + box)
         assert html.count("likely an Initiative: a quarter-long objective") == 4
+
+
+def _revised_review(root, type_name, item_id, recommendation, before_score=9, score=7):
+    """An auto-revised review whose score regressed, with the recommendation given."""
+    dirs = REPORT_CONFIG[type_name]
+    path = root / dirs["reviews_dir"] / f"{item_id}-review.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    scores = "".join(f"  {k}: 1\n" for k in dirs["criterion_keys"])
+    attention = (
+        "needs_attention: true\nneeds_attention_source: classification\n"
+        "needs_attention_reason: 'likely an Initiative: several teams over several"
+        " quarters; consider /rfe-create --type initiative'\n"
+        if recommendation == "reclassify"
+        else "needs_attention: false\n"
+    )
+    path.write_text(
+        f"---\n{dirs['id_field']}: {item_id}\nscore: {score}\npass: false\n"
+        f"recommendation: {recommendation}\nfeasibility: feasible\nauto_revised: true\n"
+        f"before_score: {before_score}\n{attention}scores:\n{scores}---\n\nFeedback.\n",
+        encoding="utf-8",
+    )
+
+
+class TestReclassifyIsNotARejectedRevision:
+    """A body revised before a later review held it as reclassify is published under the
+    Update path (the hold is not a rejection: filter_for_revision.py skips reclassify before
+    the regression rule, so the recommendation is never rewritten to autorevise_reject). The
+    report must not say "original description kept, changes not submitted" about it; the
+    needs-attention banner carries the hold. A regressed autorevise_reject keeps the badge."""
+
+    def test_regressed_reclassify_shows_the_hold_not_the_rejection(self, tmp_path, monkeypatch):
+        root = tmp_path / "artifacts"
+        _task(root, "rfe", "RHAIRFE-1001")
+        _revised_review(root, "rfe", "RHAIRFE-1001", "reclassify")
+        html = _render(tmp_path, monkeypatch, "rfe")
+        assert "REVISION REJECTED" not in html
+        assert "Auto-revision Rejected" not in html
+        assert "Needs Attention" in html
+        assert "classification: likely an Initiative" in html
+
+    def test_regressed_autorevise_reject_keeps_the_badge_and_banner(self, tmp_path, monkeypatch):
+        root = tmp_path / "artifacts"
+        _task(root, "rfe", "RHAIRFE-1002")
+        _revised_review(root, "rfe", "RHAIRFE-1002", "autorevise_reject")
+        html = _render(tmp_path, monkeypatch, "rfe")
+        assert "REVISION REJECTED" in html
+        assert "Auto-revision Rejected" in html
