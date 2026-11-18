@@ -18,7 +18,10 @@ clarifying_context: 'We are spending a lot on GPU clusters and have almost no vi
   accounting, which is already covered elsewhere. The technical decisions here are made
   and closed: Telegraf runs as the collection agent on every node, InfluxDB is the metrics
   store, Superset renders the dashboards, and Kapacitor evaluates the alerting rules.
-  Engineering should build against those four choices rather than reopen the evaluation.'
+  Engineering should build against those four choices rather than reopen the evaluation.
+  I want them written as decided, not as options: please use "will use" and "is implemented
+  as" for all four -- do not soften them into "could use", "such as" or "one approach would
+  be", and do not add alternatives; those decisions are closed.'
 priority: Critical
 prompt: We need real visibility into GPU utilization across our clusters. Right now
   nobody can tell which workloads are wasting capacity, and we are spending a lot of
