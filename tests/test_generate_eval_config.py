@@ -563,3 +563,32 @@ class TestDispositions:
         for t in TYPES:
             assert self.judges[t]["pairwise"]["prompt_file"] == f"types/{t}/eval/pairwise-judge.md"
         assert not (REPO_ROOT / "eval" / "config" / "pairwise-judge.md").exists()
+
+    def test_reclassify_is_a_held_recommendation(self):
+        # Design B (2026-11-17): a misfiled item's review recommends reclassify and is held for
+        # a human (neither split nor revised, not auto-approved). frontmatter_valid accepts the
+        # value, recommendation_consistency ties it to the classification flag both ways,
+        # classification_signal reads a bare reclassify as a flag, and the prose the judges
+        # see names it. A later skeleton edit cannot drop any of these silently.
+        for t in TYPES:
+            valid = self.judges[t]["frontmatter_valid"]["check"]
+            assert "'reject', 'autorevise_reject', 'reclassify']" in valid
+            consistency = self.judges[t]["recommendation_consistency"]
+            assert "imply each" in consistency["description"]
+            assert "recommendation=reclassify without a classification flag" in consistency["check"]
+            assert "flagged as misfiled but recommendation={rec}" in consistency["check"]
+            assert "'consider /rfe-create --type' in reason" in consistency["check"]
+            signal = self.judges[t]["classification_signal"]["check"]
+            assert 'or fm.get("recommendation") == "reclassify"' in signal
+            assert "reclassify" in self.judges[t]["revision_quality"]["prompt"]
+            review_schema = self.cfg[t]["outputs"][1]["schema"]
+            assert "submit/revise/split/reject/autorevise_reject/reclassify" in review_schema
+            assert "feasibility/alignment/rubric/classification/agent" in review_schema
+            runs = next(o for o in self.cfg[t]["outputs"] if o["path"] == "artifacts/auto-fix-runs")
+            assert "passed/failed/split/blocked/reclassify/errors/retried" in runs["schema"]
+            dataset = self.cfg[t]["dataset"]["schema"]
+            assert "submit/revise/split/reject/reclassify" in dataset
+            assert "No deterministic judge reads it" in dataset
+        # the initiative's typed rule (weak alignment sets needs_attention) renders after it
+        init = self.judges["initiative"]["recommendation_consistency"]["check"]
+        assert init.index("recommendation={rec}") < init.index("alignment=weak but")

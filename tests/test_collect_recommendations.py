@@ -164,6 +164,28 @@ class TestCollectDefault:
         assert "RFE-001" in groups["REJECT"]
         assert groups["ERRORS"] == []
 
+    def test_reclassify_groups_as_reclassify(self, art_dir):
+        """A reclassify verdict (the review's misfiled-item rule) is its own group: not an
+        error (nothing to retry), not a split, not a revise — the id stays in the active set
+        and reaches submit.py, which labels and comments it for a human."""
+        _write(
+            f"{art_dir}/artifacts/rfe-reviews/RFE-001-review.md",
+            REVIEW_TEMPLATE.format(
+                rfe_id="RFE-001",
+                score=8,
+                pass_val="true",
+                recommendation="reclassify",
+                auto_revised="false",
+            ),
+        )
+        out, _, rc = _run(["RFE-001"])
+        assert rc == 0
+        groups = _parse_output(out)
+        assert groups["RECLASSIFY"] == ["RFE-001"]
+        assert groups["ERRORS"] == []
+        assert groups["SPLIT"] == [] and groups["REVISE"] == [] and groups["SUBMIT"] == []
+        assert list(groups) == ["SUBMIT", "SPLIT", "REVISE", "REJECT", "RECLASSIFY", "ERRORS"]
+
     def test_missing_review_file_goes_to_errors(self, art_dir):
         out, _, rc = _run(["RFE-MISSING"])
         assert rc == 0
@@ -213,6 +235,26 @@ class TestCollectReassess:
         assert rc == 0
         groups = _parse_output(out)
         assert "RFE-001" in groups["DONE"]
+
+    def test_revised_failing_reclassify_is_done(self, art_dir):
+        """A reclassify verdict is final within a run: a revised, still-failing review that
+        says reclassify is DONE, not REASSESS — one more assess+review wave could only
+        re-decide a call that belongs to a human."""
+        _write(
+            f"{art_dir}/artifacts/rfe-reviews/RFE-001-review.md",
+            REVIEW_TEMPLATE.format(
+                rfe_id="RFE-001",
+                score=5,
+                pass_val="false",
+                recommendation="reclassify",
+                auto_revised="true",
+            ),
+        )
+        out, _, rc = _run(["--reassess", "RFE-001"])
+        assert rc == 0
+        groups = _parse_output(out)
+        assert groups["DONE"] == ["RFE-001"]
+        assert groups["REASSESS"] == []
 
     def test_not_revised_goes_to_done(self, art_dir):
         _write(
@@ -269,6 +311,25 @@ class TestCollectInitiative:
         groups = _parse_output(out)
         assert "INIT-001" in groups["SUBMIT"]
         assert "INIT-002" in groups["REVISE"]
+
+    def test_reclassify_initiative_groups_as_reclassify(self):
+        """The grouping is type-neutral: an Initiative review saying reclassify (it reads as
+        an RFE) lands in RECLASSIFY, not ERRORS."""
+        _write(
+            f"{self._art_dir}/artifacts/initiative-reviews/INIT-001-review.md",
+            REVIEW_TEMPLATE.format(
+                rfe_id="INIT-001",
+                score=4,
+                pass_val="false",
+                recommendation="reclassify",
+                auto_revised="false",
+            ),
+        )
+        out, _, rc = _run(["--type", "initiative", "INIT-001"])
+        assert rc == 0
+        groups = _parse_output(out)
+        assert groups["RECLASSIFY"] == ["INIT-001"]
+        assert groups["ERRORS"] == []
 
     def test_missing_initiative_review_goes_to_errors(self):
         out, _, rc = _run(["--type", "initiative", "INIT-MISSING"])

@@ -67,6 +67,7 @@ def main():
     passed = 0
     failed = 0
     split = 0
+    reclassify = 0
     errors = 0
     lines = []
 
@@ -96,6 +97,8 @@ def main():
 
         if rec == "split":
             split += 1
+        if rec == "reclassify":
+            reclassify += 1  # held for a human; still PASSED/FAILED by its pass
 
         if data.get("pass"):
             passed += 1
@@ -119,7 +122,10 @@ def main():
         lines.append(f"{rfe_id}: {rec} ({score_str}{detail_str})")
 
     total = len(all_ids)
-    print(f"TOTAL={total} PASSED={passed} FAILED={failed} SPLIT={split} ERRORS={errors}")
+    print(
+        f"TOTAL={total} PASSED={passed} FAILED={failed} SPLIT={split} "
+        f"RECLASSIFY={reclassify} ERRORS={errors}"
+    )
     if not args.counts_only:
         for line in lines:
             print(line)

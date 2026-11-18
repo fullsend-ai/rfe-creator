@@ -36,6 +36,7 @@ rather than requiring a specific status.
 | `split` | Right-sized scored 0 (or 1 with independent segments), no other criterion at 0 | `review-agent.md` Step 4 |
 | `reject` | Fundamentally infeasible or needs rethinking | `review-agent.md` Step 4 |
 | `autorevise_reject` | Score regressed after auto-revision (score < before_score); terminal | `filter_for_revision.py:49-55` |
+| `reclassify` | The item reads as another registered work-item type (misfiled; `needs_attention_source: classification`, or `alignment` when an Initiative's weak alignment also applies); not split, not revised, not auto-approved; labelled and commented in Jira, counted under `results.reclassify`, marked processed; terminal within a run (§5.13) | `types/<t>/prompts/review-rules.md` misfiled item; `filter_for_revision.py`; `generate_run_report.py` disposition chain |
 
 ### 1.3 Review Composite Fields
 
@@ -255,6 +256,7 @@ The three `rfe-creator-feasibility-*` labels are mutually exclusive: at most one
 | `SPLIT=` | `recommendation=split` | Passed to `/rfe-split` |
 | `REVISE=` | `recommendation=revise` | Reported but not re-routed (already revised) |
 | `REJECT=` | `recommendation` in `(reject, autorevise_reject)` | Skipped for submission |
+| `RECLASSIFY=` | `recommendation=reclassify` | Counted only (like `SUBMIT=`): stays in the active set to REPORT and `submit.py` Phase 2, which labels and comments it for a human (§5.13) |
 | `ERRORS=` | Review file missing, `error` field set, or unrecognized recommendation | Routed to retry logic |
 
 **Crash risk:** Unlike `filter_for_revision.py` (F0), `collect_recommendations.py`
@@ -266,7 +268,7 @@ corrupt one).
 
 | Output Category | Condition | Downstream Action |
 |---|---|---|
-| `REASSESS=` | `auto_revised=true` AND `pass=false` | Re-assess and re-review |
+| `REASSESS=` | `auto_revised=true` AND `pass=false` AND `recommendation != reclassify` (a reclassify verdict is final within a run) | Re-assess and re-review |
 | `DONE=` | Everything else (passing, terminal, not auto-revised, or review file missing) | No further action |
 
 **COLLECT reconcile (AISDLC-33).** Before `collect_recommendations.py` runs at COLLECT, `pipeline_state.py` runs `scripts/reconcile_reviews.py --type <t> --cycles <reassess_cycle> <active ids>`: it re-applies every `{ID}-review-state.json` that `REASSESS_RESTORE` kept (`restore --keep-state`), undoing a review-agent write that landed after the restore, and sets `needs_attention` (with a reason naming the criteria scored 0) on every review still at `revise`/`pass: false`, since nothing revises it again in this batch. `SPLIT_CORRECTION_CHECK` does the same for split children (`--cycles 1`, before `check_right_sized.py`); all of them run with `--keep-state`: the transition into `REPORT` (from `BATCH_DONE`, or from `ERROR_COLLECT` when nothing is retryable) runs the reconcile once more over every id of the run, and `submit.py` runs `reconcile_reviews.py --all --artifacts-dir <dir>` at start-up, re-applying and removing the state files — a review agent can keep writing for minutes after its wave, past COLLECT (case-019 on 2026-09-18), and submit is the last reader, in CI after the agent process is torn down. An id the REPORT-transition reconcile could not repair gets the registry error stub (`error: reconcile_failed`) rather than a merged error field, since the run report treats a review with a generic `error` as readable and would copy its stale scores. `BATCH_START` removes any leftover state file for the batch's ids so nothing from an interrupted earlier run is re-applied. The script prints one `RESTORED=`, one `FLAGGED=` and one `RECONCILE_ERRORS=` line and never exits non-zero for a per-item problem; the ids on the last line are marked `error: reconcile_failed` (retryable) so they route to ERRORS rather than being submitted on a review the reconcile could not repair. The phase-entry freshness rule (`docs/wave-stall-guard.md`, "Wave freshness") is the other half of the same fix.
@@ -285,8 +287,12 @@ Applied in order; first match wins. Side effects occur during filtering.
 | F1 | `before_score is not None` AND `score < before_score` (regression) | Skip, set `recommendation=autorevise_reject` | None |
 | F2 | `pass=true` | Skip | None |
 | F3 | `feasibility=infeasible` | Skip | None |
-| F4 | `recommendation` in `(reject, autorevise_reject)` | Skip | None |
+| F4 | `recommendation` in `(reject, autorevise_reject, split, reclassify)` | Skip | None |
 | -- | None of the above | Include for revision | None |
+
+`reclassify` is also tested before F1: a reclassify review whose score regressed keeps its
+verdict instead of becoming `autorevise_reject` (which `submit.py` would treat as a reject:
+no needs-attention label, no comment), and it is never emitted for revision (§5.13).
 
 ### 1.18 Submission Planning: `submit.py` Action Decision Tree
 
@@ -845,7 +851,7 @@ failures that may not surface until production runs.
 - **Split submit Phase 1 completion guard:** Phase 2 refuses to proceed (exit 1) if any archival comment is missing.
 - **Split submit transition fallback:** Logs WARNING and skips closure gracefully if no "Closed" transition exists on the parent ticket.
 - **Label-only path still sets `status=Submitted`** (`submit.py:507-509`).
-- **Auto-approve gate (`artifact_utils.auto_approve_qualifies`, #251):** under `--auto-approve` an item (or a split child at creation) is transitioned to the type's approved status only when its review has no `error`, `pass: true`, `feasibility: feasible` and `recommendation: submit` (an absent recommendation counts as `submit`, as the plan loop assumes). A `split` recommendation blocks the transition: a split-recommended item that reaches Phase 2 was not split in this run (a run aborted before SPLIT, or a skipped split), so it gets its labels only — no rubric-pass label (L4) and no transition — the plan prints `Note: split recommended but not split in this run: not auto-approved`, and it is left for the next run or a human. `needs_attention` stays advisory (label, not transition). Pinned by `TestApprovedTransition` (`tests/test_submit.py`, `tests/test_submit_integration.py`), `TestAutoApprove` (`tests/test_initiative_submit.py`) and `TestAutoApproveQualifies` (`tests/test_artifact_utils.py`).
+- **Auto-approve gate (`artifact_utils.auto_approve_qualifies`, #251):** under `--auto-approve` an item (or a split child at creation) is transitioned to the type's approved status only when its review has no `error`, `pass: true`, `feasibility: feasible` and `recommendation: submit` (an absent recommendation counts as `submit`, as the plan loop assumes). A `split` recommendation blocks the transition: a split-recommended item that reaches Phase 2 was not split in this run (a run aborted before SPLIT, or a skipped split), so it gets its labels only — no rubric-pass label (L4) and no transition — the plan prints `Note: split recommended but not split in this run: not auto-approved`, and it is left for the next run or a human. A `reclassify` recommendation (the review's misfiled-item rule, §5.13) blocks it the same way, in every mode: no rubric-pass label, no transition, the needs-attention label and comment (posted even when the issue already carried the label at fetch), and the plan prints `Note: reclassify recommended: left to a human (needs-attention label and comment, no rubric-pass label, not auto-approved)`. `needs_attention` stays advisory (label, not transition). Pinned by `TestApprovedTransition` (`tests/test_submit.py`, `tests/test_submit_integration.py`), `TestAutoApprove` (`tests/test_initiative_submit.py`) and `TestAutoApproveQualifies` (`tests/test_artifact_utils.py`).
 - **Pipeline-removed labels:** `rfe-creator-autofix-rubric-pass` (on re-review regression to reject), the three `rfe-creator-feasibility-*` labels (on verdict change or reject), and `rfe-creator-needs-attention` (when a later review clears the flag, L11). All use the same conditional guard: `label in original_labels`. The auto-created, auto-revised, split-original and split-result labels are never removed by the pipeline.
 - **Conflict check compares `rfe-originals/{ID}.md` against live Jira** via `normalize_for_compare()`. Stale (conflict) → skip, NOT marked processed.
 - **Submit error (E8) also sets `needs_attention=true`** as side effect, not just `error` field.
@@ -900,12 +906,12 @@ reason describing the pre-revision text. A flag with any other source, or none, 
 /rfe-create --type ...`) from the reason when another source held the field, so a
 classification flag the restore appended to another source's reason survives the next re-review.
 
-### 5.2 filter_for_revision Includes Split-Recommended IDs
+### 5.2 filter_for_revision Skips Split- and Reclassify-Recommended IDs
 
-Intentional. The revise agent cannot change scope for right-sizing issues
-(`types/rfe/prompts/revise-rules.md`: "Right-sizing is a recommendation, never auto-applied"), so
-split-recommended IDs get a revision pass that fixes other rubric failures. The
-recommendation stays `split` through to `collect_recommendations.py`.
+F4 skips `split` (the revise agent cannot change scope for right-sizing issues,
+`types/rfe/prompts/revise-rules.md`: "Right-sizing is a recommendation, never auto-applied";
+the recommendation reaches `collect_recommendations.py` unchanged) and `reclassify`, the latter
+before F1 as well, so a held item is never revised nor rewritten to `autorevise_reject` (§5.13).
 
 ### 5.3 submit.py Ignores Positional ID Arguments
 
@@ -1225,6 +1231,33 @@ naming the parent: the split is real in Jira and the local record is what is wro
 would count the executed split as held and bootstrap would keep the parent unprocessed), so
 it is a submit error, not a warning on a green run. For artifacts that were never held the
 switch-off path is byte-for-byte today's.
+
+### 5.13 `reclassify` Is a Terminal State Within a Run
+
+When the review's misfiled-item rule fires (the text reads as another registered work-item
+type), the review sets `recommendation: reclassify` next to its `needs_attention` flag
+(`needs_attention_source: classification`; an Initiative whose alignment is also `weak`
+keeps `alignment` as the source and the reason carries both sentences), and keeps its
+scores and `pass` as scored. Nothing automatic acts on it afterwards: `filter_for_revision.py`
+skips it before the regression rule (F1), so it is never revised and never rewritten to
+`autorevise_reject`; `collect_recommendations.py` groups it under `RECLASSIFY=` and its
+`--reassess` mode buckets it `DONE`, so it is never re-reviewed in the same run (which is
+why `preserve_review_state.py` does not carry the recommendation); the dispatcher counts it
+in the COLLECT stats and routes it nowhere, so it stays in the active set to REPORT;
+`submit.py` Phase 2 treats it as a label-only item (needs-attention label and comment, no
+rubric-pass label, no transition — `auto_approve_qualifies` refuses it) and marks it
+processed; a body the run had already revised before the verdict (cycle-0 `revise`, cycle-1
+`reclassify`) takes the Update path and is published with the auto-revised label, and a new
+local item is still created, flagged, in this type's project; the split correction pass
+(`check_right_sized.py`, SPLIT_CORRECTION_CHECK) never re-splits a child whose review says
+`reclassify`, whatever its right-sized score; the run
+report counts it under `results.reclassify` with no outcome key on the entry, so
+`bootstrap_snapshot` agrees with the live snapshot (RHAIFIRST-571). Submit-time markers
+(`revision_interrupted:`, `setup_failed:`) still outrank the recommendation in the report.
+The exit is human: the item is re-selected only when its Jira description changes (the
+content hash does not see labels), and a re-review skips the misfiled check once the type's
+confirmed-type label (`conventions.labels.type_confirmed`) is on the issue — the label takes
+effect at that next re-review, never by itself.
 
 ## 6. Cross-References
 

@@ -357,6 +357,7 @@
           "description": "A TEMPLATE, not a value: creation-time recovery marker on split children. Placeholders {parent} and {child_id} are LOWER-CASED before rendering; {fingerprint} = sha256(cleaned child markdown)[:12]. Default <prefix>-split-child-{parent}-{child_id}-{fingerprint}."
         },
         "needs_attention": { "$ref": "#/$defs/label", "description": "Default <prefix>-needs-attention." },
+        "type_confirmed": { "$ref": "#/$defs/label", "description": "Set by a human: the item's type is confirmed, so the review agent skips the misfiled-item check (stage 2) when the task's original_labels carry it. Read through the review launch block (TYPE_CONFIRMED_LABEL), by no script; a type without it gets the default, <prefix>-type-confirmed, rendered by the launch block." },
         "auto_created": { "$ref": "#/$defs/label", "description": "Set on every item the tool creates. Default <prefix>-auto-created." },
         "auto_revised": { "$ref": "#/$defs/label", "description": "Set when the tool revised the body before submit. Default <prefix>-auto-revised." },
         "split_result": { "$ref": "#/$defs/label", "description": "Set on split children. Default <prefix>-split-result." },

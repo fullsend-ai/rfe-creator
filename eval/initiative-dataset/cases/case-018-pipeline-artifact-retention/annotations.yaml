@@ -1,6 +1,6 @@
 difficulty: hard
 expected_alignment: not_assessed
-# expected_classification deliberately absent: a weak draft is feature-sized by design (its role is the revise path), so a stage-2 flag is legitimate and classification_signal does not check it (an absent annotation passes).
+expected_classification: none
 expected_feasibility: null
 expected_needs_attention: false
 expected_pass: false
@@ -12,7 +12,8 @@ expected_scores:
   open_to_how: 0
   right_sized: null
 expected_total: null
-known_issues: []
+known_issues:
+- 'Reshaped to Initiative scale on 2026-11-18 (#303): the first eval run with the reclassify rule (pipeline 3082835332) held case-018, case-020 and case-021 as "likely an RFE" at first review, so feature-sized weak drafts could no longer exercise the revise path. The text now names several teams, several quarters, a theme and workstreams with the targeted gap unchanged, and carries expected_classification none: a stage-2 flag on it is a precision miss.'
 score_tolerance: 1
 tags:
 - weak-draft

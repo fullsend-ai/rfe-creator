@@ -155,6 +155,7 @@ def test_keeps_an_existing_reason_and_is_idempotent(workdir):
         {"recommendation": "split"},
         {"recommendation": "reject"},
         {"recommendation": "autorevise_reject"},
+        {"recommendation": "reclassify"},  # held for a human: it already carries its flag
         {"error": "review_failed"},
         {"pass": True, "recommendation": "revise"},  # marginal pass: the agent's call, not ours
     ],

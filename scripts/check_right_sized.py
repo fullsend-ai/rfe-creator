@@ -2,7 +2,10 @@
 """Check if split children are right-sized.
 
 Reads review frontmatter for each ID and returns undersized IDs
-(scores.right_sized < 2).
+(scores.right_sized < 2). A child whose review recommends ``reclassify`` is never
+returned, whatever its score: the hold (the text reads as another work-item type,
+design §6 stage 2) outranks the size rule, and a second split would bury the verdict
+on an archived intermediary (docs/state-machine/pipeline-correctness-reference.md §5.13).
 
 Usage:
     python3 scripts/check_right_sized.py [--type rfe|initiative] ID1 ID2 ID3
@@ -59,6 +62,8 @@ def main():
         except Exception:
             continue
 
+        if data.get("recommendation") == "reclassify":
+            continue  # held for a human: the hold outranks the size rule
         scores = data.get("scores", {})
         if isinstance(scores, dict):
             right_sized = scores.get(score_field)

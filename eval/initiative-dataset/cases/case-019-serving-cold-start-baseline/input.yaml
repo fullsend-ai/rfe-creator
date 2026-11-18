@@ -1,17 +1,22 @@
-clarifying_context: 'Here is the plan the serving team agreed on, and the initiative is the plan; there is no separate outcome
-  statement and I would rather you did not write one. Three things get done: (1) a DaemonSet pre-pulls every shipped
-  runtime image onto every GPU node at cluster start and after each runtime upgrade; (2) each shipped runtime keeps two
-  warm pods per namespace at all times, so a new model server is scheduled onto an already-running pod; (3) model
-  downloads move from per-pod fetches to a shared read-only PVC that a nightly job populates from the registry. That is
-  the deliverable — those three mechanisms, as described, using those components; they are decisions, not candidates, so
-  please do not turn them into "could" or "such as", and do not add a goal, a metric or a target above them. We have no
-  measurement of cold-start time today, no target, no user complaint, no customer case and no SLO; if the write-up needs a
-  problem statement, say that cold starts have not been measured and leave it there.
+prompt: 'Serving startup-latency programme over the next two quarters, serving team with the platform node team
+  and the registry team: a DaemonSet that pre-pulls runtime images onto every GPU node, two warm pods per runtime
+  per namespace, a shared read-only PVC for model downloads, rolled out pool by pool across the three GPU pools.
+  Those mechanisms are the initiative; there is no measured baseline, no target and no outcome statement beyond
+  doing them.'
+clarifying_context: 'Here is the plan the three teams agreed on, and the initiative is the plan; there is no separate
+  outcome statement and I would rather you did not write one. Four things get done over two quarters: (1) the platform
+  node team ships a DaemonSet that pre-pulls every shipped runtime image onto every GPU node at cluster start and
+  after each runtime upgrade; (2) the serving team keeps two warm pods per shipped runtime per namespace at all
+  times, so a new model server is scheduled onto an already-running pod; (3) the registry team moves model downloads
+  from per-pod fetches to a shared read-only PVC that a nightly job populates from the registry; (4) the three teams
+  roll the mechanisms out pool by pool across the training, inference and shared GPU pools, one pool per release;
+  it is one programme — none of the four is worth doing without the others. That is the deliverable — those mechanisms,
+  as described, using those components; they are decisions, not candidates, so please do not turn them into "could"
+  or "such as", and do not add a goal, a metric or a target above them. We have no measurement of cold-start time
+  today, no target, no user complaint, no customer case and no SLO; if the write-up needs a problem statement, say
+  that cold starts have not been measured and leave it there.
 
 
-  It is the serving team''s work, single-model servers on the shipped runtimes only, one effort. Autoscaling policy and
-  multi-model serving are separate and not part of this.'
+  Single-model servers on the shipped runtimes only. Autoscaling policy and multi-model serving are separate programmes
+  and not part of this.'
 priority: Normal
-prompt: Serving cold-start work — a DaemonSet that pre-pulls runtime images, two warm pods per runtime per namespace, and
-  a shared read-only PVC for model downloads. Those three mechanisms are the initiative; there is no measured baseline,
-  no target and no outcome statement beyond doing them.

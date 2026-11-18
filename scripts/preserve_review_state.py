@@ -157,6 +157,10 @@ def save(rfe_id):
         # AISDLC-191: a classification flag ("likely an Initiative ...") is a human's call,
         # never cleared automatically; the re-review reads the revised text, which may no
         # longer read as the other type, so the flag survives only through this file.
+        # The recommendation is NOT carried: a review that says `reclassify` is never
+        # revised (filter_for_revision.py skips it first) and never re-reviewed within a
+        # run (collect_recommendations.py --reassess buckets it DONE), so the verdict is
+        # never overwritten and there is nothing to restore.
         "classification_flag": _classification_flag(data),
     }
 
@@ -223,9 +227,15 @@ def restore(rfe_id, keep_state=False):
             fm_updates["needs_attention"] = True
             fm_updates["needs_attention_source"] = "classification"
             fm_updates["needs_attention_reason"] = saved_reason
+            # The held-item rule keys on the recommendation alone (submit, revise, split and
+            # auto-approval never look at the flag), so the re-raised flag must carry it.
+            fm_updates["recommendation"] = "reclassify"
         elif fresh_source != "classification" and isinstance(saved_reason, str) and saved_reason:
             fresh_reason = current.get("needs_attention_reason")
             fresh_reason = fresh_reason if isinstance(fresh_reason, str) else ""
+            # Same hold rule as above: the other source keeps its flag, but the carried
+            # classification call must still keep the item out of revise, split and approve.
+            fm_updates["recommendation"] = "reclassify"
             if classification_sentence(fresh_reason) is None:
                 fm_updates["needs_attention_reason"] = (
                     f"{fresh_reason}; {saved_reason}" if fresh_reason else saved_reason

@@ -944,6 +944,23 @@ class TestSplitSubmitConfig:
                 f"labels.{key}={value!r} escapes the inheritance filter"
             )
 
+    def test_type_confirmed_label_is_the_review_prompt_human_exit(self, ctx):
+        # The misfiled-item check's human exit (review-rules.md stage 2): a label a human
+        # sets, rendered into the review prompt by the launch block and composed by no script
+        # — so it is deliberately absent from LABEL_SUFFIX (the keys submit / split_submit
+        # compose) and from the rfe-submit label table.
+        pin(
+            "conventions.labels.type_confirmed",
+            "launch-vars TYPE_CONFIRMED_LABEL",
+            ctx.labels["type_confirmed"],
+            dict(launch(ctx.t))["TYPE_CONFIRMED_LABEL"],
+        )
+        assert ctx.labels["type_confirmed"] == f"{ctx.conv['label_prefix']}-type-confirmed"
+        assert "type_confirmed" not in LABEL_SUFFIX
+        assert ctx.labels["type_confirmed"] in skill(ctx.t, "review", "review-agent.md")
+        for rel in ("scripts/submit.py", "scripts/split_submit.py"):
+            assert "type_confirmed" not in read(rel), rel
+
     def test_all_reserved_labels_are_prefix_composed(self, ctx):
         # rows: 19, 20, 39, 40 — every reserved key equals "<label_prefix>-<suffix>" today
         for key, suffix in LABEL_SUFFIX.items():
@@ -1997,6 +2014,7 @@ class TestArtifactSchemas:
             "split",
             "reject",
             "autorevise_reject",
+            "reclassify",
         ]
         pin(
             "list(conventions.labels.feasibility)",

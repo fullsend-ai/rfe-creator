@@ -34,12 +34,14 @@ def _run(outputs, config_path=EVAL_YAML):
     return ns["_check"](outputs=outputs)
 
 
-def _review(item_id, source=None, reason=None):
+def _review(item_id, source=None, reason=None, recommendation=None):
     fm = {"rfe_id": item_id, "needs_attention": source is not None}
     if source is not None:
         fm["needs_attention_source"] = source
     if reason is not None:
         fm["needs_attention_reason"] = reason
+    if recommendation is not None:
+        fm["recommendation"] = recommendation
     return f"---\n{yaml.safe_dump(fm)}---\n\n## Review\n"
 
 
@@ -80,6 +82,31 @@ def test_none_fails_on_a_classification_flag():
 def test_expected_type_passes_when_the_flag_names_it():
     passed, msg = _run(_outputs("initiative", _review("RFE-0", "classification", SENTENCE)))
     assert passed is True and "likely initiative" in msg
+
+
+def test_a_bare_reclassify_counts_as_a_classification_flag():
+    """Design B (2026-11-17): the flag co-sets recommendation reclassify, so a reclassify without
+    the source or the sentence is a misfiling on an expected `none`, not a clean review."""
+    passed, msg = _run(_outputs("none", _review("RFE-0", recommendation="reclassify")))
+    assert passed is False and "RFE-0" in msg and "flagged as misfiled" in msg
+    for rec in ("submit", "revise", "split", "reject", "autorevise_reject"):
+        assert _run(_outputs("none", _review("RFE-0", recommendation=rec)))[0] is True, rec
+
+
+def test_a_hit_that_recommends_reclassify_passes():
+    review = _review("RFE-0", "classification", SENTENCE, recommendation="reclassify")
+    passed, msg = _run(_outputs("initiative", review))
+    assert passed is True and "likely initiative" in msg
+    # the co-setting itself is recommendation_consistency's rule (1.0), not this judge's
+    review = _review("RFE-0", "classification", SENTENCE, recommendation="split")
+    assert _run(_outputs("initiative", review))[0] is True
+
+
+def test_a_bare_reclassify_on_an_expected_type_names_no_type():
+    passed, msg = _run(_outputs("initiative", _review("RFE-0", recommendation="reclassify")))
+    assert passed is False and "names no type" in msg and "names another type" not in msg
+    passed, msg = _run(_outputs("initiative", _review("RFE-0", "classification", "misfiled")))
+    assert passed is False and "names no type" in msg and "source=classification" in msg
 
 
 def test_expected_type_fails_when_the_flag_names_another_type_or_is_missing():

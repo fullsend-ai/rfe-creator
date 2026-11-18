@@ -66,6 +66,7 @@ conventions:
     split_quarantine: initiative-split-quarantine       # snapshot_fetch.py:64; submit.py:283 (composed)
     split_child_marker: "initiative-split-child-{parent}-{child_id}-{fingerprint}"   # split_submit.py:253 — TEMPLATE (Q12): {parent}/{child_id} are .lower()ed before rendering; {fingerprint} = sha256(cleaned)[:12] (:225-230); pinned against _child_marker_label()
     needs_attention: initiative-needs-attention         # submit.py:281,:336,:727; split_submit.py:656
+    type_confirmed: initiative-type-confirmed           # set by a human, never by a script: the review agent skips the misfiled-item check (review-rules.md stage 2) when the task's original_labels carry it; reaches the prompt as the TYPE_CONFIRMED_LABEL launch var; takes effect at the next re-review, not on its own
     auto_created: initiative-auto-created               # submit.py:723; split_submit.py:637 (Q11: emitted, first-class)
     auto_revised: initiative-auto-revised               # submit.py:725; split_submit.py:654 (Q11)
     opt_in: initiative-autofix-opt-in                   # AISDLC-205 (D1): production selects only Initiatives carrying it — the single source rfe-autofixer's selection JQL (a job variable today; MR !22 reads this when it is empty) and strat-creator's intake (AISDLC-301, planned) should read; no rfe-creator script reads it; absent for rfe (every RFE is in scope)

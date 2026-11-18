@@ -3,7 +3,7 @@ expected_classification: initiative
 expected_feasibility: null
 expected_needs_attention: true
 expected_pass: null
-expected_recommendation: null
+expected_recommendation: reclassify
 expected_scores:
   not_a_task: null
   open_to_how: null
@@ -14,8 +14,12 @@ expected_total: null
 known_issues:
 - 'An Initiative at the RFE door (AISDLC-192): a multi-quarter, three-team programme under an Outcome,
   asked to be filed as an RFE. Stage 2 (AISDLC-191) should flag it ''likely an Initiative'' with needs_attention_source
-  classification; the rubric may still score it as a business need and right_sized may call for a split.
-  The classification flag, not the scores, is what this case checks.'
+  classification; the rubric still scores it as a business need (right_sized may read it as a split). With the
+  flag the review recommends reclassify, so the item is neither split nor revised, keeps its flag and source,
+  and reaches submit as a label-only item held for a human (needs-attention label and comment, no rubric-pass
+  label, not auto-approved). The flag and the reclassify recommendation, not the scores, are what this case
+  checks: classification_signal and needs_attention_expectation read the flag, recommendation_consistency the
+  co-setting; expected_recommendation is documentary.'
 score_tolerance: 1
 tags:
 - misfiled

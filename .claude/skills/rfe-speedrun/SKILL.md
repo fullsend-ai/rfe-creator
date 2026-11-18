@@ -220,9 +220,9 @@ Collect passing IDs:
 python3 scripts/collect_recommendations.py {TYPE_FLAG} <all_IDs_from_file>
 ```
 
-Parse the `SUBMIT=` line for IDs ready to submit.
+Parse the `SUBMIT=` line for IDs ready to submit and the `RECLASSIFY=` line for IDs the review held for a human (`recommendation: reclassify`: the item reads as another work item type). `<passing_IDs>` below is both lists together. `submit.py` scans every task file whatever IDs it is given (§5.3 of the state-machine reference); the `RECLASSIFY=` line matters so that Phase 3 is not skipped when nothing is ready to submit: with it the held items reach submit, which only gives them the needs-attention label and the comment that says why — never an approval, a revision or a split.
 
-If no IDs are ready to submit, skip to Phase 4.
+If neither line has IDs, skip to Phase 4.
 
 If IDs are ready, invoke submit using the **Skill** tool, forwarding the resolved type — a bracketed flag is included only when the config says so:
 
@@ -276,6 +276,7 @@ If headless, output the counts line and stop. If interactive, output:
 - Passed: N
 - Failed: N
 - Split: N (into M children)
+- Held for a human as misfiled (`reclassify`): N
 
 ### Submitted
 - {KEY_PREFIX}NNNN: <title> [created/updated/dry-run]

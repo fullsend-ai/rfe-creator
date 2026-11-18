@@ -130,6 +130,11 @@ Rules that are easy to trip:
   the import of `snapshot_fetch.py`, `bootstrap_snapshot.py` and `submit.py` with a `KeyError`
   naming the type and the field. Copying `types/rfe/` keeps them; a third type must also pass
   `prefix=` explicitly to the snapshot helpers (their default is the rfe `snapshot.prefix`).
+  `conventions.labels.type_confirmed` (the human exit of the review's misfiled-item check,
+  "The classification block" below) is the other way round: reserved in the schema but read
+  through the review launch block (`TYPE_CONFIRMED_LABEL`), by no script, so a type that omits
+  it registers and runs — the launch block then renders the schema's default,
+  `<label_prefix>-type-confirmed`, and that is the label a human sets.
 - **Opt-in by label.** A type that production selects by label (the Initiative trial,
   AISDLC-205) names the label as `conventions.labels.opt_in`; the autofixer's selection JQL
   and any downstream intake should read it with `python3 scripts/type_registry.py get <type>
@@ -200,8 +205,14 @@ against every installed type's block (stage 1, AISDLC-190): it reads
 so your type takes part in the notice and the question as soon as it is registered; the review
 agent reads `classification --others <your type>` (stage 2, AISDLC-191) and, when your
 `prompts/review-rules.md` says the item reads as another type, flags it with
-`needs_attention_source=classification` and a `likely a <entity>: …` reason, nothing more: write
-that condition in your review rules from your `counter_signals` (the shipped rules are the model).
+`needs_attention_source=classification`, a `likely a <entity>: …` reason and
+`recommendation: reclassify` (held for a human: not revised, not split, not auto-approved,
+label-only at submit), nothing more: write that condition — and the `reclassify` bullet of your
+recommendation list — in your review rules from your `counter_signals` (the shipped rules are
+the model), and name your `conventions.labels.type_confirmed` label so a human can confirm the
+filing: the agent skips the check when the task's `original_labels` carry it, from the next
+re-review on (a description edit, `--reprocess` or `/rfe-review <KEY>` from a workspace that
+fetches the ticket afresh; a label change alone does not re-select an issue).
 Write it after the template and the create guidance, from the same vocabulary: the summary is the
 one sentence you would give a colleague who asks "is this an X or a Y"; `signals` are what an idea
 of your type typically mentions (an escalation, an acceptance criterion, a quarter-long objective,

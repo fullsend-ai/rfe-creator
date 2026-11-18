@@ -93,7 +93,11 @@ def resolve_ids(positional, ids_file):
 # the derived dicts byte for byte to tests/data/schemas-golden.json.
 
 _STATUS_ENUM = ["Draft", "Ready", "Submitted", "Archived"]
-_RECOMMENDATION_ENUM = ["submit", "revise", "split", "reject", "autorevise_reject"]
+# "reclassify": the review's misfiled-item rule fired (types/<t>/prompts/review-rules.md: the
+# text reads as another registered type). Appended last so the golden's index order holds.
+# submit.py withholds the rubric-pass label and the approved transition, labels + comments
+# the item (needs-attention) and leaves it to a human; it is neither revised nor split.
+_RECOMMENDATION_ENUM = ["submit", "revise", "split", "reject", "autorevise_reject", "reclassify"]
 _FEASIBILITY_ENUM = ["feasible", "infeasible", "indeterminate"]
 # Where a review's needs_attention flag came from (AISDLC-442). The review agent records it
 # with the flag; check_revised.py --clear-addressed-attention reads it to clear a feasibility
@@ -1429,9 +1433,12 @@ def auto_approve_qualifies(review_data):
     transitioning a ticket on its own, and a review carrying an ``error`` has no verdict at
     all, whatever its ``pass`` and ``feasibility`` fields say. A ``split`` recommendation
     blocks the transition (#251): an item whose split never ran in this run (aborted before
-    SPLIT, or skipped) keeps its labels only and is left for the next run or a human. An
-    absent recommendation counts as ``submit``, as submit.py's plan loop assumes.
-    ``needs_attention`` is advisory: it drives the label, not the transition."""
+    SPLIT, or skipped) keeps its labels only and is left for the next run or a human. A
+    ``reclassify`` recommendation (the review's misfiled-item rule: the text reads as another
+    registered type) blocks it the same way: the item keeps its needs-attention label and
+    comment and is left to a human, whatever its scores say. An absent recommendation counts
+    as ``submit``, as submit.py's plan loop assumes. ``needs_attention`` is advisory: it
+    drives the label, not the transition."""
     return bool(
         review_data
         and not review_data.get("error")

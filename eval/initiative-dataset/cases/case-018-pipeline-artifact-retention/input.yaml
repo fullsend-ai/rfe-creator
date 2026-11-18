@@ -1,23 +1,30 @@
-clarifying_context: 'The problem is real and we have the numbers. The pipelines object store on our largest internal cluster
-  grew from 4 TB to 19 TB over the last two quarters with the number of active users flat; a sample of 500 runs older than
-  90 days showed that nobody had opened any of their artifacts through the UI or the API since they were written. Two
-  platform teams have had to ask their storage admins for emergency quota bumps this year, and one of them told us they
-  now delete run folders by hand with a script they do not trust.
+prompt: 'A two-quarter artifact storage governance programme across the pipelines, platform-storage and dashboard
+  teams: per-project retention for pipeline run artifacts with user-settable pins, per-project storage reporting,
+  and the admin controls that go with them. Storage on our biggest cluster grew almost fivefold in two quarters.
+  The implementation is already decided — object-store lifecycle rules driven by a nightly CronJob, pins in Redis,
+  settings in PostgreSQL — so write those as the design, not as suggestions.'
+clarifying_context: 'The problem is real and we have the numbers. The pipelines object store on our largest internal
+  cluster grew from 4 TB to 19 TB over the last two quarters with the number of active users flat; a sample of 500
+  runs older than 90 days showed that nobody had opened any of their artifacts through the UI or the API since they
+  were written. Two platform teams have had to ask their storage admins for emergency quota bumps this year, and
+  one of them told us they now delete run folders by hand with a script they do not trust. It rolls up to the sustainable-operations
+  theme the platform group committed to for the next two releases.
 
 
-  What we will deliver: retention for pipeline run artifacts. In scope: a time-based retention rule an administrator sets
-  per project, automatic removal of the object-store artifacts of runs past that age, and a per-run pin a user can set to
-  exempt a run. Out of scope: the run metadata rows in the database, execution logs, cached-execution outputs, retroactive
-  cleanup of the existing 19 TB, and anything per user rather than per project.
+  What the programme delivers, in three workstreams: the pipelines team builds retention for pipeline run artifacts
+  — a time-based rule an administrator sets per project, automatic removal of the object-store artifacts of runs
+  past that age, and a per-run pin a user can set to exempt a run; the platform-storage team owns the lifecycle
+  enforcement and the quota reporting feed; the dashboard team adds per-project storage usage and retention settings
+  to the project page. Out of scope for the whole programme: the run metadata rows in the database, execution logs,
+  cached-execution outputs, retroactive cleanup of the existing 19 TB, workbench volumes, and anything per user
+  rather than per project.
 
 
-  How it will be built is decided, and I want it written as decided, not as options. The architecture group voted on it
-  last month: retention is implemented as bucket lifecycle rules in the object store, one rule per project namespace;
-  expiry is enforced by a nightly Kubernetes CronJob that rewrites those rules from the admin settings; pins are stored as
-  a Redis set keyed by run id that the CronJob consults before touching a prefix; and the admin settings live in a new
-  table in the pipelines PostgreSQL database. Please use "will use" and "is implemented as" for all four — do not soften
-  them into "could use" or "one approach would be", and do not add alternatives; those decisions are closed.'
+  How it will be built is decided, and I want it written as decided, not as options. The architecture group voted
+  on it last month: retention is implemented as bucket lifecycle rules in the object store, one rule per project
+  namespace; expiry is enforced by a nightly Kubernetes CronJob that rewrites those rules from the admin settings;
+  pins are stored as a Redis set keyed by run id that the CronJob consults before touching a prefix; and the admin
+  settings live in a new table in the pipelines PostgreSQL database. Please use "will use" and "is implemented as"
+  for all four — do not soften them into "could use" or "one approach would be", and do not add alternatives; those
+  decisions are closed.'
 priority: Major
-prompt: Introduce per-project retention for pipeline run artifacts with user-settable pins. Storage on our biggest cluster
-  grew almost fivefold in two quarters. The implementation is already decided — object-store lifecycle rules driven by a
-  nightly CronJob, pins in Redis, settings in PostgreSQL — so write those as the design, not as suggestions.

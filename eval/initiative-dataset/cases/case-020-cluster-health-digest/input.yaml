@@ -1,21 +1,27 @@
-clarifying_context: 'What the dashboard team would deliver is concrete: a weekly digest per project, sent as an email to the
-  project owners and shown as a card on the project page, listing that week''s failed pipeline runs, model-server errors and
-  the project''s quota headroom, each with a link to the object. Owners can mute the email. It is read-only — it reports, it
-  does not act — and it is one piece of work owned by one team.
+prompt: 'A two-quarter project-health communication programme across the dashboard, observability and notifications
+  teams: a weekly digest for project owners, a project-page health card, an admin roll-up across projects and a
+  notifications channel the three share. Nobody has asked for it and there is no evidence of a problem; filing it
+  under the operational-transparency theme so the idea is not lost.'
+clarifying_context: 'What the three teams would deliver is concrete, in four workstreams over two quarters: the
+  notifications team builds a weekly digest per project, sent as an email to the project owners, listing that week''s
+  failed pipeline runs, model-server errors and the project''s quota headroom, each with a link to the object, which
+  owners can mute; the dashboard team shows the same digest as a card on the project page; the observability team
+  adds an admin roll-up of the same signals across every project of a cluster; and the three share one notifications
+  channel so the digest, the card and the roll-up read from the same feed. It is read-only — it reports, it does
+  not act — and it would be broken into epics per team later.
 
 
-  On why, there is nothing, and I would like the write-up to say so rather than fill it in. No project owner has asked for
-  this, we have no data on how owners find out about failures today, no incident that a digest would have prevented, no
-  support ticket, and no competitor feature we are chasing. The only honest problem statement is that the platform has no
-  digest. If a problem statement is required, write that sentence — "The platform sends project owners no summary of their
-  project''s health." — and stop. Do not add "owners struggle to", "visibility is a common request" or a belief about missed
-  failures; nobody has established any of it, and a reviewer should see the gap rather than prose written to cover it.
+  On why, there is nothing, and I would like the write-up to say so rather than fill it in. No project owner has
+  asked for this, we have no data on how owners find out about failures today, no incident that a digest would have
+  prevented, no support ticket, no competitor feature we are chasing, and no outcome or strategy item that asks
+  for it — the operational-transparency theme is where the ticket is filed, not a reason for it. The only honest
+  problem statement is that the platform has no digest. If a problem statement is required, write that sentence
+  — "The platform sends project owners no summary of their project''s health." — and stop. Do not add "owners struggle
+  to", "admins have no view across projects", "visibility is a common request" or a belief about missed failures;
+  nobody has established any of it, and a reviewer should see the gap rather than prose written to cover it.
 
 
-  We have not drawn the edges beyond the three signals above: whether admins get a cluster roll-up, whether stale workbenches
-  join the list, or whether it should ever page anyone are all open, and I do not want an in/out list invented for me.
-  We have no opinion on how it is built or delivered.'
+  We have not drawn the edges beyond the signals above: whether stale workbenches join the list, whether it should
+  ever page anyone, or whether a later phase should add remediation actions (this programme itself stays read-only)
+  are all open, and I do not want an in/out list invented for me. We have no opinion on how it is built or delivered.'
 priority: Minor
-prompt: A weekly health digest for project owners — an email and a project-page card listing that week's failed pipeline
-  runs, model-server errors and quota headroom. Nobody has asked for it and there is no evidence of a problem; filing it so
-  the idea is not lost.

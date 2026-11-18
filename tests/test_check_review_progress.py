@@ -131,6 +131,18 @@ class TestCheckId:
         ):
             assert check_id("revise", "RHAIRFE-1") == "completed"
 
+    def test_revise_phase_recommendation_reclassify(self, tmp_path):
+        """Revise phase: recommendation=reclassify → completed. A misfiled item is held for a
+        human and filter_for_revision never routes it here; this is the defensive twin of the
+        split case, so the slot never waits for a rewrite that will not come."""
+        f = tmp_path / "RHAIRFE-1-review.md"
+        f.write_text("---\nrecommendation: reclassify\n---\nBody\n")
+        with patch.dict(
+            "check_review_progress.PHASE_CHECKS",
+            {"revise": lambda id: str(tmp_path / f"{id}-review.md")},
+        ):
+            assert check_id("revise", "RHAIRFE-1") == "completed"
+
     def test_revise_phase_bad_frontmatter(self, tmp_path):
         """Revise phase: unparseable frontmatter → pending (a rewrite in flight; the stall
         guard bounds a broken agent — was "error")."""

@@ -3,8 +3,12 @@
 classification blocks (``type_registry.py classification --others <type>``, allowed in headless
 runs because it asks nothing) and, when the type's review rules say the item reads as one of
 them, flags it with ``needs_attention_source=classification`` and a ``likely a <entity>: …``
-reason — in the review file, the review report and the run report. Nothing is routed,
-relabelled or moved, and the flag is never cleared automatically."""
+reason — in the review file, the review report and the run report. Nothing is
+relabelled or moved, and the flag is never cleared automatically. The flagged review also
+carries ``recommendation=reclassify`` (the item is held for a human: not revised, not split,
+not auto-approved), and a human confirms the filing with the type's
+``conventions.labels.type_confirmed`` label, which the agent reads from the task's
+``original_labels`` and the launch block names as ``TYPE_CONFIRMED_LABEL``."""
 
 import json
 import os
@@ -86,6 +90,15 @@ class TestReviewPromptStageTwo:
             "`python3 scripts/type_registry.py classification --others {TYPE}`"
         )
         assert text.index("## Step 1") < text.index(read_line) < text.index("## Step 2")
+        # the human exit needs the task frontmatter (original_labels), read with the inputs
+        labels_line = (
+            "Read the task frontmatter: "
+            "`python3 scripts/frontmatter.py read {TASKS_DIR}/{ID}.md` — only its "
+            "`original_labels` matter here"
+        )
+        assert text.index("## Step 1") < text.index(labels_line) < text.index("## Step 2")
+        guard = text.split("**Untrusted input.**", 1)[1].split("\n\n", 1)[0]
+        assert "task file" in guard.lower()  # the untrusted-input guard names the new input
         [paragraph] = [ln for ln in text.splitlines() if ln.startswith(self.PARAGRAPH)]
         assert text.index("## Step 3") < text.index(self.PARAGRAPH) < text.index("## Step 4")
         assert (
@@ -107,6 +120,15 @@ class TestReviewPromptStageTwo:
         )
         assert "in its one `frontmatter.py set` call" in paragraph
         assert "`needs_attention_source=classification` (no dimension)" in paragraph
+        # the verdict: reclassify, also when another source (weak alignment) has precedence
+        assert "`recommendation=reclassify`" in paragraph
+        assert "the recommendation is `reclassify` in that case too" in paragraph
+        assert "the recommendation," not in paragraph  # it no longer "stays what the rules decide"
+        # the human exit comes first: a confirmed type skips the check
+        assert paragraph.index("lists `{TYPE_CONFIRMED_LABEL}` under `original_labels`") < (
+            paragraph.index("When the rules in `{RULES_PATH}`")
+        )
+        assert "skip this check and record nothing for it" in paragraph
         assert "the review neither relabels nor moves the item" in paragraph
         assert (
             "Judge the substance of the task text, not its sections: every task file follows "
@@ -115,6 +137,9 @@ class TestReviewPromptStageTwo:
         assert text.count("Misfiled item (design §6 stage 2)") == 1
         # the source enumeration the agent copies into frontmatter.py set names the new value
         assert "needs_attention_source=<feasibility/alignment/rubric/classification/agent>" in text
+        # the recommendation enumerations the agent copies name the fifth value
+        assert "recommendation=<submit/revise/split/reject/reclassify>" in text
+        assert "(submit / revise / split / reject / reclassify)" in text
         # Step 4 tells the agent its values are shell arguments
         assert (
             "Every value you pass to `frontmatter.py set` is a shell argument: write reasons "
@@ -125,7 +150,9 @@ class TestReviewPromptStageTwo:
         reg = type_registry.load(root=TYPES_ROOT, extra_roots=[], env={})
         for name in SHIPPED:
             keys = {k for k, _ in type_registry.launch_vars(reg.get(name), "review")}
-            assert {"TYPE", "ENTITY", "RULES_PATH"} <= keys, name
+            assert {"TYPE", "ENTITY", "RULES_PATH", "TASKS_DIR", "TYPE_CONFIRMED_LABEL"} <= keys, (
+                name
+            )
 
     def test_each_type_states_its_own_condition(self):
         rfe = (TYPES_ROOT / "rfe" / "prompts" / "review-rules.md").read_text()
@@ -147,6 +174,19 @@ class TestReviewPromptStageTwo:
                 in paragraph
             )
             assert "whatever the scores say" in paragraph
+            # the verdict is reclassify, listed with the other four and set by the paragraph
+            assert "`recommendation=reclassify`" in paragraph
+            assert "- reclassify:" in text
+            assert text.index("- reject:") < text.index("- reclassify:")
+            assert "held for a human: not revised, not split, not auto-approved" in text
+            # it displaces the passing case too, not only split or revise
+            assert (
+                "in place of whatever the list above decided (submit, revise, split or reject)"
+                in text
+            )
+            # the human exit: the type's confirmed label in the task's original_labels
+            assert "the task's `original_labels` carry the type's confirmed label" in paragraph
+            assert paragraph.index("Skip this check when") < paragraph.index("Flag it with")
             # the first baseline (2026-11-03) read the template's headings as evidence of the type
             assert "Judge the substance of the text, not its shape" in paragraph
             assert "however its sections are titled" in paragraph
@@ -176,6 +216,10 @@ class TestReviewPromptStageTwo:
             "a `weak` alignment verdict is always `alignment`; otherwise `classification` first"
             in init
         )
+        # the weak-alignment case keeps source alignment and still recommends reclassify
+        assert "the source stays `alignment` then, the recommendation is still `reclassify`" in init
+        # a split on a programme is the misfiled case: reclassify, not a split
+        assert "a split on a programme is this case, not a split" in rfe_paragraph
 
 
 class TestContract:
@@ -187,3 +231,71 @@ class TestContract:
                 "run_report"
             ]["extra_entry_fields"]
             assert fields[-2:] == ["needs_attention_source", "needs_attention_reason"], name
+
+    def test_the_recommendation_enum_names_reclassify(self):
+        """frontmatter.py refuses a value outside the enum, so the prompt change only works
+        once ``_RECOMMENDATION_ENUM`` (artifact_utils) carries the fifth value."""
+        for name in SHIPPED:
+            enum = artifact_utils.SCHEMAS[f"{name}-review"]["recommendation"]["enum"]
+            assert enum[-1] == "reclassify", (name, enum)  # appended last: positions stable
+
+
+class TestTypeConfirmedLabel:
+    """The human exit of the check: ``conventions.labels.type_confirmed``, a label a human
+    sets in Jira; the review agent reads it from the task's ``original_labels`` through the
+    ``TYPE_CONFIRMED_LABEL`` launch var. No script composes or reads it, and it takes effect
+    at the next re-review only (a label change does not change the snapshot hash)."""
+
+    def test_both_descriptors_name_it_and_the_launch_block_renders_it(self):
+        reg = type_registry.load(root=TYPES_ROOT, extra_roots=[], env={})
+        for name in SHIPPED:
+            desc = reg.get(name)
+            label = desc.labels["type_confirmed"]
+            assert label == f"{desc.get('conventions.label_prefix')}-type-confirmed", name
+            for stage in ("review", "speedrun"):
+                block = dict(type_registry.launch_vars(desc, stage))
+                assert block["TYPE_CONFIRMED_LABEL"] == label, (name, stage)
+            result = _cli("launch-vars", name, "review")
+            assert result.returncode == 0, result.stderr
+            assert f"\nTYPE_CONFIRMED_LABEL={label}\n" in result.stdout, name
+            # the rendered prompt names the label the human sets
+            prompt = REVIEW_AGENT.read_text()
+            for key, value in type_registry.launch_vars(desc, "review"):
+                prompt = prompt.replace("{" + key + "}", value)
+            assert f"lists `{label}` under `original_labels`" in prompt, name
+
+    def test_a_type_without_the_key_renders_the_schema_default(self, tmp_path):
+        """The schema calls the key's default ``<prefix>-type-confirmed``; the launch block
+        renders it when a descriptor omits the key, so the review prompt never carries an
+        empty label — an empty one reads as "no labels" and could skip the check for every
+        unlabelled task (qodo on #303). The type still registers and validates without it."""
+        import shutil
+
+        root = tmp_path / "types"
+        shutil.copytree(TYPES_ROOT, root)
+        descriptor = root / "rfe" / "type.yaml"
+        lines = [
+            line
+            for line in descriptor.read_text().splitlines(keepends=True)
+            if not line.lstrip().startswith("type_confirmed:")
+        ]
+        assert len(lines) == len(descriptor.read_text().splitlines(keepends=True)) - 1
+        descriptor.write_text("".join(lines))
+        reg = type_registry.load(root=root, extra_roots=[], env={})
+        desc = reg.get("rfe")
+        assert "type_confirmed" not in desc.labels
+        block = dict(type_registry.launch_vars(desc, "review"))
+        assert block["TYPE_CONFIRMED_LABEL"] == "rfe-creator-type-confirmed"
+
+    def test_the_key_is_reserved_in_the_schema_and_read_by_no_script(self):
+        schema = json.loads((TYPES_ROOT / "_schema" / "type.schema.json").read_text())
+        spec = schema["$defs"]["labels"]["properties"]["type_confirmed"]
+        assert spec["$ref"] == "#/$defs/label"
+        assert "TYPE_CONFIRMED_LABEL" in spec["description"]
+        scripts_dir = REPO_ROOT / "scripts"
+        readers = sorted(
+            p.name
+            for p in scripts_dir.glob("*.py")
+            if "type_confirmed" in p.read_text(encoding="utf-8")
+        )
+        assert readers == ["type_registry.py"], readers

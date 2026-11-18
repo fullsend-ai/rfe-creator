@@ -427,6 +427,39 @@ class TestAutoApprove:
         assert "initiative-autofix-rubric-pass" not in stdout
         assert "split recommended but not split in this run: not auto-approved" in stdout
 
+    def test_reclassify_recommendation_not_approved(self, art_dir):
+        """An Initiative whose review says reclassify (it reads as an RFE) is created with the
+        needs-attention, feasibility and alignment labels and the comment, no rubric-pass
+        label, no transition — and the plan names the hold in every mode."""
+        _write(f"{art_dir}/initiatives/INIT-001.md", TASK_FM.format(initiative_id="INIT-001"))
+        review = (
+            _default_review("INIT-001")
+            .replace("recommendation: submit", "recommendation: reclassify")
+            .replace(
+                "needs_attention: false",
+                "needs_attention: true\nneeds_attention_source: classification\n"
+                "needs_attention_reason: 'likely an RFE: one feature for one team; "
+                "consider /rfe-create --type rfe'",
+            )
+        )
+        _write(f"{art_dir}/initiative-reviews/INIT-001-review.md", review)
+        note = (
+            "reclassify recommended: left to a human (needs-attention label and comment, "
+            "no rubric-pass label, not auto-approved)"
+        )
+
+        for flags in (["--auto-approve"], []):
+            stdout, stderr, rc = _run_submit(art_dir, flags)
+            assert rc == 0, stderr
+            assert "Would create" in stdout
+            assert "initiative-needs-attention" in stdout
+            assert "initiative-feasibility-pass" in stdout
+            assert "initiative-alignment-strong" in stdout
+            assert "initiative-autofix-rubric-pass" not in stdout
+            assert "Would transition to Approved" not in stdout
+            assert "Would post needs-attention comment" in stdout
+            assert note in stdout
+
 
 class TestGenerateReportFlag:
     def test_generate_report_without_timestamp_fails(self):

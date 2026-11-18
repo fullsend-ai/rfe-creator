@@ -33,12 +33,14 @@ def _run(outputs, config_path=EVAL_YAML):
     return ns["_check"](outputs=outputs)
 
 
-def _review(item_id, needs_attention, source=None, reason=None):
+def _review(item_id, needs_attention, source=None, reason=None, recommendation=None):
     fm = {"initiative_id": item_id, "needs_attention": needs_attention}
     if source is not None:
         fm["needs_attention_source"] = source
     if reason is not None:
         fm["needs_attention_reason"] = reason
+    if recommendation is not None:
+        fm["recommendation"] = recommendation
     return f"---\n{yaml.safe_dump(fm)}---\n\n## Review\n"
 
 
@@ -183,6 +185,33 @@ def test_a_type_name_expected_true_accepts_the_classification_flag_naming_it():
 def test_a_type_name_expected_true_rejects_a_flag_naming_another_type():
     reason = "likely an Initiative: three teams; consider /rfe-create --type initiative"
     assert _flagged(True, "classification", reason, "rfe")[0] is False
+
+
+def _reclassified(expected_needs_attention, reason, expected_classification=None):
+    """Design B (2026-11-17): a stage-2 flag co-sets recommendation reclassify and the item is
+    held, never revised. The judge reads the source and the sentence, not the recommendation."""
+    review = _review(
+        "INIT-0", True, source="classification", reason=reason, recommendation="reclassify"
+    )
+    annotations = {"expected_needs_attention": expected_needs_attention}
+    if expected_classification is not None:
+        annotations["expected_classification"] = expected_classification
+    return _run({"files": {f"{REVIEWS}/INIT-0-review.md": review}, "annotations": annotations})
+
+
+def test_a_reclassify_review_with_the_bare_sentence_is_still_discounted_for_an_expected_false():
+    passed, msg = _reclassified(False, CLASSIFICATION_SENTENCE)
+    assert passed is True and "as expected" in msg
+    # a quality concern behind the sentence still counts: the hold blocks the revision that
+    # used to clear it (initiative case-007 and case-018 annotate expected false)
+    passed, msg = _reclassified(False, CLASSIFICATION_SENTENCE + "; prescribes a stack")
+    assert passed is False and "expected False" in msg
+
+
+def test_a_reclassify_review_still_satisfies_a_named_expected_classification():
+    assert _reclassified(True, CLASSIFICATION_SENTENCE, "rfe")[0] is True
+    passed, msg = _reclassified(True, CLASSIFICATION_SENTENCE, "initiative")
+    assert passed is False and "flagged, but not as a misfiled initiative" in msg
 
 
 def test_a_type_name_expected_true_still_fails_an_unset_flag():

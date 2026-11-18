@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Group RFE IDs by review recommendation or reassess status."""
+"""Group IDs by review recommendation (SUBMIT, SPLIT, REVISE, REJECT, RECLASSIFY, ERRORS) or by
+reassess status."""
 
 import argparse
 import os
@@ -40,8 +41,17 @@ def _read_review_data(path):
 
 
 def collect_default(ids, entry_type="rfe"):
-    """Group IDs by recommendation field."""
-    groups = {"SUBMIT": [], "SPLIT": [], "REVISE": [], "REJECT": [], "ERRORS": []}
+    """Group IDs by recommendation field. RECLASSIFY (the review's misfiled-item rule) is its
+    own group: the dispatcher routes only SPLIT, so these ids stay in the active set, like
+    SUBMIT, and reach submit.py as label-only items held for a human."""
+    groups = {
+        "SUBMIT": [],
+        "SPLIT": [],
+        "REVISE": [],
+        "REJECT": [],
+        "RECLASSIFY": [],
+        "ERRORS": [],
+    }
     review_dir = _review_dir(entry_type)
     for item_id in ids:
         data = _read_review_data(os.path.join(review_dir, f"{item_id}-review.md"))
@@ -60,14 +70,21 @@ def collect_default(ids, entry_type="rfe"):
 
 
 def collect_reassess(ids, entry_type="rfe"):
-    """Collect IDs needing reassessment (auto_revised=true, pass=false)."""
+    """Collect IDs needing reassessment (auto_revised=true, pass=false). A reclassify verdict
+    is final within a run (held for a human, never revised again), so it is DONE whatever
+    its pass says: one more assess+review wave could only re-decide a human's call."""
     reassess, done = [], []
     review_dir = _review_dir(entry_type)
     for item_id in ids:
         data = _read_review_data(os.path.join(review_dir, f"{item_id}-review.md"))
         # A missing or corrupt review is not reassessable — bucket it as done so
         # the run continues; --errors is the mode that surfaces it.
-        if data and data.get("auto_revised") and not data.get("pass"):
+        if (
+            data
+            and data.get("auto_revised")
+            and not data.get("pass")
+            and data.get("recommendation") != "reclassify"
+        ):
             reassess.append(item_id)
         else:
             done.append(item_id)

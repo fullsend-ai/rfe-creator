@@ -407,7 +407,12 @@ The bootstrap snapshot accounts for:
   scoring wave) and
   `blocked_reason` entries (a refused split, `split_refused:`; a revision
   held under `--auto-approve`, `revision_interrupted:`; a split withheld
-  under `--hold-splits`, `split_held:`). A `--hold-splits` run that ended
+  under `--hold-splits`, `split_held:`). A `recommendation: reclassify`
+  entry (the review found the item reads as another registered type and
+  submit labelled and commented it, Label only) carries none of these
+  keys and IS counted as processed — the live snapshot marked it so; the
+  human exit is a label, which the description hash does not see. A
+  `--hold-splits` run that ended
   red because a hold could not be recorded reports that parent as a
   split with no `blocked_reason` and is not a bootstrap source for it
   (pipeline correctness reference §5.12). Issues that were open but not
