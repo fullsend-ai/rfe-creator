@@ -428,9 +428,7 @@ Without these cases the initiative gate rested on the run-level rule alone, and 
 one team, one release) and `case-023` a genuinely ambiguous idea (one customer's deliverable that is
 two workstreams on our side). Their `annotations.yaml` carries `expected_classification` (`rfe` and
 `none`); every other case carries `none` except the boundary case `case-006` (a single landing-page
-feature filed as an Initiative) and the five weak drafts `case-017` to `case-021` (feature-sized by
-design: their role is the revise path, and the first baseline flagged one of them as an RFE), which
-carry a comment instead, so `classification_signal` does not check them. A misfiling flag on a weak
+feature filed as an Initiative) which carries a comment instead, so `classification_signal` does not check it. The five weak drafts `case-017` to `case-021` were feature-sized by design until 2026-11-18 and unannotated (the first baseline flagged one of them as an RFE); since the `reclassify` rule holds a flagged draft instead of revising it, they were reshaped at Initiative scale, their targeted gap unchanged, and carry `none`. A misfiling flag on a weak
 draft does not count against its `expected_needs_attention: false` either (`case-018`): that
 expectation is about the quality path, and `needs_attention_expectation` discounts the
 `classification` source. An unannotated case counts as a pass, so the threshold's slack is spent on the
@@ -447,7 +445,7 @@ so `case-023` must carry neither. The cost: a stage-2 flag on a weak draft now h
 letting the revision run, so the flag the first 2026-11-03 run put on `case-021` would have consumed
 `revision_coverage`'s single allowed failure, and on `case-007` and `case-018` (`expected_needs_attention:
 false`) such a flag blocks the revision that used to clear the feasibility concern — the
-`needs_attention_expectation` discount holds only while the reason is the bare classification sentence.
+`needs_attention_expectation` discount holds only while the reason is the bare classification sentence. That cost is what the 2026-11-18 reshape of the five weak drafts answers: at Initiative scale a flag on one of them is a misreading, counted by `classification_signal`, not a legitimate hold.
 
 ### Judges
 

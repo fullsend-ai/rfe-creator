@@ -119,12 +119,17 @@ threshold_notes:
     revise path; case-007 drafted at 10 and passed first review. The exposure
     described above is now measured: while the rule holds a draft that reads
     as an RFE, a feature-sized weak draft cannot exercise the Initiative revise
-    path.
+    path. The five weak drafts were reshaped the same day at Initiative scale
+    (several teams, several quarters, a theme, workstreams; the targeted gap
+    and its anchors unchanged) and annotated expected_classification none, so
+    a flag on one of them is now a precision miss here and a coverage miss
+    above, not a legitimate reading.
   classification_signal: |
     stage 2 of classification (AISDLC-191/192): a case's expected_classification
     is none (must not be flagged), the type the item really is (must be flagged,
-    naming it) or absent (not checked: the boundary case case-006 and the five
-    weak drafts case-017 to case-021, feature-sized by design). The check has
+    naming it) or absent (not checked: the boundary case case-006 alone since
+    2026-11-18; the weak drafts case-017 to case-021 were feature-sized until
+    then and carry none now). The check has
     two cases of its own: case-022, an RFE described as an Initiative (must be
     flagged "likely an RFE"), and case-023, a genuinely ambiguous idea (must not
     be flagged); every other annotated case must not be flagged either, so the
@@ -151,8 +156,8 @@ threshold_notes:
     Baseline 2026-11-03 (run 2026-11-03-opus-4-6 on ef82342, eval pipeline
     3021822422): 21/23 = 0.913, two misses. case-021, a weak draft, was flagged
     "likely an RFE: a single capability in one product area" — a fair reading
-    of a feature-sized draft, which is why the weak drafts are no longer
-    annotated. case-022 was not flagged: the reviewer took the Initiative
+    of a feature-sized draft, which is why the weak drafts stopped being
+    annotated until their 2026-11-18 reshape. case-022 was not flagged: the reviewer took the Initiative
     template's framing (objective, scope boundaries) as evidence of an
     Initiative although the text names one dashboard team and one release. The
     rules now say to judge the substance rather than the shape. Second run with the sharpened rule, 2026-11-03 (run 2026-11-03-opus-4-6 on
