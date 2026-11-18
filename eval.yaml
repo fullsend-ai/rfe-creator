@@ -1311,7 +1311,10 @@ thresholds:
   # auto-approved, whatever its scores: pass=true + reclassify and pass=false +
   # reclassify are both consistent. The 2026-11-03 baselines prove the flag is
   # set reliably (case-027 flagged in the second run), not the co-setting, which
-  # they predate: the first eval run after the rule change is its calibration.
+  # they predate. First baseline with the rule, 2026-11-18 (run 2026-11-18-opus-4-6-fullsend on 14998b6, eval pipeline 3082834876): 29/29.
+  # case-027 scored 9, passed, recommendation reclassify under source
+  # classification; no review carried the flag without the recommendation or
+  # the reverse, and the run report counted reclassify 1 next to split 1.
   # A reviewer that flags but keeps split or revise fails here, not in
   # classification_signal.
   recommendation_consistency:
@@ -1327,7 +1330,8 @@ thresholds:
   # the review records that the scores do not reflect sets the flag. The
   # production reviewer missed exactly that on RHAIRFE-3899 (2026-11-12) while
   # the parallel dry reviewer of the same slot flagged it; the case's first
-  # baseline is the eval run of the PR that added it. The optional
+  # baseline is the eval run of the PR that added it: 2026-11-18 (run 2026-11-18-opus-4-6-fullsend on 14998b6, eval pipeline 3082834876),
+  # 1.0, case-027 and case-029 both flagged as expected. The optional
   # expected_needs_attention_reason (a regex, case-insensitive search against
   # the final review's needs_attention_reason) keeps an unrelated flag from
   # satisfying the case: case-029 sets (?i)\btitle\b. When the flag is missing
@@ -1361,7 +1365,8 @@ thresholds:
   # (Harbor tasks, execution.mode: case) and runs without a tagged case (quick
   # mode's first two cases, a --cases subset, a Jira-sourced batch) skip the
   # run-level check and are decided by the tag alone. Untagged cases otherwise
-  # always pass.
+  # always pass. 2026-11-18 (run 2026-11-18-opus-4-6-fullsend on 14998b6, eval pipeline 3082834876): 28/29; case-022 drafted at 9 and passed
+  # first review, no weak draft was held as reclassify.
   revision_coverage:
     min_pass_rate: 0.92
   pipeline_flow:
@@ -1402,6 +1407,8 @@ thresholds:
   # classification (under the rules of the time the split stayed recommended;
   # since 2026-11-17 the recommendation is reclassify: the item is held, neither
   # split nor revised) and no other case was flagged; needs_attention_expectation
-  # 1.0. The value stays at 0.92.
+  # 1.0. Third run, with the reclassify rule, 2026-11-18 (run 2026-11-18-opus-4-6-fullsend on 14998b6, eval pipeline 3082834876): 29/29;
+  # case-027 flagged and held as reclassify (score 9, passed), nothing else
+  # flagged. The value stays at 0.92.
   classification_signal:
     min_pass_rate: 0.92

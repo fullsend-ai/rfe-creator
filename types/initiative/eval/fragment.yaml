@@ -113,6 +113,13 @@ threshold_notes:
     execution.mode: case) and runs without a tagged case (quick mode's first
     two cases, a --cases subset, a Jira-sourced batch) skip the run-level check
     and are decided by the tag alone. Untagged cases otherwise always pass.
+    2026-11-18 (run 2026-11-18-opus-4-6-fullsend on 14998b6, eval pipeline 3082835332): 19/23 = 0.826, the gate failed. case-018, case-020
+    and case-021 were held as reclassify at first review ("likely an RFE": the
+    feature-sized reading these drafts invite by design) and never entered the
+    revise path; case-007 drafted at 10 and passed first review. The exposure
+    described above is now measured: while the rule holds a draft that reads
+    as an RFE, a feature-sized weak draft cannot exercise the Initiative revise
+    path.
   classification_signal: |
     stage 2 of classification (AISDLC-191/192): a case's expected_classification
     is none (must not be flagged), the type the item really is (must be flagged,
@@ -154,7 +161,14 @@ threshold_notes:
     other case was flagged, the weak drafts included; needs_attention_expectation
     1.0. The run predates the reclassify recommendation: case-022's expected
     final review is now reclassify, held at submit (label and comment), not
-    submitted as approved. The value stays at 0.92.
+    submitted as approved. Third run, with the reclassify rule, 2026-11-18
+    (run 2026-11-18-opus-4-6-fullsend on 14998b6, eval pipeline 3082835332): 22/23. case-022 was flagged and held (score 10, passed); the
+    miss is case-004 (expected none), flagged "likely an RFE: a single
+    reusable UX component as one deliverable for one team", the first
+    precision miss on an annotated case. The unannotated weak drafts
+    case-018, case-020 and case-021, and case-006, were flagged too and, under
+    the rule, held instead of revised (revision_coverage above). The value
+    stays at 0.92.
   recommendation_consistency: |
     1.0: one inconsistent review fails the run by design. Besides the
     pass/recommendation and feasibility rules, since 2026-11-17 the check pins
@@ -167,7 +181,11 @@ threshold_notes:
     auto-approved, whatever its scores: pass=true + reclassify and pass=false +
     reclassify are both consistent. The 2026-11-03 baselines prove the flag is
     set reliably (case-022 flagged in the second run), not the co-setting, which
-    they predate: the first eval run after the rule change is its calibration.
+    they predate. First baseline with the rule, 2026-11-18 (run 2026-11-18-opus-4-6-fullsend on 14998b6, eval pipeline 3082835332): 23/23.
+    case-022 scored 10, passed, recommendation reclassify under source
+    classification; five more reviews held items the same way (case-004,
+    case-006, case-018, case-020, case-021, all "likely an RFE"), each with
+    the flag, so the two-way rule held on all six.
     A reviewer that flags but keeps split or revise fails here, not in
     classification_signal. The weak-alignment composite (source alignment with
     the classification sentence appended, types/initiative/prompts/review-rules.md)
