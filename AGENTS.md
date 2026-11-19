@@ -143,13 +143,13 @@ Skills that only work with local artifacts (`/rfe-create`) do not require Jira a
 - **Parent field**: Set to a RHAISTRAT Outcome key to link the Initiative to a strategic outcome, in the same project. `fetch_issue.py --fetch-all --type initiative` reads it back into the task's `parent_key` (what arms the alignment check for an Initiative fetched from Jira). The Outcome is in the Initiative's own key family, so the run report, the review report and `submit.py` tell such a hierarchy link from a split parent by the workspace (a split parent has a task here), never by key family — types/README.md "Parent field"
 - **Submission script**: `scripts/submit.py --type initiative`
 
-### TSTAPP Project (Shop RFEs, the react-shopping-cart demo storefront)
+### TSTAPP Project (Shop RFEs, the [react-shopping-cart](https://github.com/fullsend-ai/react-shopping-cart) demo storefront)
 - **Project**: `TSTAPP`
 - **Issue Type**: `Story`
 - **Priority values** (use these exactly): Blocker, Critical, Major, Normal, Minor, Undefined
 - **Status on creation**: `New`
 - **Workflow**: New, Refinement, In Progress, Closed — no Approved status, so `--auto-approve` is refused for this type
-- **Downstream**: strat-creator adds the HOW to the same Story; fullsend's code agent implements it on a `/fs-code` comment (github.com/fullsend-ai/react-shopping-cart)
+- **Downstream**: strat-creator adds the HOW to the same Story; fullsend's code agent implements it on a `/fs-code` comment in https://github.com/fullsend-ai/react-shopping-cart
 - **Submission script**: `scripts/submit.py --type react-shopping-cart`
 
 ## Work Item Types
