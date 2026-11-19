@@ -551,6 +551,17 @@ class TestPerTypeGate:
         _assert_finding(report, "eval.dataset: path not found: eval/nope/cases", "rfe")
         _assert_finding(report, "eval.config: file not found: eval-nope.yaml", "rfe")
 
+    def test_a_type_without_an_eval_block_has_no_eval_gate(self, types_copy):
+        """`eval` is optional (a demo type omits it): no schema finding, and the eval gate
+        (config, dataset, fragment, sync) is skipped for that type only."""
+        _mutate(types_copy, "initiative", lambda d: d.pop("eval"))
+        shutil.rmtree(types_copy / "initiative" / "eval")
+        report = _validate(types_copy, eval_sync=True)
+        assert report.ok, [f.message for f in report.findings]
+        assert not validate_types.has_eval(
+            type_registry.load(root=types_copy, extra_roots=[], env={}).get("initiative")
+        )
+
     def test_missing_eval_config_key_is_a_finding_not_a_crash(self, types_copy):
         """A descriptor without eval.config (a required field) fails through the report: the
         schema finding, and — for the shipped descriptor, the only one the eval-sync gate
@@ -2302,9 +2313,9 @@ class TestExtraTypes:
 
     def test_drop_in_schema_findings_are_reported_under_its_name(self, tmp_path):
         extra = _third_type(tmp_path / "extra")
-        _mutate(extra, "docs", lambda d: d.pop("eval"))
+        _mutate(extra, "docs", lambda d: d.pop("index"))
         report = _validate(TYPES_ROOT, extra_roots=[extra])
-        _assert_finding(report, "'eval' is a required property", "docs")
+        _assert_finding(report, "'index' is a required property", "docs")
         assert _messages(report, "rfe") == []
         assert _messages(report, "initiative") == []
 

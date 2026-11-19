@@ -443,6 +443,16 @@ class TestShippedConfigs:
                 "dataset_dir": REG.get(t).get("eval.dataset")
             }, t
 
+    def test_a_type_without_an_eval_block_is_skipped(self, capsys):
+        """`eval` is optional (a demo type omits it): the generator renders no config for
+        such a type and refuses a --type that names it."""
+        assert not gen.has_eval(REG.get("react-shopping-cart"))
+        assert [d.name for d in gen._select(REG, None)] == TYPES
+        with pytest.raises(gen.GenerateError, match="has no eval block"):
+            gen._select(REG, "react-shopping-cart")
+        assert gen.main(["--check", "--type", "react-shopping-cart"]) == 2
+        assert "has no eval block" in capsys.readouterr().err
+
     def test_check_mode_on_the_repo_passes(self, capsys):
         assert gen.main(["--check"]) == 0
         out = capsys.readouterr().out
@@ -457,7 +467,7 @@ class TestShippedConfigs:
         shutil.copy(REPO_ROOT / gen.SKELETON_RELPATH, repo / gen.SKELETON_RELPATH)
         assert gen.main(["--check", "--repo-root", str(repo)]) == 1
         err = capsys.readouterr().err
-        assert "eval.yaml is out of date" in err and "3 config(s) out of date" in err
+        assert "eval.yaml is out of date" in err and "2 config(s) out of date" in err
         assert gen.main(["--repo-root", str(repo)]) == 0
         assert (repo / "eval.yaml").is_file() and (repo / "eval-initiative.yaml").is_file()
         assert gen.main(["--check", "--repo-root", str(repo)]) == 0

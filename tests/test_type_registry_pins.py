@@ -79,6 +79,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # effective value equals the descriptor value, which is the equality the pins below hold).
 REG = type_registry.load(extra_roots=[], env={})
 TYPES = REG.names()
+# `eval` is optional: a demo type (react-shopping-cart) has no eval harness.
+EVAL_TYPES = [t for t in TYPES if "eval" in REG.get(t).data]
 
 # ── constants the descriptors deliberately do not carry (UNMAPPED in the matrix) ─────────────
 # PR-5b landed one generic rfe-* body per stage (design §4.4); PR-5c deleted the legacy per-type
@@ -421,7 +423,7 @@ def _ctx(t):
         pipe=pipe,
         schema=d["schema"],
         rep=d["reporting"],
-        ev=d["eval"],
+        ev=d.get("eval"),  # optional: a demo type has no eval block
         snap=d["snapshot"],
         dirs=desc.dirs(),
         bare=desc.dirs("bare"),
@@ -2582,6 +2584,8 @@ class TestSkillLayer:
         text = skill(ctx.t, "speedrun")
         assert f"artifacts/auto-fix-runs/{rp}<timestamp>.yaml" in text
         assert f"artifacts/auto-fix-runs/{rp}<timestamp>-report.html" in text
+        if ctx.ev is None:  # no eval config to check the outputs of
+            return
         outputs = {o["path"]: o for o in eval_config(ctx)["outputs"]}
         assert f"{rp}YYYYMMDD-HHMMSS.yaml" in outputs["artifacts/auto-fix-runs"]["schema"]
         assert f"{rp}YYYYMMDD-HHMMSS-report.html" in outputs["artifacts/auto-fix-runs"]["schema"]
@@ -2949,6 +2953,7 @@ class TestSkillLayer:
 # ── eval configs ──────────────────────────────────────────────────────────────────────────────
 
 
+@pytest.mark.parametrize("ctx", EVAL_TYPES, ids=EVAL_TYPES, indirect=True)
 class TestEvalConfigs:
     # rows: 199-211 (212 DEFERRED). Since PR-4 both configs are GENERATED
     # (scripts/generate_eval_config.py: eval/config/skeleton.yaml + types/<t>/eval/fragment.yaml
@@ -3120,14 +3125,14 @@ class TestEvalConfigs:
     def test_shared_two_type_judges(self, ctx):
         # rows: 211 — revision_flag_consistency / revision_coverage carry two-type literal unions
         js = judges(ctx)
-        item_keys = "(" + ", ".join(f'"{_ctx(t).rep["item_key"]}"' for t in TYPES) + ")"
-        id_fields = " or ".join(f'fm.get("{_ctx(t).id_field}")' for t in TYPES)
+        item_keys = "(" + ", ".join(f'"{_ctx(t).rep["item_key"]}"' for t in EVAL_TYPES) + ")"
+        id_fields = " or ".join(f'fm.get("{_ctx(t).id_field}")' for t in EVAL_TYPES)
         for name in ("revision_flag_consistency", "revision_coverage"):
             check = js[name]["check"]
             assert f"for key in {item_keys}:" in check, name
             assert f"item_id = {id_fields}" in check, name
             assert '"-snapshot-" in os.path.basename(k)' in check, name
-        for t in TYPES:
+        for t in EVAL_TYPES:
             assert "-snapshot-" in _ctx(t).snap["prefix"]
 
 

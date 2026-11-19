@@ -86,6 +86,8 @@ scope gap the create step cannot repair, so the first review fails and the revis
 "Weak-draft cases" in `eval/README.md`; without them the `revision_coverage` gate never fires and
 passes vacuously), populated `expected_*` annotations, explicit `eval.thresholds`, the committed eval
 config, one QUICK_MODE run on the PR with `type=<name>`, and a seed for the tracker emulator.
+A demo type that ships no eval harness (e.g. `react-shopping-cart`) omits the descriptor's `eval`
+block and everything in this paragraph; `validate_types.py` and `generate_eval_config.py` skip it.
 
 Rules that are easy to trip:
 

@@ -134,22 +134,5 @@ reporting:
     RS: right_sized
   pdf: { extra_fields: [] }
   run_report: { extra_entry_fields: [needs_attention, needs_attention_source, needs_attention_reason] }
-eval:
-  config: eval-react-shopping-cart.yaml
-  dataset: eval/react-shopping-cart-dataset/cases
-  mlflow_experiment: react-shopping-cart-speedrun-eval
-  timeout: 12000
-  thresholds:
-    files_exist: { min_pass_rate: 1.0 }
-    frontmatter_valid: { min_pass_rate: 1.0 }
-    run_report_exists: { min_pass_rate: 1.0 }
-    recommendation_consistency: { min_pass_rate: 1.0 }
-    revision_flag_consistency: { min_pass_rate: 1.0 }
-    needs_attention_expectation: { min_pass_rate: 1.0 }
-    revision_coverage: { min_pass_rate: 0.92 }
-    pipeline_flow: { min_pass_rate: 1.0 }
-    architecture_context_used: { min_pass_rate: 1.0 }
-    react-shopping-cart_quality: { min_mean: 3.5 }
-    revision_quality: { min_mean: 3.5 }
-    classification_signal: { min_pass_rate: 0.92 }
-  annotations_extra: [expected_classification]
+# eval: absent on purpose — a demo type, no eval harness (the block is optional; validate_types and
+# generate_eval_config skip a type without it).

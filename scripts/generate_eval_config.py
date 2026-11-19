@@ -555,12 +555,23 @@ def compare(desc, repo_root=None, skeleton_text=None):
     return path, rendered, committed, diff
 
 
+def has_eval(desc):
+    """Whether the descriptor binds an eval harness (``eval`` is optional: a demo type omits it)."""
+    return isinstance(desc.data, dict) and "eval" in desc.data
+
+
 def _select(registry, only):
+    """The types to render: every type with an ``eval`` block, or the one ``--type`` names."""
     if only is None:
-        return list(registry)
+        return [desc for desc in registry if has_eval(desc)]
     if only not in registry:
         raise GenerateError(f"unknown type {only!r} (available: {', '.join(registry.names())})")
-    return [registry.get(only)]
+    desc = registry.get(only)
+    if not has_eval(desc):
+        raise GenerateError(
+            f"{only}: the descriptor has no eval block; there is no config to render"
+        )
+    return [desc]
 
 
 def main(argv=None):

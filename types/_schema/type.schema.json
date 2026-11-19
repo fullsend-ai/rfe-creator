@@ -17,8 +17,7 @@
     "schema",
     "pipeline",
     "snapshot",
-    "reporting",
-    "eval"
+    "reporting"
   ],
   "additionalProperties": false,
   "properties": {
@@ -695,6 +694,7 @@
     },
     "eval": {
       "type": "object",
+      "description": "OPTIONAL. The type's eval harness binding. A type without it (a demo type) has no generated eval config, no fragment and no dataset: validate_types skips its eval gate and generate_eval_config skips it.",
       "required": ["config", "dataset", "mlflow_experiment", "thresholds", "timeout"],
       "additionalProperties": false,
       "properties": {

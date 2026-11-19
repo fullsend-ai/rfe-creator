@@ -73,7 +73,9 @@ itself is fine — `resolve()` follows the link).
    `types/<name>/eval/pairwise-judge.md`; name the quality threshold `<name>_quality` in
    `eval.thresholds`; then `python3 scripts/generate_eval_config.py --type <name>` writes the
    committed config at `eval.config` (gate 1 renders it, `--check` keeps it in sync — "Generated
-   eval configs" below).
+   eval configs" below). The `eval` block is optional: a demo type with no eval harness (e.g.
+   `react-shopping-cart`) omits it and skips steps 4 and 5, and the validator and the generator
+   skip it.
 5. Meet the provider floor (§3.4): a ≥16-case anonymized eval dataset with at least one sparse or
    adversarial case **and at least four `revision-expected`-tagged weak-draft cases** (the
    `revision_coverage` gate fails every case of a multi-item run that holds a tagged case and revised
