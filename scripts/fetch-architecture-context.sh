@@ -46,6 +46,28 @@ if [ -n "$REPO$SUBPATH$DEST" ]; then
   case "$SUBPATH" in
     *..*|/*) echo "ERROR: --path must be relative, without '..' (got '$SUBPATH')" >&2; exit 2 ;;
   esac
+  for value in "$REPO" "$SUBPATH" "$DEST"; do
+    case "$value" in
+      -*) echo "ERROR: an argument value must not start with '-' (got '$value')" >&2; exit 2 ;;
+    esac
+  done
+  # Only a source a registered type declares (its pipeline.context_sources architecture-context
+  # entry, rendered as the ARCH_FETCH launch var) may be fetched: the allowlist entry for this
+  # script with arguments must not let an agent clone an arbitrary repository.
+  requested="bash scripts/fetch-architecture-context.sh --repo $REPO --path $SUBPATH --dest $DEST"
+  types="$(python3 scripts/type_registry.py list)" || exit 2
+  registered=""
+  for t in $types; do
+    declared="$(python3 scripts/type_registry.py launch-vars "$t" review | sed -n 's/^ARCH_FETCH=//p')"
+    if [ "$declared" = "$requested" ]; then
+      registered="$t"
+      break
+    fi
+  done
+  if [ -z "$registered" ]; then
+    echo "ERROR: no registered type declares this architecture source (--repo $REPO --path $SUBPATH --dest $DEST)" >&2
+    exit 2
+  fi
   # A failed refresh must not pass for fresh context: the old files stay on disk, but the
   # script fails so SETUP logs it and the review step reports the fetch as failed.
   if [ -d "$DEST/.git" ]; then
@@ -54,7 +76,7 @@ if [ -n "$REPO$SUBPATH$DEST" ]; then
       exit 1
     fi
   else
-    git clone --depth 1 --filter=blob:none --sparse "$REPO" "$DEST" || exit 1
+    git clone --depth 1 --filter=blob:none --sparse -- "$REPO" "$DEST" || exit 1
     git -C "$DEST" sparse-checkout set "$SUBPATH" || exit 1
   fi
   if [ ! -d "$DEST/$SUBPATH" ]; then

@@ -9,8 +9,8 @@ project's history to date.
 
 ## What the label means
 
-`rfe-creator-split-quarantine` (Initiatives: `initiative-split-quarantine`)
-on a parent means: **a split submission failed partway, Jira may contain a
+`rfe-creator-split-quarantine` (Initiatives: `initiative-split-quarantine`,
+Shop RFEs: `rsc-creator-split-quarantine`) on a parent means: **a split submission failed partway, Jira may contain a
 partial result, and the nightly will not touch this parent again until a
 person removes the label.**
 
@@ -36,9 +36,14 @@ still sees the ticket normally.
    labels = rfe-creator-split-quarantine
    ```
 
+   For Initiatives the label is `initiative-split-quarantine`, for Shop RFEs
+   `rsc-creator-split-quarantine`; all three at once:
+   `labels in (rfe-creator-split-quarantine, initiative-split-quarantine, rsc-creator-split-quarantine)`.
+
 2. **Inspect what the crashed attempt left behind**: children linked to
    the parent via `Work item split`, and tickets carrying a
-   `rfe-creator-split-child-…` marker label naming this parent. There may
+   `rfe-creator-split-child-…` marker label (`initiative-split-child-…`,
+   `rsc-creator-split-child-…`) naming this parent. There may
    be none, some, or all of them, in any state of linking.
 
 3. **Decide what should live.** Keep the created children if they are

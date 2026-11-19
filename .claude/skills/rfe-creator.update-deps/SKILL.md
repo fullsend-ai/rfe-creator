@@ -20,7 +20,7 @@ Force update all vendored dependencies by removing cached copies and re-fetching
 
 ### 1. Update assess-rfe
 
-The removal list mirrors everything `scripts/bootstrap.sh` installs: the checkout, every skill directory it vendors, and the agent definitions it copies into `.claude/agents/`. The bootstrap checks assess-rfe out at the commit the type descriptors pin (`pipeline.rubric.ref` in `types/rfe/type.yaml` and `types/initiative/type.yaml`, one shared value) and verifies it, so re-running it does not pick up newer assess-rfe commits: to update assess-rfe, bump `pipeline.rubric.ref` in both descriptors first (`python3 scripts/validate_types.py` refuses two different pins), then run the steps below. `artifacts/rfe-rubric.md` is exported from that pinned checkout.
+The removal list mirrors everything `scripts/bootstrap.sh` installs: the checkout, every skill directory it vendors, and the agent definitions it copies into `.claude/agents/`. The bootstrap checks assess-rfe out at the commit the type descriptors pin (`pipeline.rubric.ref` in every descriptor that uses the assess-rfe rubric: `types/rfe/type.yaml`, `types/initiative/type.yaml` and `types/react-shopping-cart/type.yaml`, one shared value) and verifies it, so re-running it does not pick up newer assess-rfe commits: to update assess-rfe, bump `pipeline.rubric.ref` in all of those descriptors first (`python3 scripts/validate_types.py` refuses different pins), then run the steps below. `artifacts/rfe-rubric.md` is exported from that pinned checkout.
 
 ```bash
 rm -rf .context/assess-rfe \
@@ -36,8 +36,15 @@ rm -rf .context/architecture-context
 bash scripts/fetch-architecture-context.sh
 ```
 
+Then refresh each type that fetches its own architecture context: a type whose `ARCH_FETCH` (`python3 scripts/type_registry.py launch-vars <type> review`) carries `--repo/--path/--dest`. Today that is `react-shopping-cart`:
+
+```bash
+rm -rf .context/react-shopping-cart-architecture
+bash scripts/fetch-architecture-context.sh --repo https://github.com/fullsend-ai/react-shopping-cart --path docs/architecture --dest .context/react-shopping-cart-architecture
+```
+
 ### 3. Report
 
-List what was re-vendored: the assess-rfe commit the bootstrap reports (`assess-rfe at <sha> (...)`) and the architecture-context version.
+List what was re-vendored: the assess-rfe commit the bootstrap reports (`assess-rfe at <sha> (...)`) and the architecture-context version, plus each per-type context it refreshed.
 
 $ARGUMENTS

@@ -370,3 +370,42 @@ class TestPreScriptArchitectureFetch:
         )
         types = sorted(path.parent.name for path in (tmp_path / "types").glob("*/type.yaml"))
         assert sorted(c.split()[-1] for c in calls if c.startswith("bootstrap.sh ")) == types
+
+
+class TestFetchArchitectureContextGuards:
+    """fetch-architecture-context.sh with arguments is allowlisted in .claude/settings.json, so
+    it refuses anything but a source a registered type declares, before any git command."""
+
+    SCRIPT = REPO / "scripts" / "fetch-architecture-context.sh"
+
+    def _run(self, *args):
+        env = {k: v for k, v in os.environ.items() if k != "RFE_SKIP_BOOTSTRAP"}
+        return subprocess.run(
+            ["bash", str(self.SCRIPT), *args], capture_output=True, text=True, env=env, cwd=REPO
+        )
+
+    @pytest.mark.parametrize(
+        "args, message",
+        [
+            (["--dest"], "--dest needs a value"),
+            (["--repo", "x", "--path"], "--path needs a value"),
+            (["--repo", "x", "--path", "d", "--dest", ".context/../x"], "must not contain '..'"),
+            (["--repo", "x", "--path", "../d", "--dest", ".context/x"], "--path must be relative"),
+            (["--repo", "-u", "--path", "d", "--dest", ".context/x"], "must not start with '-'"),
+            (
+                [
+                    "--repo",
+                    "https://github.com/example/other",
+                    "--path",
+                    "docs",
+                    "--dest",
+                    ".context/x",
+                ],
+                "no registered type declares this architecture source",
+            ),
+        ],
+    )
+    def test_refused_before_any_git_command(self, args, message):
+        result = self._run(*args)
+        assert result.returncode == 2, result.stderr
+        assert message in result.stderr
