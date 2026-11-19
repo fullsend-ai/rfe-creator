@@ -313,28 +313,29 @@ def _format_status(phase, completed, errors, pending, total, next_poll):
     return f"{phase}: {', '.join(parts)}"
 
 
+# The interactive stages whose skills write tmp/<pipeline.state_prefix><stage>-config.yaml.
+# PR-5b added speedrun: the generic speedrun body gives an interactive speedrun the same
+# Phase-1 barrier as review, which must poll at the interactive cadence. The auto-fix skills
+# drive tmp/pipeline-state.yaml through pipeline_state.py and never wrote a
+# *-autofix-config.yaml (PR-5a removed the dead entries).
+INTERACTIVE_STAGES = ("review", "split", "speedrun")
+
+
+def _interactive_configs():
+    """The config files an interactive run writes: every registered type's
+    ``pipeline.state_prefix`` x INTERACTIVE_STAGES, in registry order."""
+    return tuple(
+        f"tmp/{_TYPES.get(name).get('pipeline.state_prefix', '')}{stage}-config.yaml"
+        for name in _TYPES.names()
+        for stage in INTERACTIVE_STAGES
+    )
+
+
 def _detect_fast(explicit_flag):
     """Return True if fast-poll should be used."""
     if explicit_flag:
         return True
-    # The interactive skills write tmp/<pipeline.state_prefix><stage>-config.yaml. The list
-    # is the descriptor projection (state_prefix x the interactive stages review/split/
-    # speedrun) written out: PR-5b added tmp/initiative-speedrun-config.yaml — the generic
-    # speedrun body gives an interactive initiative speedrun the same Phase-1 barrier as the
-    # rfe one, which must poll at the interactive cadence. The auto-fix skills drive
-    # tmp/pipeline-state.yaml through pipeline_state.py and never wrote a *-autofix-config.yaml
-    # (PR-5a removed the dead entries).
-    for cfg in (
-        "tmp/review-config.yaml",
-        "tmp/split-config.yaml",
-        "tmp/speedrun-config.yaml",
-        "tmp/initiative-review-config.yaml",
-        "tmp/initiative-split-config.yaml",
-        "tmp/initiative-speedrun-config.yaml",
-        "tmp/rsc-review-config.yaml",
-        "tmp/rsc-split-config.yaml",
-        "tmp/rsc-speedrun-config.yaml",
-    ):
+    for cfg in _interactive_configs():
         if os.path.exists(cfg):
             try:
                 with open(cfg) as f:

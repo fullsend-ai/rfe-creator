@@ -551,6 +551,17 @@ class TestPerTypeGate:
         _assert_finding(report, "eval.dataset: path not found: eval/nope/cases", "rfe")
         _assert_finding(report, "eval.config: file not found: eval-nope.yaml", "rfe")
 
+    @pytest.mark.parametrize("arg", ["has space", "../up", ".context/a;rm", "{state}"])
+    def test_context_source_args_are_plain_words(self, types_copy, arg):
+        """A context-source arg reaches a shell (ARCH_FETCH) and SETUP's format_map, so the
+        schema allows one plain word: no whitespace, metacharacters, braces or '..'."""
+        _mutate(
+            types_copy,
+            "rfe",
+            lambda d: d["pipeline"]["context_sources"][1].__setitem__("args", ["--dest", arg]),
+        )
+        _assert_finding(_validate(types_copy), "does not match", "rfe")
+
     def test_a_type_without_an_eval_block_has_no_eval_gate(self, types_copy):
         """`eval` is optional (a demo type omits it): no schema finding, and the eval gate
         (config, dataset, fragment, sync) is skipped for that type only."""

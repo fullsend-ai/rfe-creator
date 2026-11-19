@@ -34,6 +34,6 @@ Internalize the template's **Size Guide** and its **What belongs in a Shop RFE**
 
 - Do NOT load the storefront's architecture context. Shop RFEs describe needs; architecture context pulls you into prescribing the implementation.
 - Do NOT include sections about technical approach, affected files or components, data format or test plans. Those belong to strategy.
-- Do NOT invent evidence, prices, sizes or requesters. If the requester does not know, write it as an Open Question.
+- Do NOT invent evidence, prices, sizes or requesters. If the requester does not know, say so: under Open Questions in the Full format, or as a "Not known yet: …" line in the section it belongs to in the Concise and Standard formats, which have no Open Questions section.
 - Do NOT use High/Medium/Low for priority. Use the Jira values: Blocker, Critical, Major, Normal, Minor.
 - Do NOT generate a PRD or any other intermediate document. Go directly from the requester's input to Shop RFEs.

@@ -1654,10 +1654,10 @@ class TestPipelineTypes:
             cfg["SETUP"]["commands"],
         )
         assert expected[0] == f"bash scripts/bootstrap.sh --type {ctx.t}"
-        assert expected[1].startswith("bash scripts/fetch-architecture-context.sh")
-        assert (expected[1] == "bash scripts/fetch-architecture-context.sh") is (
-            ctx.t in ("rfe", "initiative")
-        ), "rfe and initiative fetch the RHOAI default; a per-type source passes --repo"
+        fetch = ctx.pipe["context_sources"][1]
+        assert expected[1] == type_registry.context_source_command(fetch)
+        if "args" not in fetch:  # the RHOAI default (rfe, initiative)
+            assert expected[1] == "bash scripts/fetch-architecture-context.sh"
 
     def test_assess_family(self, ctx):
         # rows: 110, 118 — pipeline_state.py:194-211,:236-245
@@ -1896,21 +1896,18 @@ class TestPhaseChecks:
         assert len(check_review_progress.PHASE_CHECKS) == 22
 
     def test_detect_fast_config_allowlist(self):
-        # rows: 141 — check_review_progress.py _detect_fast; each ==
+        # rows: 141 — check_review_progress.py _detect_fast reads _interactive_configs(), each ==
         # f"tmp/{state_prefix}{stage}-config.yaml" over the interactive stages (PR-5a dropped
-        # the never-written *-autofix-config.yaml entries; PR-5b added the initiative speedrun's,
-        # whose generic body polls the Phase-1 barrier)
-        fn = next(
-            n
-            for n in ast.walk(ast.parse(read("scripts/check_review_progress.py")))
-            if isinstance(n, ast.FunctionDef) and n.name == "_detect_fast"
-        )
-        loop = next(n for n in ast.walk(fn) if isinstance(n, ast.For))
-        live = tuple(ast.literal_eval(loop.iter))
+        # the never-written *-autofix-config.yaml entries; PR-5b added the speedrun's, whose
+        # generic body polls the Phase-1 barrier); derived from the registry since the
+        # react-shopping-cart PR
+        import check_review_progress
+
+        assert check_review_progress.INTERACTIVE_STAGES == STATE_STAGES
         expected = tuple(
             f"tmp/{_ctx(t).sp}{stage}-config.yaml" for t in TYPES for stage in STATE_STAGES
         )
-        assert live == expected
+        assert check_review_progress._interactive_configs() == expected
 
     def test_phase_flag_choices_are_the_table_keys(self):
         # rows: 142 — check_review_progress.py:157,:163
@@ -2415,7 +2412,8 @@ class TestSkillLayer:
         cs = ctx.pipe["context_sources"][1]
         assert cs["name"] == "architecture-context"
         assert cs["bootstrap"] == "scripts/fetch-architecture-context.sh"
-        assert ("args" in cs) is (ctx.t not in ("rfe", "initiative"))
+        if "args" in cs:  # a per-type source: the three flags the fetch script takes, in order
+            assert cs["args"][0::2] == ["--repo", "--path", "--dest"]
         assert "--type" not in read(cs["bootstrap"])
         command = type_registry.context_source_command(cs)
         assert dict(launch(ctx.t, "review"))["ARCH_FETCH"] == command

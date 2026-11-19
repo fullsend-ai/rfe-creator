@@ -50,6 +50,9 @@ from type_registry import (  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TYPES_ROOT = REPO_ROOT / "types"
+# Every registered type under types/, in registry order (rfe, initiative, then the rest by
+# name): a new type is a one-line change here. SHIPPED below is the two-type copy fixture.
+REGISTERED = ["rfe", "initiative", "react-shopping-cart"]
 SCRIPT = "scripts/type_registry.py"
 EPIC_FIXTURE = REPO_ROOT / "tests" / "fixtures" / "types" / "epic" / "type.yaml"
 SHIPPED = ("rfe", "initiative")
@@ -143,7 +146,7 @@ def _cli(*args, env=None, cwd=REPO_ROOT):
 class TestDiscovery:
     def test_shipped_root_holds_exactly_the_three_types(self):
         reg = _shipped()
-        assert reg.names() == ["rfe", "initiative", "react-shopping-cart"]
+        assert reg.names() == REGISTERED
         assert len(reg) == 3
         # _schema/ is a support dir and README.md is a file: neither is a type.
         assert "_schema" not in reg
@@ -250,10 +253,10 @@ class TestEnumeration:
         assert load(root=root, extra_roots=[], env={}).names() == ["alpha", "zeta"]
 
     def test_shipped_order_matches_todays_argparse_choices(self):
-        # check_conflicts.py:60, batch_summary.py:22, error_collect.py:67, ... all spell
-        # choices=["rfe", "initiative"]; the registry must reproduce that order (PR-2 swaps
-        # the literal for registry.choices()).
-        assert _shipped().choices() == ["rfe", "initiative", "react-shopping-cart"]
+        # check_conflicts.py:60, batch_summary.py:22, error_collect.py:67, ... spelled
+        # choices=["rfe", "initiative"] before PR-2 swapped the literal for registry.choices();
+        # the registry keeps that order, with later types after them.
+        assert _shipped().choices() == REGISTERED
 
     def test_iteration_follows_names_order(self):
         reg = _shipped()
@@ -669,7 +672,7 @@ class TestBinding:
 
     def test_bindings_keyed_in_names_order(self):
         bindings = _shipped().bindings()
-        assert list(bindings) == ["rfe", "initiative", "react-shopping-cart"]
+        assert list(bindings) == REGISTERED
         assert bindings["rfe"] == RFE_DESCRIPTOR_BINDING
 
     def test_descriptor_without_registry_env_reads_os_environ(self, monkeypatch):
@@ -768,7 +771,7 @@ class TestHeadlessGate:
     def test_env_root_is_ignored_under_a_headless_marker(self, extra, marker, capsys):
         env = {"RFE_CREATOR_EXTRA_TYPES": str(extra), marker: "true"}
         reg = load(root=TYPES_ROOT, env=env)
-        assert reg.names() == ["rfe", "initiative", "react-shopping-cart"]
+        assert reg.names() == REGISTERED
         assert reg.extra_roots == []
         assert reg.roots == [TYPES_ROOT]
         assert reg.ignored_extra_roots == [extra]
@@ -834,13 +837,13 @@ class TestHeadlessGate:
     def test_explicit_empty_extra_roots_switch_the_seam_off_without_noise(self, extra, capsys):
         env = {"CI": "true", "RFE_CREATOR_EXTRA_TYPES": str(extra)}
         reg = load(root=TYPES_ROOT, extra_roots=[], env=env)
-        assert reg.names() == ["rfe", "initiative", "react-shopping-cart"]
+        assert reg.names() == REGISTERED
         assert reg.ignored_extra_roots == []
         assert capsys.readouterr().err == ""
 
     def test_no_seam_no_noise(self, capsys):
         reg = load(root=TYPES_ROOT, env={"CI": "true"})
-        assert reg.names() == ["rfe", "initiative", "react-shopping-cart"]
+        assert reg.names() == REGISTERED
         assert capsys.readouterr().err == ""
 
     def test_is_headless(self):
@@ -888,7 +891,7 @@ class TestHeadlessGate:
         assert load(root=TYPES_ROOT, env=env).headless is False
         reg = load(root=TYPES_ROOT, env=env, headless=True)
         assert reg.headless is True
-        assert reg.names() == ["rfe", "initiative", "react-shopping-cart"]
+        assert reg.names() == REGISTERED
         assert reg.ignored_extra_roots == [extra]
         err = capsys.readouterr().err
         assert err.count("\n") == 1 and "headless/CI run" in err and str(extra) in err
@@ -941,7 +944,18 @@ class TestHeadlessGate:
 
 # `copy` is stdlib: binding() deep-copies the identity block so callers never alias descriptor
 # data; `dataclasses` is stdlib: the Candidates / Resolution result objects (PR-3a).
-ALLOWED_IMPORTS = {"argparse", "copy", "dataclasses", "json", "os", "re", "sys", "pathlib", "yaml"}
+ALLOWED_IMPORTS = {
+    "argparse",
+    "copy",
+    "dataclasses",
+    "json",
+    "os",
+    "re",
+    "shlex",
+    "sys",
+    "pathlib",
+    "yaml",
+}
 
 
 class TestImportClean:
@@ -1008,12 +1022,12 @@ class TestCli:
     def test_list_json(self):
         result = _cli("list", "--json")
         assert result.returncode == 0
-        assert json.loads(result.stdout) == ["rfe", "initiative", "react-shopping-cart"]
+        assert json.loads(result.stdout) == REGISTERED
 
     def test_options_accepted_before_the_subcommand(self):
         result = _cli("--json", "list")
         assert result.returncode == 0
-        assert json.loads(result.stdout) == ["rfe", "initiative", "react-shopping-cart"]
+        assert json.loads(result.stdout) == REGISTERED
 
     def test_show_text_is_a_header_plus_yaml(self):
         result = _cli("show", "rfe")
@@ -1321,7 +1335,7 @@ class TestOwnsEffective:
     def test_never_the_provisional_rung(self):
         reg = _shipped()
         found = reg.candidates("RHOAIENG-1", env=self.ENV)
-        assert found.provisional and found.names == ["rfe", "initiative", "react-shopping-cart"]
+        assert found.provisional and found.names == REGISTERED
         assert not any(d.owns_effective("RHOAIENG-1", env=self.ENV) for d in reg)
         assert not any(d.owns_effective("AB1-9", env={}) for d in reg)
 
@@ -1716,9 +1730,9 @@ class TestCandidates:
             ("RHAIRFE-1234x", "key_prefix", ["rfe"], False),
             ("INIT-x", "local_prefix", ["initiative"], False),
             ("RFE-", "local_prefix", ["rfe"], False),
-            ("KONFLUX-12", "tracker_grammar", ["rfe", "initiative", "react-shopping-cart"], True),
-            ("RHOAIENG-1", "tracker_grammar", ["rfe", "initiative", "react-shopping-cart"], True),
-            ("AB1-9", "tracker_grammar", ["rfe", "initiative", "react-shopping-cart"], True),
+            ("KONFLUX-12", "tracker_grammar", REGISTERED, True),
+            ("RHOAIENG-1", "tracker_grammar", REGISTERED, True),
+            ("AB1-9", "tracker_grammar", REGISTERED, True),
             ("konflux-12", None, [], False),
             ("KONFLUX-", None, [], False),
             ("K-1", None, [], False),  # the grammar needs at least two leading characters
@@ -2262,7 +2276,7 @@ class TestResolve:
         assert res.ambiguous is True
         assert res.type_name is None and res.desc is None and res.rung is None
         assert res.binding is None
-        assert res.candidates == ["rfe", "initiative", "react-shopping-cart"]
+        assert res.candidates == REGISTERED
         assert res.provisional is True
         assert res.line() == "TYPE AMBIGUOUS: rfe, initiative, react-shopping-cart - pass --type"
 
@@ -2384,7 +2398,7 @@ class TestResolve:
         assert json.loads(json.dumps(data)) == data
         ambiguous = resolve(_shipped(), ids=["KONFLUX-12"], env={}).as_dict()
         assert ambiguous["type"] is None and ambiguous["binding"] is None
-        assert ambiguous["candidates"] == ["rfe", "initiative", "react-shopping-cart"]
+        assert ambiguous["candidates"] == REGISTERED
 
     def test_rung_vocabulary_is_pinned(self):
         assert type_registry.RESOLVE_RUNGS == (
@@ -2491,7 +2505,7 @@ class TestResolveCli:
         data = json.loads(result.stdout)
         assert data["type"] is None and data["rung"] is None and data["binding"] is None
         assert data["provisional"] is True
-        assert data["candidates"] == ["rfe", "initiative", "react-shopping-cart"]
+        assert data["candidates"] == REGISTERED
         assert data["line"] == "TYPE AMBIGUOUS: rfe, initiative, react-shopping-cart - pass --type"
 
     def test_json_provisional_single_type(self, tmp_path):

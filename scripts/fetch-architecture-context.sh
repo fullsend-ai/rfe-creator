@@ -1,5 +1,6 @@
 #!/bin/bash
-# Fetches the latest RHOAI architecture context via sparse checkout.
+# Fetches architecture context via sparse checkout: the latest RHOAI context by default, or a
+# type's own source with --repo/--path/--dest (pipeline.context_sources).
 # Safe to run multiple times — pulls updates if already cloned.
 
 if [ -n "${RFE_SKIP_BOOTSTRAP:-}" ]; then
@@ -29,8 +30,12 @@ if [ -n "$REPO$SUBPATH$DEST" ]; then
     exit 2
   fi
   case "$DEST" in
-    .context/*) ;;
+    *..*) echo "ERROR: --dest must not contain '..' (got '$DEST')" >&2; exit 2 ;;
+    .context/?*) ;;
     *) echo "ERROR: --dest must be under .context/ (got '$DEST')" >&2; exit 2 ;;
+  esac
+  case "$SUBPATH" in
+    *..*|/*) echo "ERROR: --path must be relative, without '..' (got '$SUBPATH')" >&2; exit 2 ;;
   esac
   if [ -d "$DEST/.git" ]; then
     git -C "$DEST" sparse-checkout set "$SUBPATH"

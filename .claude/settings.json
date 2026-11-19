@@ -30,6 +30,7 @@
       "Bash(bash scripts/bootstrap.sh)",
       "Bash(bash scripts/bootstrap.sh *)",
       "Bash(bash scripts/fetch-architecture-context.sh)",
+      "Bash(bash scripts/fetch-architecture-context.sh *)",
       "Bash(python3 scripts/list_overlays.py)",
       "Bash(python3 scripts/list_overlays.py *)",
       "Bash(python3 scripts/prep_assess.py *)",

@@ -110,14 +110,15 @@ asserts that every differing or one-sided leaf falls under one of these keys:
 | Layout | `dirs.{tasks,originals,reviews}`, `index.enabled`, `companions.comments`, `batch.extra_fields`, `snapshot.{prefix,report_prefix,results_subdir}` (`results_subdir` = the type's subtree of the shared results repository: `''` the root for `rfe`, grandfathered; every other type `<type>-<project lowercased>`, `initiative-rhoaieng/` for initiative, so a second deployment of the type against another Jira project gets its own subtree) |
 | Conventions | `conventions.{type_label,label_prefix,comment_prefix,removed_context_preamble,query_default,parent_key_patterns}`, `conventions.labels.*` (every reserved key; `alignment.*` only when an alignment dimension exists; `type_confirmed` the human exit of the review's misfiled-item check — set by a human, read by the review prompt as the `TYPE_CONFIRMED_LABEL` launch var, composed by no script; `opt_in` only for a type production selects by label — Initiative `initiative-autofix-opt-in` — the value rfe-autofixer's selection JQL and strat-creator's intake should read through `type_registry.py get <type> conventions.labels.opt_in` rather than copy; read by no rfe-creator script) |
 | Schema | `schema.task.extra_fields` (rfe adds `size`), `schema.review.{score_fields,extra_fields,extra_rules}` |
-| Pipeline | `pipeline.{poll_prefix,state_prefix,scorer_agent}`, `pipeline.prompts.*`, `pipeline.dimensions[]` (name/prompt/blocking/condition/skip_stub), `pipeline.rubric.{ref,path,export}`, `pipeline.context_sources[].args` (the `--type` argument) |
+| Pipeline | `pipeline.{poll_prefix,state_prefix,scorer_agent}`, `pipeline.prompts.*`, `pipeline.dimensions[]` (name/prompt/blocking/condition/skip_stub), `pipeline.rubric.{ref,path,export}`, `pipeline.context_sources[].args` (the bootstrap's `--type` argument; a type whose architecture context lives in its own application repository gives the fetch `--repo <url> --path <dir> --dest .context/<dir>`) |
 | Reporting | `reporting.{item_key,criterion_labels,criterion_short_labels,before_score_name_map,pdf.extra_fields,run_report.extra_entry_fields}` |
 | Eval | `eval.{config,dataset,mlflow_experiment,timeout,thresholds,annotations_extra}` (the quality judge is named `<type>_quality`) and the typed prose in `types/<t>/eval/{fragment.yaml,pairwise-judge.md}`; the config at `eval.config` is generated from them ("Generated eval configs" below) |
 
 Identical in both files — shared machinery, **not** extension points: `schema_version`, `kind`,
 `identity.tracker`, `identity.jira.{split_link_type,state_map}`, `companions.removed_context`,
 `schema.task.priority`, `pipeline.{stages,resplit,rubric.repo}`, `pipeline.context_sources[]`
-(name/bootstrap/required), and eight of the ten eval judge thresholds.
+(name/bootstrap/required; the architecture fetch's args are per type), and eight of the ten eval
+judge thresholds.
 
 ## Classification block (§6)
 
@@ -183,7 +184,6 @@ and `produces[]` (§3.7 cross-type chain; rfe-creator ships no gate evaluator),
 templates}`, `conventions.query_default`, `schema.task.priority.map_to_tracker` (the `enum`
 beside it feeds `artifact_utils.SCHEMAS` and, per type, `validate_batch_input.ALLOWED_PRIORITIES`;
 the map has no consumer), `schema.review.{extra_scores,extra_rules}`,
-`pipeline.context_sources` (descriptive; SETUP is still hardcoded),
 `pipeline.dimensions[].{blocking, condition.context_exists, setup}`,
 `snapshot.{mode,processed_gate}`.
 
