@@ -1,7 +1,7 @@
 # types/react-shopping-cart/type.yaml — the react-shopping-cart work-item type descriptor.
 # Contract: types/_schema/type.schema.json. A WHAT/WHY request from the store owner / merch team for
-# the react-shopping-cart demo storefront (github.com/fullsend-ai/react-shopping-cart), submitted as a
-# Story in Jira project TSTAPP. strat-creator adds the HOW on the same issue; fullsend's code agent
+# the react-shopping-cart demo storefront, a React app at https://github.com/fullsend-ai/react-shopping-cart,
+# submitted as a Story in Jira project TSTAPP. strat-creator adds the HOW on the same issue; fullsend's code agent
 # implements it on /fs-code. Copied from types/rfe; every value that names the type, the tracker or a
 # collision-prone prefix is this type's own, the shared rubric (assess-rfe) is reused unchanged.
 schema_version: 1
