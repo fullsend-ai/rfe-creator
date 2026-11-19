@@ -11,7 +11,7 @@ Before writing, interview the requester to fill the gaps. Ask 2-5 questions — 
 3. **Why now?** A launch, an event, a campaign, shopper requests, a gap in the catalog. Ask for evidence — how many requests, which event — not an assertion.
 4. **What has the merch team already decided?** The product and its store link, the price the owner set, the sizes it comes in, the wording on the storefront, what the store deliberately will not do. These are the owner's decisions; record them as stated, do not make them up.
 5. **When it ships, what does the shopper see and do?** This becomes the acceptance criteria.
-6. **Is this one change or several?** If the idea bundles a new product with a change to how the store works (a product with no size and the store not supporting size-less products yet, for example), or several unrelated features, say so and propose separate Shop RFEs.
+6. **Is this one change or several?** Keep delivery-coupled changes in one Shop RFE: a new product and the store change it cannot be listed without (a product with no size while the store does not support size-less products yet, for example) ship together, as the review and split rules require. Propose separate Shop RFEs only for changes that are each valuable on their own — several unrelated features, or a product and a store change that does not depend on it.
 
 If the rubric is loaded, adapt your questions to cover any criterion the input does not already address — for example, ask for the requester and the evidence when the rubric would penalise a missing WHY, and never ask how something should be implemented when it penalises prescribed design.
 

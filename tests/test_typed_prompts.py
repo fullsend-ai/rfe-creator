@@ -388,3 +388,15 @@ def test_allowed_entries_are_still_needed():
     }
     stale = sorted((entries - matched) | present)
     assert not stale, stale
+
+
+def test_shop_rfe_stages_agree_on_the_delivery_coupled_example():
+    """The create interview, the review rules and the split rules must all keep a new product
+    together with the store change it cannot be listed without (the size-less product): a
+    create step that splits it would make items the review and split stages never merge back."""
+    root = os.path.join(ROOT, "types", "react-shopping-cart", "prompts")
+    for name in ("create-guidance.md", "review-rules.md", "split-rules.md"):
+        with open(os.path.join(root, name), encoding="utf-8") as f:
+            text = f.read()
+        assert "the store change it cannot be listed without" in text, name
+        assert "size-less" in text and "delivery-coupled" in text, name
