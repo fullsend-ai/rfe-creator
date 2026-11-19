@@ -62,6 +62,7 @@ conventions:
     auto_revised: rsc-creator-auto-revised
     split_result: rsc-creator-split-result
     split_original: rsc-creator-split-original
+    type_confirmed: rsc-creator-type-confirmed          # set by a human: the review skips the misfiled-item check when the task's original_labels carry it (TYPE_CONFIRMED_LABEL launch var)
     feasibility:
       feasible: rsc-creator-feasibility-pass
       infeasible: rsc-creator-feasibility-fail
