@@ -95,10 +95,12 @@ jobs:
           fi
           # The descriptor's eval block is optional (a demo type ships no evals): a type
           # without one has no eval config, so refuse it here rather than on GitLab.
+          # yq (preinstalled on the runner) reads the mapping, so any valid spelling of the
+          # top-level key counts.
           if [ "${EVAL_TYPE}" != rfe ] \
             && ! gh api -H "Accept: application/vnd.github.raw" \
               "repos/${REPO}/contents/types/${EVAL_TYPE}/type.yaml?ref=${PR_SHA}" \
-              | grep -q '^eval:'; then
+              | yq -e 'has("eval")' >/dev/null; then
             echo "::error::types/${EVAL_TYPE}/type.yaml has no eval block: the type ships no evals"
             exit 1
           fi

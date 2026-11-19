@@ -17,9 +17,18 @@ SUBPATH=""
 DEST=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --repo) REPO="${2:-}"; shift 2 ;;
-    --path) SUBPATH="${2:-}"; shift 2 ;;
-    --dest) DEST="${2:-}"; shift 2 ;;
+    --repo|--path|--dest)
+      if [ $# -lt 2 ]; then
+        echo "ERROR: $1 needs a value" >&2
+        exit 2
+      fi
+      case "$1" in
+        --repo) REPO="$2" ;;
+        --path) SUBPATH="$2" ;;
+        --dest) DEST="$2" ;;
+      esac
+      shift 2
+      ;;
     *) echo "ERROR: unknown argument '$1' (expected --repo, --path, --dest)" >&2; exit 2 ;;
   esac
 done
@@ -37,12 +46,16 @@ if [ -n "$REPO$SUBPATH$DEST" ]; then
   case "$SUBPATH" in
     *..*|/*) echo "ERROR: --path must be relative, without '..' (got '$SUBPATH')" >&2; exit 2 ;;
   esac
+  # A failed refresh must not pass for fresh context: the old files stay on disk, but the
+  # script fails so SETUP logs it and the review step reports the fetch as failed.
   if [ -d "$DEST/.git" ]; then
-    git -C "$DEST" sparse-checkout set "$SUBPATH"
-    git -C "$DEST" pull --quiet
+    if ! git -C "$DEST" sparse-checkout set "$SUBPATH" || ! git -C "$DEST" pull --quiet; then
+      echo "ERROR: could not refresh $DEST from $REPO (the files there may be stale)" >&2
+      exit 1
+    fi
   else
     git clone --depth 1 --filter=blob:none --sparse "$REPO" "$DEST" || exit 1
-    git -C "$DEST" sparse-checkout set "$SUBPATH"
+    git -C "$DEST" sparse-checkout set "$SUBPATH" || exit 1
   fi
   if [ ! -d "$DEST/$SUBPATH" ]; then
     echo "Architecture context not found: $REPO has no $SUBPATH yet"

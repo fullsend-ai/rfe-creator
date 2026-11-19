@@ -4496,6 +4496,16 @@ class TestInitAndTheRegistry:
         assert cfg["ASSESS"]["parallel"] == []
         assert [k for k in cfg["REVIEW"]["vars"] if k.endswith("_PATH")] == ["ASSESS_PATH"]
 
+    def test_a_type_without_context_sources_still_bootstraps_its_rubric(
+        self, tmp_dir, monkeypatch, drop_in_root
+    ):
+        # pipeline.context_sources is optional in the schema: SETUP falls back to the rubric
+        # bootstrap instead of failing to iterate a missing key.
+        drop_in_root.add("memo", overrides=_memo_overrides(), drop=("pipeline.context_sources",))
+        self._registry(monkeypatch, drop_in_root.path)
+        cfg = ps._build_phase_config("memo")
+        assert cfg["SETUP"]["commands"] == ["bash scripts/bootstrap.sh --type memo"]
+
     def test_an_unregistered_name_exits_2_with_the_registered_list(
         self, tmp_dir, monkeypatch, drop_in_root
     ):
