@@ -34,7 +34,8 @@ descriptor value ("Deployment binding override" below).
 | Extension points vs shared machinery, reserved vocabulary, R7 frozen strings, binding override and trust boundary, gate list | [`types/README.md`](../types/README.md) |
 | Which scripts read the registry, delivery history, where the descriptors depart from the design text | [`docs/work-item-types-development.md`](work-item-types-development.md) |
 | Copy-from skeleton | `types/rfe/` (`cp -r types/rfe types/<name>`) |
-| Registry API and CLI | `scripts/type_registry.py` (`list`, `show`, `get`, `binding`, `candidates`, `resolve`); in code `load()`, `names()`/`choices()`/`get()`, `detect(item_id)`, `candidates(item_id)`, `resolve(registry, ...)`, `assert_registered_binding(desc)`, `is_headless(env, flag)`, `parse_type_arg(registry, argv)` |
+| Reference type family | `tests/fixtures/type-families/` (a two-member family that passes gate 1, resolves and renders launch vars; "Type families" in `types/README.md`) |
+| Registry API and CLI | `scripts/type_registry.py` (`list`, `families`, `show`, `get`, `binding`, `candidates`, `resolve`); in code `load()`, `names()`/`choices()`/`get()`, `families()`/`members(family)`/`family(name)`/`canonical(name)`, `Descriptor.family` / `.own` / `.extends`, `detect(item_id)`, `candidates(item_id)`, `resolve(registry, ...)`, `assert_registered_binding(desc)`, `is_headless(env, flag)`, `parse_type_arg(registry, argv)` |
 | Validator (gates 1–3) | `scripts/validate_types.py` (`make lint` runs gate 1) |
 | Anti-regression prefix lint and its ratchet baseline | `scripts/lint_prefix_predicates.py`, `tests/data/prefix_predicate_baseline.json` (only ever shrinks) |
 | Recorded gaps (R1): what the v1 vocabulary cannot say | `NOT EXPRESSIBLE AT V1` comments in `tests/fixtures/types/epic/type.yaml`; `not_expressible_at_v1` in `tests/fixtures/types/strategy-inputs.yaml` |
@@ -223,6 +224,84 @@ missing required field, an empty `signals` list, more than five examples, a repe
 phrase anywhere in the block, a signal another type also lists, and, once any registered type
 carries the block, a type that lists the `create` stage without one.
 
+### Adding a member of a family (how-to)
+
+When the judgement already exists and only the Jira project differs — the same prompts, dimensions,
+rubric, labels and thresholds, run against a second project with its own local ids and artifact
+directories — do not copy the type: make it a member of a family ("Type families" in
+[`types/README.md`](../types/README.md), design §3.2.2). The family is the descriptor that holds the
+shared judgement (`abstract: true`; it is never listed, bound or run), each member is a concrete type
+that `extends` it, and the registry merges the family under the member before anything reads it.
+
+1. `mkdir types/<family>-<project lowercased>` (the directory name is the member's `type` and its
+   `snapshot.results_subdir`) and write a `type.yaml` that carries `extends: <family>` plus what a
+   member owns: the tracker's discriminator and key prefixes (`identity.jira.{project,key_prefixes}`;
+   `identity.github.{repo,alias_prefix}`), `identity.local_prefix`, `identity.local_id_pattern`,
+   `identity.id_field`, `dirs.{tasks,originals,reviews}`, `snapshot.results_subdir` equal to the
+   member name and `eval.config` (one rendered config per type). Add `conventions.query_default`
+   and `conventions.parent_key_patterns` when the project changes what they say, the rest of the
+   eval facts a render needs — `eval.{dataset,mlflow_experiment}` and the `<member>_quality`
+   threshold (it deep-merges into the family's thresholds) — and the poll/state/snapshot prefixes
+   unless the family carries them (the reference family leaves them to its members; the shipped
+   Initiative family will carry them). The reference member is
+   `tests/fixtures/type-families/brief-acme/type.yaml`, abridged here to the keys a member must own
+   (the file itself adds the prefixes, the eval facts, the query default, the parent-key patterns
+   and one own signal):
+
+   ```yaml
+   schema_version: 1
+   type: brief-acme
+   extends: brief
+   identity:
+     jira: { project: ACME, key_prefixes: ["ACME-"] }
+     local_prefix: "BRA-"
+     local_id_pattern: '^BRA-\d+$'
+     id_field: brief_acme_id
+   dirs: { tasks: artifacts/brief-acme-tasks, originals: artifacts/brief-acme-originals, reviews: artifacts/brief-acme-reviews }
+   snapshot: { prefix: brief-acme-snapshot-, report_prefix: brief-acme-run-, results_subdir: brief-acme }
+   ```
+
+2. Override by key, not by file. What a member typically overrides: a dimension's `condition.prefix`
+   and `skip_stub` (a same-name `pipeline.dimensions` entry merges into the family's and keeps its
+   `prompt`, `blocking` and `frontmatter_field`), its own `classification.signals` (appended after
+   the family's) and `examples` (a list: it replaces the family's), one label under
+   `conventions.labels` (a mapping: the rest stay inherited). Everything else is inherited: the
+   typed files (`types/<family>/...` paths resolve from the family's directory, wherever its root
+   lives), the rubric pin, the schema facts, the eval prose (`types/<family>/eval/` serves a member
+   with no `eval/` directory of its own) and — when the family declares them — the poll/state
+   prefixes and the snapshot prefix (the reference family does not; a shipped sole member may
+   inherit them). A second member gives those their own values: the cross-type
+   rules keep the prefixes, `results_subdir` and every `dirs.*` value unique and allow one member
+   per project. A file placed under `types/<member>/` is read only when a descriptor key names it.
+
+3. Check it: `python3 scripts/validate_types.py` (the OK line lists the members and ends with
+   `; 1 family(ies) checked: <family>`; a member missing an own key reads `ERROR <member>:
+   dirs.tasks: a member of family '<family>' declares its own value ...`),
+   `python3 scripts/type_registry.py show <member>` (the merged descriptor, `extends` kept),
+   `python3 scripts/type_registry.py launch-vars <member> review` (the block the generic skills
+   render — `TYPE`, `POLL_PREFIX`, `STATE_PREFIX`, the inherited prompt paths) and
+   `python3 scripts/generate_eval_config.py --type <member>` (the committed config, rendered from
+   the family's fragment when the member has none). Then run the pipeline with `--type <member>`.
+   The family name is accepted by `get`, `binding` and `launch-vars` only while the family has
+   exactly one member (a stderr note names it) and is refused by `resolve --type`,
+   `validate_types.py --verify --type`, `generate_eval_config.py --type` and a workspace
+   `bindings:` key until the Initiative split story widens the alias; the family itself is not
+   runnable, so `/rfe-review --type <family>` is an unknown type.
+
+Two reminders for a family that lands under `types/` (the first does not apply to a drop-in
+root; the second applies to any type those tables do not list, drop-in or not):
+
+- `scripts/bootstrap.sh` has a no-Python fallback that lists every `types/*/type.yaml` directory as
+  a type (`registered_types_from_root`) and reads `pipeline.rubric.*` from the named type's own
+  file (`rubric_field_from_root`): a family directory is listed by it, and a member that inherits
+  the rubric has no `rubric:` lines of its own for the awk to find. The registry path runs first
+  whenever python3 and PyYAML are present; the fallback is what a bare sandbox gets.
+- The literal state-file tables — `check_review_progress._detect_fast`
+  (`tmp/<state_prefix>{review,split,speedrun}-config.yaml`) and `check_autofix_complete._TYPE_CONFIG`
+  (`tmp/<state_prefix>speedrun-all-ids.txt`) — are keyed by the shipped prefixes. Keep an inherited
+  `pipeline.state_prefix` unless those tables change in the same PR: an own prefix on a member of a
+  shipped family silently loses fast-poll detection and the auto-fix completion check.
+
 ### Gates checklist
 
 A new type is done when every gate below passes; `make lint` runs all of them (and CI runs
@@ -232,7 +311,10 @@ field.
 - [ ] **Descriptor lint** — `python3 scripts/validate_types.py` (gate 1; add
   `--extra-roots <dir>` for a drop-in root, `--verify --type <name>` for a one-line verdict on one
   type, without the eval gate the pipeline does not need).
-  - Passes with `OK: <n> type(s) valid: rfe, initiative, <name>`.
+  - Passes with `OK: <n> type(s) valid: rfe, initiative, <name>` — members only, a family is never a
+    type; when a family exists the line ends with `; <k> family(ies) checked: <family>`, and a
+    family's own finding reads `ERROR <family>: ...` (kept by `--verify --type <member>` for each
+    of its members).
   - Fails with one `ERROR <type>: <message>` line per finding, `*` in place of the type for a
     cross-type finding, then a `validate_types: <n> finding(s) across <m> type(s)` summary on
     stderr and exit 1. A copy of `types/rfe/` with only `type:` changed prints, among others,
@@ -291,7 +373,10 @@ roots after `types/`. The seam is development and test only: in a headless or CI
 `RFE_CREATOR_HEADLESS`, `CI`, `GITHUB_ACTIONS` set) an entry is honoured only when its canonical
 path is listed in `RFE_CREATOR_EXTRA_TYPES_ALLOWLIST` — a protected CI variable, the same trust
 boundary as the binding override — and every other entry is dropped with one stderr line. Explicit
-`--extra-roots` values are never gated. Drop-ins pass the same gates as shipped types.
+`--extra-roots` values are never gated. Drop-ins pass the same gates as shipped types. A drop-in root
+may hold a member whose family lives under `types/` (one level of `extends`, across roots in that
+direction only); a `types/` member may not depend on a drop-in family, and a family with its members
+in one drop-in root loads as a unit.
 
 ## Deployment binding override
 

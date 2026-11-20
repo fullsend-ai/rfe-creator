@@ -1103,7 +1103,9 @@ class TestCrossTypeGate:
     def test_shipped_results_subdirs(self):
         """The decision record: rfe at the root (grandfathered); every other type under
         `<type>-<project lowercased>`, so a second deployment of the type against another Jira
-        project (AISDLC-8) never shares a subtree — initiative under initiative-rhaistrat/."""
+        project (AISDLC-8) never shares a subtree — initiative under initiative-rhaistrat/. A
+        member of a type family names its subtree after itself: its name already carries the
+        project (gate 1 enforces it; vacuous while no member ships)."""
         reg = type_registry.load(root=TYPES_ROOT, extra_roots=[], env={})
         assert reg.get("rfe").get("snapshot.results_subdir") == ""
         assert reg.get("initiative").get("snapshot.results_subdir") == "initiative-rhaistrat"
@@ -1111,6 +1113,9 @@ class TestCrossTypeGate:
             if name == "rfe":
                 continue
             desc = reg.get(name)
+            if desc.family is not None:
+                assert desc.get("snapshot.results_subdir") == name, name
+                continue
             project = desc.binding(env={})["project"].lower()
             assert desc.get("snapshot.results_subdir") == f"{name}-{project}", name
 

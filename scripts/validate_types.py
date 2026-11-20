@@ -63,6 +63,23 @@ design-proposals/work-item-types-unified.md §3.3:
       for that type, never a traceback
     * classification: no signal phrase shared by two types; once one registered type
       declares the block, every type listing the create stage does (§6)
+    * type families (design §3.2.2): a descriptor with abstract: true is a family —
+      validated against the relaxed shape (relaxed_schema: every required lifted, unknown
+      keys and the grammars still enforced), its own typed files must exist, it is never
+      bound, counted or run, and it declares no member-own key; a member (extends: <family>)
+      is validated as the family's data merged under its own, against the full schema, and
+      declares its own tracker discriminator and key prefixes (jira: project and
+      key_prefixes; github: repo and alias_prefix), local ids (local_prefix,
+      local_id_pattern, id_field), artifact directories and eval.config, names
+      snapshot.results_subdir after itself and shares no effective project with another
+      member of its family; every
+      artifact directory has one owner across types; cross rule 7 reads a member's own
+      signals with the families as participants; a family with no member and an
+      RFE_CREATOR_BINDING_<FAMILY>_* variable are findings; extends naming an unknown type,
+      a concrete type, a family in another drop-in root or itself, a family carrying
+      extends, and abstract with any value but true fail at load ("cannot load type
+      registry: ..."). The OK line appends "; k family(ies) checked: ..." only when a
+      family exists; --json gains "families" then
   Gate 2 — --with-deps, post-bootstrap, opt-in (Q8):
     * pipeline.rubric.path exists under --assess-dir (under the repo root when
       pipeline.rubric.repo is self — the rubric is embedded, not vendored)
@@ -96,6 +113,9 @@ design-proposals/work-item-types-unified.md §3.3:
       run failed SETUP on exactly those three findings, which the claude-code runner never
       saw only because its scripts/ symlink resolved REPO_ROOT to the full checkout). The
       full lint keeps the eval gate (eval_gate=True, the Python API default).
+    * a member of a type family is verified like any type on its merged descriptor; its
+      family's findings concern it and are kept. --verify --type <family> is refused (a
+      family is never run): verify one of its members.
 
 Usage:
     python3 scripts/validate_types.py [--root DIR] [--extra-roots A:B]
@@ -252,8 +272,8 @@ PATH_VALUE_PATTERNS = {
     "type": r"^[a-z][a-z0-9-]*$",
     "identity.local_prefix": r"^[A-Z][A-Z0-9]*-$",
     "identity.id_field": r"^[a-z][a-z0-9_]*$",
-    "pipeline.poll_prefix": r"^([a-z][a-z0-9]*-)?$",
-    "pipeline.state_prefix": r"^([a-z][a-z0-9]*-)?$",
+    "pipeline.poll_prefix": r"^([a-z][a-z0-9-]*-)?$",
+    "pipeline.state_prefix": r"^([a-z][a-z0-9-]*-)?$",
     "pipeline.scorer_agent": r"^[a-z][a-z0-9-]*$",
     "snapshot.prefix": r"^[a-z][a-z0-9-]*-$",
     "snapshot.report_prefix": r"^([a-z][a-z0-9-]*-)?$",
@@ -290,6 +310,7 @@ class Report:
     types: list
     findings: list
     warnings: list = field(default_factory=list)  # checks skipped, never findings
+    families: list = field(default_factory=list)  # type families checked (design §3.2.2)
 
     @property
     def ok(self):
@@ -306,6 +327,8 @@ class Report:
         }
         if self.warnings:  # additive: the pinned shape is unchanged when nothing was skipped
             data["warnings"] = list(self.warnings)
+        if self.families:  # additive likewise: absent until a type family is registered
+            data["families"] = list(self.families)
         return data
 
 
@@ -357,6 +380,45 @@ def load_schema(root=None, relpath=SCHEMA_RELPATH):
         return None, None
     with open(path, encoding="utf-8") as fh:
         return json.load(fh), path
+
+
+# JSON-Schema keywords whose value is a mapping of NAMED sub-schemas (property name -> schema):
+# ``relaxed_schema`` recurses into their values and never treats their keys as keywords.
+SCHEMA_MAP_KEYS = ("properties", "patternProperties", "$defs", "definitions", "dependentSchemas")
+
+
+def relaxed_schema(schema):
+    """The type-family shape (design §3.2.2), derived from the full schema: every ``required``
+    lifted except inside a ``not`` or an ``if`` subtree (those are predicates, not completion
+    requirements — ``not: {required: [github]}`` in the identity branches and snapshot's
+    ``if: {required: [mode]}``), ``oneOf`` read as ``anyOf`` (a family without a tracker matches
+    both relaxed identity branches), every grammar, enum, const, ``additionalProperties``,
+    ``minItems`` and ``minProperties`` kept; the root requires ``schema_version``, ``type`` and
+    ``abstract``. Completion is enforced where it matters: a member's MERGED descriptor is
+    validated against the full schema."""
+    out = copy.deepcopy(schema)
+
+    def walk(node, under_predicate):
+        if isinstance(node, dict):
+            if not under_predicate:
+                node.pop("required", None)
+            if "oneOf" in node:
+                node["anyOf"] = node.pop("oneOf")
+            for key, child in list(node.items()):
+                if key in SCHEMA_MAP_KEYS and isinstance(child, dict):
+                    # A map of NAMED sub-schemas: a property called ``required`` (field_spec,
+                    # context_sources[]) is vocabulary, not the keyword — never popped.
+                    for sub in child.values():
+                        walk(sub, under_predicate)
+                else:
+                    walk(child, under_predicate or key in ("not", "if"))
+        elif isinstance(node, list):
+            for child in node:
+                walk(child, under_predicate)
+
+    walk(out, False)
+    out["required"] = ["schema_version", "type", type_registry.FAMILY_MARKER]
+    return out
 
 
 def _load_artifact_utils():
@@ -509,7 +571,7 @@ def stage_skill_messages(desc, repo_root):
     return messages
 
 
-def typed_prompt_messages(desc, repo_root):
+def typed_prompt_messages(desc, repo_root, require_template=True):
     """The required-line lint over the typed prompt files (PR-5b). A Tier-3 file carries the
     mechanical tokens of TIER3_REQUIRED_TOKENS (no shared skeleton protects it); no typed file
     under types/<t>/ names a skill directory — the skill tree is generic from PR-5, and a typed
@@ -517,11 +579,13 @@ def typed_prompt_messages(desc, repo_root):
     creates or splits items must name pipeline.prompts.template: launch-vars renders it as
     TEMPLATE_PATH into every create and split launch, and the schema leaves the key optional
     (design Q1), so the stage list is what makes it required. Files resolve through
-    ``Descriptor.typed_path`` (a drop-in root's own split prompt is the one linted)."""
+    ``Descriptor.typed_path`` (a drop-in root's own split prompt is the one linted).
+    ``require_template=False`` (a type family) leaves the template rule to the members: a
+    family's stage list may be completed by a member's template."""
     messages = []
     prompts = _opt(desc, "pipeline.prompts") or {}
     stages = _opt(desc, "pipeline.stages") or list(type_registry.DEFAULT_STAGES)
-    if isinstance(stages, list) and isinstance(prompts, dict):
+    if require_template and isinstance(stages, list) and isinstance(prompts, dict):
         needs_template = {"create", "split"} & {s for s in stages if isinstance(s, str)}
         if needs_template and not prompts.get("template"):
             messages.append(
@@ -651,6 +715,8 @@ def alignment_labels_messages(desc):
     if _opt(desc, "conventions.labels.alignment") is None:
         return []
     dimensions = _opt(desc, "pipeline.dimensions") or []
+    if not isinstance(dimensions, list):
+        return []  # the shape is the JSON-Schema finding (a scalar inherited from a family too)
     names = {d.get("name") for d in dimensions if isinstance(d, dict)}
     if "alignment" in names:
         return []
@@ -670,14 +736,16 @@ def _normalize_phrase(value):
     return " ".join(value.split()).casefold()
 
 
-def classification_messages(desc):
+def classification_messages(desc, require=True):
     """The classification block (design §6, AISDLC-189) is optional in the schema; when
     present its phrases must be usable by a model deciding between the registered types.
     The rule repeats the schema's shape so that gate 3 decides without jsonschema too: the
     known keys only, ``summary``, ``signals`` and ``examples`` present, ``signals`` non-empty,
     one to five ``examples``; then a non-empty summary, non-blank phrases, no phrase repeated
     anywhere in the block (case and spacing aside), with the signal/counter-signal pair named
-    as such — a signal that is also a counter-signal says nothing."""
+    as such — a signal that is also a counter-signal says nothing. ``require=False`` (a type
+    family) skips the presence rule: a family may carry the signals and leave the examples to
+    its members; the merged member is held to the full rule."""
     block = _opt(desc, "classification")
     if block is None:
         return []
@@ -693,7 +761,7 @@ def classification_messages(desc):
             + ", ".join(CLASSIFICATION_KEYS)
             + ")"
         )
-    for key in CLASSIFICATION_REQUIRED:
+    for key in CLASSIFICATION_REQUIRED if require else ():
         if key not in block:
             messages.append(f"classification.{key} is required when the block is declared")
     summary = block.get("summary")
@@ -988,6 +1056,7 @@ def per_type_findings(
         ("classification", lambda: classification_messages(desc)),
         ("pipeline.rubric", lambda: rubric_ref_messages(desc)),
         ("review error stub", lambda: error_stub_messages(desc, artifact_utils)),
+        ("family member", lambda: member_messages(desc)),
     ]
     if eval_gate:
         rules.append(
@@ -1016,6 +1085,206 @@ def per_type_findings(
     return [Finding(desc.name, m, 1, frozenset({desc.name})) for m in messages]
 
 
+# ─── Gate 1: type families (design §3.2.2) ─────────────────────────────────────
+
+# What a member of a type family declares in its OWN file, never inherits: the tracker's
+# discriminator (one member per project / repository within a family) and its key prefixes (a
+# sibling's write prefix is never inherited) — per tracker, TRACKER_MEMBER_OWN_KEYS, rendered
+# under the merged ``identity.tracker`` —, the local ids, the artifact directories
+# (frontmatter._schema_for, scan_tasks(desc) and restore-artifacts.sh assume one owner per
+# directory; cross rule 2 keeps the ids unique) and ``eval.config`` (generate_eval_config.py
+# writes one render per type to it). Poll/state/report prefixes, the snapshot prefix, the
+# labels, the dataset and the thresholds may be inherited: the uniqueness rules bite once a
+# second member exists.
+TRACKER_MEMBER_OWN_KEYS = {
+    "jira": ("project", "key_prefixes"),
+    "github": ("repo", "alias_prefix"),
+}
+MEMBER_OWN_KEYS = (
+    "identity.local_prefix",
+    "identity.local_id_pattern",
+    "identity.id_field",
+    "dirs.tasks",
+    "dirs.originals",
+    "dirs.reviews",
+    "snapshot.results_subdir",
+    "eval.config",
+)
+
+
+def _has_own(mapping, dotted):
+    """True when the raw mapping carries ``dotted`` (mappings only; False on any miss)."""
+    node = mapping
+    for segment in dotted.split("."):
+        if not isinstance(node, dict) or segment not in node:
+            return False
+        node = node[segment]
+    return True
+
+
+def _member_own_keys(tracker):
+    """The dotted member-own keys under ``tracker``: the tracker-bound ones first (none for a
+    tracker the table does not know — the schema reports it), then MEMBER_OWN_KEYS."""
+    for key in TRACKER_MEMBER_OWN_KEYS.get(tracker, ()):
+        yield f"identity.{tracker}.{key}"
+    yield from MEMBER_OWN_KEYS
+
+
+def _discriminator(binding):
+    """The effective binding's project-like value (``project`` for jira, ``repo`` for github)."""
+    keys = TRACKER_MEMBER_OWN_KEYS.get(binding.get("tracker"), ("project",))
+    return binding.get(keys[0])
+
+
+def member_messages(desc):
+    """A member of a type family declares the MEMBER_OWN_KEYS itself and names its
+    ``snapshot.results_subdir`` after itself (its name already carries the project)."""
+    family = getattr(desc, "family", None)
+    if family is None:
+        return []
+    own = getattr(desc, "own", None) or {}
+    messages = []
+    for dotted in _member_own_keys(_opt(desc, "identity.tracker")):
+        if not _has_own(own, dotted):
+            messages.append(
+                f"{dotted}: a member of family {family.name!r} declares its own value (inherited "
+                "from the family here; members get their own project, key prefixes, local ids, "
+                "artifact directories and eval config)"
+            )
+    subdir = _opt(desc, "snapshot.results_subdir")
+    if isinstance(subdir, str) and subdir != desc.name:
+        messages.append(
+            f"snapshot.results_subdir {subdir!r} must equal the member name {desc.name!r} (a "
+            f"member of family {family.name!r} keeps its runs under its own subtree of the "
+            "shared results repository)"
+        )
+    return messages
+
+
+def family_shape_messages(family):
+    """``shape_messages`` for a type family, for a run without the JSON-Schema shape check
+    (gate 3): the supported ``schema_version``, the kind, and every value of
+    PATH_VALUE_PATTERNS / ``_path_bound_values`` that is PRESENT full-matches its grammar.
+    Never the identity strings' presence: a family may leave those to its members, and the
+    merged member is held to the full rule."""
+    messages = []
+    version = _opt(family, "schema_version")
+    if isinstance(version, bool) or version != SUPPORTED_SCHEMA_VERSION:
+        messages.append(
+            f"schema_version must be {SUPPORTED_SCHEMA_VERSION} (the v1 descriptor shape), "
+            f"got {version!r}"
+        )
+    kind = _opt(family, "kind", _ABSENT)
+    if kind is not _ABSENT and kind != V1_ENGINE_KIND and kind not in RESERVED_SIBLING_KINDS:
+        messages.append(f"kind must be {V1_ENGINE_KIND!r} (the v1 engine's kind), got {kind!r}")
+    for dotted, pattern in PATH_VALUE_PATTERNS.items():
+        value = _opt(family, dotted, _ABSENT)
+        if value is not _ABSENT:
+            _check_grammar(messages, dotted, value, pattern)
+    values, problems = _path_bound_values(family)
+    messages.extend(problems)
+    for label, value, pattern in values:
+        _check_grammar(messages, label, value, pattern)
+    return messages
+
+
+def _family_rubric_messages(family):
+    """The grammar of the rubric pin fields the family DECLARES, never a missing one: a family
+    may carry the repo and leave the ref (or the content hash) to its members, and the merged
+    member is held to the full pin by ``rubric_ref_messages``."""
+    rubric = _opt(family, "pipeline.rubric")
+    if not isinstance(rubric, dict):
+        return []
+    messages = []
+    ref = rubric.get("ref", _ABSENT)
+    if ref is not _ABSENT and not (isinstance(ref, str) and RUBRIC_REF_RE.fullmatch(ref)):
+        messages.append(
+            f"pipeline.rubric.ref must be a 7-40 character lowercase hex commit SHA, got {ref!r}"
+        )
+    version = rubric.get("rubric_version", _ABSENT)
+    if version is not _ABSENT and not (
+        isinstance(version, str) and RUBRIC_VERSION_RE.fullmatch(version)
+    ):
+        messages.append(
+            "pipeline.rubric.rubric_version must be a 7-64 character lowercase hex content hash "
+            f"(D3), got {version!r}"
+        )
+    return messages
+
+
+def _family_member_own_key_messages(family):
+    """A family carries no member-own key — under ANY tracker, whatever ``identity.tracker``
+    says (a family may leave the tracker to its members and still carry a project)."""
+    messages = []
+    tracker_keys = [
+        f"identity.{tracker}.{key}"
+        for tracker, keys in TRACKER_MEMBER_OWN_KEYS.items()
+        for key in keys
+    ]
+    for dotted in [*tracker_keys, *MEMBER_OWN_KEYS]:
+        if _has_own(family.data, dotted):
+            messages.append(
+                f"family {family.name!r} declares {dotted}, a member-own key: each member "
+                "declares its own value (the project, the key prefixes, the local ids, the "
+                "artifact directories and the eval config are what tell members apart)"
+            )
+    return messages
+
+
+def family_findings(family, schema, repo_root, members, have_jsonschema):
+    """Gate 1 for one type family: the relaxed shape (``relaxed_schema``; the family shape
+    rule without jsonschema, like the concrete types' ``shape_messages``), its own typed
+    files, the rules that read what a family may carry, no member-own key, and at least one
+    member. Without jsonschema every rule runs on its own (one message names a rule that
+    trips over a malformed shape, the rest still decide), as ``per_type_findings`` does.
+    Every finding is attributed to the family AND its members, so ``--verify --type
+    <member>`` keeps what its family breaks and ``--verify --type <other>`` drops it."""
+    owners = frozenset({family.name, *members})
+    rules = [
+        ("kind", lambda: kind_messages(family)),
+        ("file references", lambda: path_messages(family, repo_root, eval_gate=False)),
+        ("stage skills", lambda: stage_skill_messages(family, repo_root)),
+        (
+            "typed prompts",
+            lambda: typed_prompt_messages(family, repo_root, require_template=False),
+        ),
+        ("identity.local_id_pattern", lambda: local_id_pattern_messages(family)),
+        ("classification", lambda: classification_messages(family, require=False)),
+        ("pipeline.rubric", lambda: _family_rubric_messages(family)),
+        ("member-own keys", lambda: _family_member_own_key_messages(family)),
+    ]
+    if schema is not None and have_jsonschema:
+        rules.insert(0, ("schema", lambda: schema_messages(family, relaxed_schema(schema))))
+    else:
+        rules.insert(0, ("shape", lambda: family_shape_messages(family)))
+    messages = []
+    for label, rule in rules:
+        if have_jsonschema:
+            messages.extend(rule())
+            continue
+        try:
+            messages.extend(rule())
+        except Exception as exc:
+            messages.append(
+                f"{label}: could not be checked without the JSON-Schema shape check: "
+                f"{type(exc).__name__}: {exc}"
+            )
+    findings = [Finding(family.name, m, 1, owners) for m in messages]
+    if not members:
+        findings.append(
+            Finding(
+                family.name,
+                f"family {family.name!r} has no member: no descriptor extends it (a family is "
+                f"never bindable and never runs; add {family.name}-<project>/type.yaml with "
+                f"'{type_registry.EXTENDS_KEY}: {family.name}', or pass the root that holds "
+                "the member with --extra-roots)",
+                1,
+                frozenset({family.name}),
+            )
+        )
+    return findings
+
+
 # ─── Gate 1: data-only descriptor roots (design §3.5.1, PR1-21) ─────────────────
 
 
@@ -1032,6 +1301,7 @@ def data_only_findings(registry):
     are invoked by their cwd-relative path; a `types/<t>` shipped via git-subdir
     receives descriptor data only, never code (design §3.5.1, §3.7)."""
     names = set(registry.names())
+    families = set(registry.families())
     findings = []
     for root in registry.roots:
         root = Path(root)
@@ -1041,14 +1311,21 @@ def data_only_findings(registry):
             if path.suffix.lower() not in CODE_SUFFIXES and not _has_shebang(path):
                 continue
             rel = path.relative_to(root)
-            owner = rel.parts[0] if len(rel.parts) > 1 and rel.parts[0] in names else None
+            first = rel.parts[0] if len(rel.parts) > 1 else None
+            if first in families:
+                # A family's directory concerns every member (--verify --type <member> keeps it).
+                owners = frozenset({first, *registry.members(first)})
+            elif first in names:
+                owners = frozenset({first})
+            else:
+                owners = frozenset()
             findings.append(
                 Finding(
                     "*",
                     f"executable code under the descriptor root: {path} (descriptor roots are "
                     "data only — design §3.5.1; scripts live in scripts/)",
                     1,
-                    frozenset({owner}) if owner else frozenset(),
+                    owners,
                 )
             )
     return findings
@@ -1111,8 +1388,16 @@ def _duplicates(pairs):
 def cross_type_findings(registry, env):
     findings = []
 
+    family_names = set(registry.families())
+
     def cross(message, names):
-        findings.append(Finding("*", message, 1, frozenset(names)))
+        # A finding that names a type family concerns its members too: what a family shares
+        # (a signal, a directory) is the member's, so --verify --type <member> keeps it.
+        owners = set(names)
+        for name in names:
+            if name in family_names:
+                owners.update(registry.members(name))
+        findings.append(Finding("*", message, 1, frozenset(owners)))
 
     bindings, binding_findings = _effective_bindings(registry, env)
     findings.extend(binding_findings)
@@ -1301,23 +1586,97 @@ def cross_type_findings(registry, env):
                     f"route type {name_a}'s local ids to type {name_b} (PR-3 D13)",
                     [name_a, name_b],
                 )
+    # (8) one owner per artifact directory, whatever the dirs key: frontmatter._schema_by_dir
+    #     is a first-match path table, artifact_utils.SCHEMAS is keyed by type and
+    #     restore-artifacts.sh restores a type's directories — two types reading one directory
+    #     would mis-type each other's artifacts. What makes "no shared directory" enforceable
+    #     once a member can inherit a dirs block (design §3.2.2).
+    dir_pairs = []
+    for name, desc in descs.items():
+        dirs = _opt(desc, "dirs")
+        if not isinstance(dirs, dict):
+            continue
+        for value in sorted({v for v in dirs.values() if isinstance(v, str) and v}):
+            dir_pairs.append((value, name))
+    for value, names in _duplicates(dir_pairs).items():
+        cross(
+            f"duplicate artifact directory {value!r} shared by types: {_fmt_types(names)} (one "
+            "owner per directory: frontmatter._schema_for, scan_tasks and restore-artifacts.sh "
+            "assume it)",
+            names,
+        )
+
+    # (9) one member per project within a type family (effective bindings): the project is
+    #     what tells the members of a family apart (design §3.2.2).
+    for family_name in registry.families():
+        by_project = {}
+        for name in registry.members(family_name):
+            b = bindings.get(name)
+            if not isinstance(b, dict):
+                continue
+            project = _discriminator(b)
+            if isinstance(project, str):
+                by_project.setdefault(project, []).append(name)
+        for project, names in by_project.items():
+            if len(names) > 1:
+                cross(
+                    f"members of family {family_name!r} share the effective project "
+                    f"{project!r}: {_fmt_types(names)} (one member per project: the project is "
+                    "what tells the members of a family apart)",
+                    names,
+                )
+
+    # (10) a binding override addressed to a family is a finding, never silently skipped
+    #      (§3.2.1 g): a family is never bindable, the member variables are what apply.
+    for family_name in registry.families():
+        members = registry.members(family_name)
+        for suffix in type_registry.BINDING_OVERRIDE_FIELDS:
+            var = type_registry.binding_env_var(family_name, suffix)
+            value = env.get(var, "")
+            if not (isinstance(value, str) and value.strip()):
+                continue  # blank or non-string counts as unset, as the registry reads it
+            alternatives = ", ".join(type_registry.binding_env_var(m, suffix) for m in members)
+            findings.append(
+                Finding(
+                    "*",
+                    f"{var} targets family {family_name!r}, which is never bindable: set it on "
+                    f"a member ({alternatives or 'none registered'})",
+                    1,
+                    frozenset({family_name, *members}),
+                )
+            )
+
     # (7) classification (design §6, AISDLC-189): the same signal phrase on two types tells
     #     the create step nothing, and once one registered type declares the block the create
     #     step builds its notice or question from every type that lists the create stage, so a
     #     type without a block would be invisible to it.
+    #     Type families (design §3.2.2): a member inherits the family's signals, so it
+    #     contributes only its OWN; the family is a participant under its own name (a
+    #     family-vs-rfe collision is found once, at its source; a member repeating a family
+    #     signal is named with it). ``classified`` and the all-or-none subjects are the concrete
+    #     types, judged on the merged block (a member inheriting the block counts).
     signal_pairs = []
     classified = []
+
+    def add_signals(block, owner):
+        signals = block.get("signals") if isinstance(block, dict) else None
+        if not isinstance(signals, list):
+            return  # the per-type rule and the schema report the shape
+        for value in signals:
+            if isinstance(value, str) and value.strip():
+                signal_pairs.append((_normalize_phrase(value), owner))
+
     for name, desc in descs.items():
         block = _opt(desc, "classification")
         if not isinstance(block, dict):
             continue
         classified.append(name)
-        signals = block.get("signals")
-        if not isinstance(signals, list):
-            continue  # the per-type rule and the schema report the shape
-        for value in signals:
-            if isinstance(value, str) and value.strip():
-                signal_pairs.append((_normalize_phrase(value), name))
+        if getattr(desc, "family", None) is not None:
+            own = getattr(desc, "own", None) or {}
+            block = own.get("classification") if isinstance(own, dict) else None
+        add_signals(block, name)
+    for family_name in registry.families():
+        add_signals(_opt(registry.family(family_name), "classification"), family_name)
     for phrase, names in _duplicates(signal_pairs).items():
         names = sorted(set(names))
         if len(names) > 1:
@@ -1432,24 +1791,31 @@ def validate_all(
         return Report([], [Finding("*", f"cannot load type registry: {exc}")])
 
     names = list(registry.names())
+    families = list(registry.families())
     if not names:
         # Never a vacuous pass: make lint / lint.yml depend on this exit code, so a
         # mis-set --root or a checkout without types/ must fail, not print "0 valid".
         roots = ", ".join(str(r) for r in registry.roots)
-        return Report(
-            [],
-            [
-                Finding(
-                    "*",
-                    f"no type descriptors found under {roots} (expected <root>/<name>/type.yaml)",
-                )
-            ],
-        )
+        if families:
+            plural = "is a type family" if len(families) == 1 else "are type families"
+            text = (
+                f"no concrete type descriptors found under {roots}: {', '.join(families)} "
+                f"{plural} ({type_registry.FAMILY_MARKER}: true) and no descriptor extends them "
+                f"(expected <root>/<name>/type.yaml with '{type_registry.EXTENDS_KEY}: <family>')"
+            )
+        else:
+            text = f"no type descriptors found under {roots} (expected <root>/<name>/type.yaml)"
+        return Report([], [Finding("*", text)])
     if only is not None and only not in names:
-        return Report(
-            [],
-            [Finding("*", f"unknown type {only!r} (available: {', '.join(names) or 'none'})")],
-        )
+        if only in families:
+            members = ", ".join(registry.members(only)) or "none"
+            text = (
+                f"type {only!r} is a type family ({type_registry.FAMILY_MARKER}: true): never "
+                f"bindable and never run; verify one of its members: {members}"
+            )
+        else:
+            text = f"unknown type {only!r} (available: {', '.join(names) or 'none'})"
+        return Report([], [Finding("*", text)])
 
     findings = []
     warnings = []
@@ -1530,6 +1896,33 @@ def validate_all(
                 )
             ]
 
+    # Type families first (design §3.2.2): a family's findings are attributed to the family and
+    # its members, so a member's --verify keeps them and another type's drops them.
+    for family_name in families:
+        members = registry.members(family_name)
+        owners = frozenset({family_name, *members})
+        try:
+            family_results = family_findings(
+                registry.family(family_name), schema, repo_root, members, have_jsonschema
+            )
+        except Exception as exc:
+            # Like ``guarded`` below, but owned by the family and its members only: a crash in
+            # a drop-in family must not fail another type's --verify.
+            if have_jsonschema:
+                raise
+            family_results = [
+                Finding(
+                    "*",
+                    f"type family {family_name!r} could not be checked without the JSON-Schema "
+                    f"shape check: {type(exc).__name__}: {exc}",
+                    1,
+                    owners,
+                )
+            ]
+        for finding in family_results:
+            if only is None or only in finding.types:
+                findings.append(finding)
+
     artifact_utils = _load_artifact_utils()
     for desc in registry:
         if only is not None and desc.name != only:
@@ -1564,7 +1957,9 @@ def validate_all(
             if only is None or not finding.types or only in finding.types:
                 findings.append(finding)
 
-    return Report([only] if only is not None else names, findings, warnings)
+    if only is not None:
+        families = [f for f in families if only in registry.members(f)]
+    return Report([only] if only is not None else names, findings, warnings, families)
 
 
 def build_parser():
@@ -1648,7 +2043,10 @@ def main(argv=None):
             diagnosis = " | ".join(f.message for f in report.findings)
             print(f"VERIFY FAILED: type {args.type!r} — {diagnosis}{note}")
     elif report.ok:
-        print(f"OK: {len(report.types)} type(s) valid: {', '.join(report.types)}")
+        tail = ""
+        if report.families:  # appended only when a type family exists: the plain line is pinned
+            tail = f"; {len(report.families)} family(ies) checked: {', '.join(report.families)}"
+        print(f"OK: {len(report.types)} type(s) valid: {', '.join(report.types)}{tail}")
     else:
         for line in report.lines():
             print(line)

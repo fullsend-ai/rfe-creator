@@ -1,0 +1,25 @@
+# Typed prose for the fixture family's generated eval config (never committed: the tests render
+# it into a temporary repo root). Schema: types/_schema/eval-fragment.schema.json.
+schema_version: 1
+entity_long: Brief (fixture)
+execution:
+  timeout_note: fixture
+dataset:
+  prompt: A one-line brief objective
+  clarifying_context: "- clarifying_context (string): fixture"
+inputs:
+  questions_context: fixture
+  questions_answer: fixture
+outputs:
+  task_fields: brief id, title, priority, status
+  task_sections: Objective
+  review_files: "{ID}-feasibility.md, {ID}-alignment.md"
+  review_body: Assessor Feedback
+architecture_context:
+  not_relevant_pattern: null
+  not_relevant_note: ""
+quality:
+  criteria: "- WHAT\n- WHY\n- Right-sized"
+  extra_checks: none
+revision:
+  assessments: fixture

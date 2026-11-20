@@ -1,0 +1,44 @@
+# tests/fixtures/type-families/brief-globex/type.yaml — member two of the `brief` family: the
+# GLOBEX project, plus the three merge-rule demonstrations (a replaced list, a deep-merged
+# label, a dimension merged by name).
+schema_version: 1
+type: brief-globex
+extends: brief
+identity:
+  jira:
+    project: GLOBEX
+    key_prefixes: ["GLOBEX-"]
+  local_prefix: "BRG-"
+  local_id_pattern: '^BRG-\d+$'
+  id_field: brief_globex_id
+dirs:
+  tasks: artifacts/brief-globex-tasks
+  originals: artifacts/brief-globex-originals
+  reviews: artifacts/brief-globex-reviews
+conventions:
+  query_default: 'project = GLOBEX AND issuetype = Brief'
+  parent_key_patterns: ['GLOBEXOUT-\d+', 'BRG-\d+']
+  labels:
+    needs_attention: brief-globex-needs-attention   # deep-merge: one label overridden, the rest inherited
+classification:
+  signals:                                   # concatenated after the family's two
+    - a globex-only fixture cue
+  examples:                                  # a list: REPLACES the family's
+    - Write the Globex launch brief
+pipeline:
+  poll_prefix: "brief-globex-"
+  state_prefix: "brief-globex-"
+  dimensions:
+    - name: alignment                        # merged by name: prompt, blocking and frontmatter_field inherited
+      condition: { prefix: "GLOBEXOUT-" }
+      skip_stub: { result: not_assessed, reason: "skipped by pipeline (no GLOBEX Outcome parent)" }
+snapshot:
+  prefix: "brief-globex-snapshot-"
+  report_prefix: "brief-globex-run-"
+  results_subdir: "brief-globex"
+eval:
+  config: eval-initiative.yaml               # existence stand-in: never regenerated in place
+  dataset: eval/initiative-dataset/cases     # existence stand-in
+  mlflow_experiment: brief-globex-speedrun-eval
+  thresholds:
+    brief-globex_quality: { min_mean: 3.5 }
