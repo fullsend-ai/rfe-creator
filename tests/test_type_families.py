@@ -1569,6 +1569,8 @@ class TestRegistryCli:
             "REPORT_PREFIX": "brief-acme-run-",
             "NEXT_ID_FLAGS": "--prefix BRA --dir artifacts/brief-acme-tasks",
             "KEY_PREFIX": "ACME-",
+            "PROJECT": "ACME",  # AISDLC-851: the member's own project and parent-key prefix
+            "PARENT_KEY_PREFIX": "ACMEOUT-",
             "ID_FIELD": "brief_acme_id",
             "NEEDS_ATTENTION_LABEL": "brief-needs-attention",
         }
@@ -1581,6 +1583,7 @@ class TestRegistryCli:
     def test_launch_vars_globex_overrides(self):
         pairs = self._pairs(_registry("launch-vars", "brief-globex", "review").stdout)
         assert pairs["DIMENSION_ALIGNMENT_CONDITION"] == "parent_key startswith GLOBEXOUT-"
+        assert (pairs["PROJECT"], pairs["PARENT_KEY_PREFIX"]) == ("GLOBEX", "GLOBEXOUT-")
         assert pairs["NEEDS_ATTENTION_LABEL"] == "brief-globex-needs-attention"
         assert pairs["TYPE_CONFIRMED_LABEL"] == "brief-type-confirmed"
         assert pairs["QUERY_DEFAULT"] == "project = GLOBEX AND issuetype = Brief"
@@ -1813,6 +1816,9 @@ class TestTrackerBoundMemberKeys:
             "identity.github.alias_prefix",
         ]
         assert list(validate_types._member_own_keys("nope")) == list(validate_types.MEMBER_OWN_KEYS)
+        # AISDLC-851: PROJECT is the tracker's own discriminator — identity.github.repo here.
+        block = dict(type_registry.launch_vars(reg.get("brief-acme"), "review"))
+        assert (block["PROJECT"], block["KEY_PREFIX"]) == ("acme/briefs", "ACME-")
 
     @pytest.mark.parametrize("key", ["repo", "alias_prefix"])
     def test_a_github_member_owns_its_repo_and_alias_prefix(self, families_copy, key):

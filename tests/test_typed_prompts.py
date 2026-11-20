@@ -2,7 +2,9 @@
 
 Every sentence of the legacy per-type prompt files survives in the generic surface: the prompt
 skeleton rendered with the type's launch block (``type_registry.py launch-vars``) plus the
-typed files under ``types/<t>/``. PR-5c deleted the legacy files; the corpus is frozen under
+typed files under ``types/<t>/``, rendered the same way (an agent reads them with the launch
+block in context, so a ``{PROJECT}`` or ``{TASKS_DIR}`` in them is a value, not a token; see
+``_cases``). PR-5c deleted the legacy files; the corpus is frozen under
 ``tests/fixtures/legacy-prompts/<type>/`` (its README maps each fixture to the file it was) and
 is never edited — a later prose change to the generic surface is recorded in ALLOWED, not by
 rewriting the fixture. Sentences are compared after a mechanical normalisation
@@ -253,6 +255,25 @@ _PARENT_FIELD_INIT = (
     'fields=["summary","description","priority","labels","status","issuetype","project"]',
 )
 _allow("initiative", f"{LEGACY}/initiative/prompts/fetch-agent.md", *_PARENT_FIELD_INIT)
+# AISDLC-851: project literals became {PROJECT} / {PARENT_KEY_PREFIX} / {TASKS_DIR} / {REVIEWS_DIR}
+# — the Initiative prose is a type family's and names no member's project. The directories
+# render back to the legacy paths (every script invocation survives, no command allowance);
+# the sentences that spelt RHAISTRAT render with the project in another place or with
+# "does not start with" for "does not match", so these three files each lose a few.
+_allow(
+    "initiative",
+    f"{LEGACY}/initiative/dimensions/alignment.md",
+    "advances its parent rhaistrat outcome",
+    "if is absent, null, or does not match",
+    "comparing the initiative against the rhaistrat outcome",
+)
+_allow(
+    "initiative",
+    f"{LEGACY}/initiative/prompts/review-agent.md",
+    "(no rhaistrat parent or agent did not complete)",
+    "not assessed (no rhaistrat parent)",
+)
+_allow("initiative", f"{LEGACY}/initiative/create.md", "roll up to an existing rhaistrat outcome")
 
 
 def sections(text, headings):
@@ -285,7 +306,10 @@ def _cases():
         prompts = desc.get("pipeline.prompts")
         dims = {d["name"]: d["prompt"] for d in desc.get("pipeline.dimensions")}
         legacy = f"{LEGACY}/{t}"
-        typed = {k: read(v) for k, v in prompts.items()}
+        # The typed files and the dimension prompts are read by agents that hold the launch
+        # block (rfe-review SKILL.md "Agent prompts", rfe-create Step 2, the dispatcher's
+        # _collect_vars), so they are compared rendered, like the skeletons (AISDLC-851).
+        typed = {k: render(read(v), pairs) for k, v in prompts.items()}
         generic = {
             stage: render(read(f".claude/skills/rfe-{stage}/SKILL.md"), pairs)
             for stage in ("create", "review", "split", "submit", "auto-fix", "speedrun")
@@ -302,10 +326,10 @@ def _cases():
             (f"{legacy}/prompts/revise-agent.md", skeleton["revise"] + typed["revise_rules"]),
             (f"{legacy}/prompts/fetch-agent.md", skeleton["fetch"]),
             (f"{legacy}/prompts/assess-agent.md", skeleton["assess"]),
-            (f"{legacy}/prompts/split-agent.md", render(typed["split_rules"], pairs)),
+            (f"{legacy}/prompts/split-agent.md", typed["split_rules"]),
         ]
         for name, prompt in dims.items():
-            full.append((f"{legacy}/dimensions/{name}.md", read(prompt)))
+            full.append((f"{legacy}/dimensions/{name}.md", render(read(prompt), pairs)))
         for rel, corpus in full:
             yield pytest.param(t, rel, read(rel), corpus, "full", id=f"{t}:{rel.split('/')[-1]}")
         create_rel = f"{legacy}/create.md"

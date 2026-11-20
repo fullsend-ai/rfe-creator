@@ -2620,6 +2620,21 @@ class TestSkillLayer:
             set(re.findall(r"^- \*\*(\w+)\*\*:", prompt, re.M)),
         )
 
+    def test_project_and_parent_key_prefix_launch_vars(self, ctx):
+        # AISDLC-851: the typed prose names the tracker project and the parent-key prefix
+        # through the launch block (so a type family's files serve every member); both are
+        # descriptor projections — never the binding overlay, like KEY_PREFIX — and the
+        # second is empty, like PARENT_FIELD, for a type whose dimensions do not read parent_key.
+        block = dict(launch(ctx.t))
+        pin("identity.jira.project", "launch block PROJECT", ctx.jira["project"], block["PROJECT"])
+        pin(
+            "pipeline.dimensions[].condition.prefix (frontmatter_field: parent_key)",
+            "launch block PARENT_KEY_PREFIX",
+            " or ".join(ctx.desc.condition_prefixes("parent_key")),
+            block["PARENT_KEY_PREFIX"],
+        )
+        assert (block["PARENT_KEY_PREFIX"] == "") is ("alignment" not in ctx.dims)
+
     def test_fetch_agent_companions(self, ctx):
         # rows: 226 — one Tier-1 fetch skeleton: step 1 is `fetch_issue.py {KEY} --fetch-all
         # artifacts --type <t>` (TYPE_FLAG), the MCP fallback runs only on exit 2, the comments
@@ -2831,8 +2846,10 @@ class TestSkillLayer:
             assert not missing, (rel, missing)
 
     def test_feasibility_dimension_io(self, ctx):
-        # rows: 231 — types/<t>/dimensions/feasibility.md (the body of the former dimension skill)
-        text = read(ctx.dims["feasibility"]["prompt"])
+        # rows: 231 — types/<t>/dimensions/feasibility.md (the body of the former dimension skill),
+        # rendered with the launch block: a typed file names its directories literally or, for a
+        # type family's shared prose, as {TASKS_DIR} / {REVIEWS_DIR} (AISDLC-851)
+        text = render(read(ctx.dims["feasibility"]["prompt"]), ctx.t)
         assert f"`{ctx.dirs['reviews']}/{{ID}}-feasibility.md`" in text
         assert f"`{ctx.dirs['tasks']}/{{ID}}.md`" in text
         assert ("-comments.md" in text) is ctx.d["companions"]["comments"]

@@ -615,7 +615,17 @@ is decided from the descriptor, never from the type name: a type without such a 
 whose `parent_key_patterns` exist for split children only) requests no `parent` field and hands
 `frontmatter.py` no `parent_key` argument — `tests/test_fetch_issue.py` records both. The
 fetch skeleton's MCP fallback carries the same rule through the `PARENT_FIELD` / `PARENT_KEY_SET`
-launch vars (both render empty for every other type, so its text is byte-identical). The parent's
+launch vars (both render empty for every other type, so its text is byte-identical). The typed
+prose names the same facts through two more launch vars instead of a project literal: `PROJECT`,
+the descriptor's `identity.jira.project` (`identity.github.repo` for a github tracker), and
+`PARENT_KEY_PREFIX`, those condition prefixes joined by ` or ` (`RHAISTRAT-` for the Initiative,
+empty for `rfe` like `PARENT_FIELD`; the prose reads it as one span — "does not start with
+`RHAISTRAT-`" — so a second prefix would render `A- or B-` there, the `PARENT_KEY_SET` shape).
+Both are the DESCRIPTOR's values, never the binding overlay — exactly like `KEY_PREFIX`, the write
+prefix — and the typed files name their task and review directories as `{TASKS_DIR}` /
+`{REVIEWS_DIR}`, so a type family's shared prose (`types/initiative/dimensions/`, `prompts/`)
+renders for each member's own project and names no project and no task or review directory
+itself. The parent's
 issue type is not consulted (the schema's note that `parent_is_outcome` is deliberately not
 expressible stands): a RHAISTRAT Feature parent is recorded like an Outcome and the alignment agent
 judges what it fetches.
