@@ -1189,12 +1189,27 @@ def family_shape_messages(family):
 
 
 def _family_rubric_messages(family):
-    """The rubric pin is checked on the family only when the family declares the pin's
-    discriminator ``repo``; a family that carries only ``path`` leaves the pin to its members."""
+    """The grammar of the rubric pin fields the family DECLARES, never a missing one: a family
+    may carry the repo and leave the ref (or the content hash) to its members, and the merged
+    member is held to the full pin by ``rubric_ref_messages``."""
     rubric = _opt(family, "pipeline.rubric")
-    if isinstance(rubric, dict) and "repo" in rubric:
-        return rubric_ref_messages(family)
-    return []
+    if not isinstance(rubric, dict):
+        return []
+    messages = []
+    ref = rubric.get("ref", _ABSENT)
+    if ref is not _ABSENT and not (isinstance(ref, str) and RUBRIC_REF_RE.fullmatch(ref)):
+        messages.append(
+            f"pipeline.rubric.ref must be a 7-40 character lowercase hex commit SHA, got {ref!r}"
+        )
+    version = rubric.get("rubric_version", _ABSENT)
+    if version is not _ABSENT and not (
+        isinstance(version, str) and RUBRIC_VERSION_RE.fullmatch(version)
+    ):
+        messages.append(
+            "pipeline.rubric.rubric_version must be a 7-64 character lowercase hex content hash "
+            f"(D3), got {version!r}"
+        )
+    return messages
 
 
 def _family_member_own_key_messages(family):

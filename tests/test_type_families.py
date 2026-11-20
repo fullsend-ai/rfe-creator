@@ -1974,14 +1974,52 @@ class TestFamilyGateEdges:
             )
         report = _validate(families_copy)
         assert report.ok, report.lines()
-        # A family that declares the pin's discriminator is held to the pin.
+        # A family may carry the repo and leave the content hash to its members: no family
+        # finding; the merged members complete the pin.
         _mutate(
             families_copy,
             FAMILY,
             lambda d: d["pipeline"].__setitem__("rubric", {"repo": "self", "path": "x.md"}),
         )
+        for name in MEMBERS:
+            _mutate(
+                families_copy,
+                name,
+                lambda d: d["pipeline"].__setitem__("rubric", {"rubric_version": "0000000"}),
+            )
         report = _validate(families_copy)
-        assert (
-            "pipeline.rubric.rubric_version must be a 7-64 character lowercase hex content hash "
-            "when pipeline.rubric.repo is 'self' (D3), got None"
-        ) in _messages(report, FAMILY)
+        assert report.ok, report.lines()
+        # Members that do not complete it are the ones told (the full pin, on merged data).
+        for name in MEMBERS:
+            _mutate(families_copy, name, lambda d: d["pipeline"].pop("rubric"))
+        report = _validate(families_copy)
+        assert _messages(report, FAMILY) == []
+        for name in MEMBERS:
+            assert (
+                "pipeline.rubric.rubric_version must be a 7-64 character lowercase hex content "
+                "hash when pipeline.rubric.repo is 'self' (D3), got None"
+            ) in _messages(report, name)
+
+    @pytest.mark.parametrize(
+        "rubric, message",
+        [
+            (
+                {"repo": "self", "rubric_version": "XYZ"},
+                "pipeline.rubric.rubric_version must be a 7-64 character lowercase hex content "
+                "hash (D3), got 'XYZ'",
+            ),
+            (
+                {"repo": "https://github.com/fullsend-ai/assess-rfe", "ref": "nothex"},
+                "pipeline.rubric.ref must be a 7-40 character lowercase hex commit SHA, got "
+                "'nothex'",
+            ),
+        ],
+    )
+    def test_a_declared_family_pin_field_is_held_to_its_grammar(
+        self, families_copy, rubric, message
+    ):
+        rubric = {"path": ".claude/skills/rfe-review/prompts/review-agent.md", **rubric}
+        _mutate(families_copy, FAMILY, lambda d: d["pipeline"].__setitem__("rubric", rubric))
+        report = _validate(families_copy)
+        hits = _assert_finding(report, message, FAMILY)
+        assert hits[0].types == frozenset({FAMILY, *MEMBERS})
