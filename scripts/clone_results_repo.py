@@ -99,11 +99,14 @@ def type_layouts(type_names):
     registry = type_registry.load()
     layouts = []
     for name in type_names:
-        if name not in registry.names():
+        # A single-member family's name selects its member's subtree (design §3.2.2).
+        try:
+            concrete = registry.canonical(name)
+        except KeyError:
             raise ValueError(
                 f"{TYPES_ENV}: unknown type {name!r} (registered: {', '.join(registry.names())})"
-            )
-        desc = registry.get(name)
+            ) from None
+        desc = registry.get(concrete)
         try:
             layouts.append((desc.get("snapshot.results_subdir"), desc.get("snapshot.prefix")))
         except KeyError as exc:

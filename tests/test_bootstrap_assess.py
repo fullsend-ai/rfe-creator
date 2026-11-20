@@ -2,8 +2,10 @@
 """Tests for scripts/bootstrap.sh --type validation.
 
 Bootstrap is the only gate between "the plugin checkout is complete" and an
-agent phase that can never finish. A checkout missing the initiative rubric or
-the initiative-scorer agent used to exit 0 here, and the failure surfaced much
+agent phase that can never finish. It checks the requested type's own rubric
+(pipeline.rubric.path) and scorer agent (pipeline.scorer_agent) for EVERY type,
+the rfe pipeline's included. A checkout missing the initiative rubric or the
+initiative-scorer agent used to exit 0 here, and the failure surfaced much
 later as wait-for-wave returning exit 3 forever with nothing to diagnose.
 """
 
@@ -26,6 +28,11 @@ SKILLS_DIR = os.path.join(REPO_ROOT, ".claude", "skills")
 
 RFE_RUBRIC = "skills/assess-rfe/scripts/agent_prompt.md"
 INITIATIVE_RUBRIC = "skills/assess-initiative/scripts/agent_prompt.md"
+# The reference type family (tests/fixtures/type-families): brief/ is the family, brief-acme/
+# and brief-globex/ its members; the family file holds the rubric block and scorer_agent line.
+FAMILIES_ROOT = os.path.join(REPO_ROOT, "tests", "fixtures", "type-families")
+FAMILY_RUBRIC = ".claude/skills/rfe-review/prompts/review-agent.md"  # brief pipeline.rubric.path
+SKIP_LINE = "RFE_SKIP_BOOTSTRAP set - skipping dependency bootstrapping step\n"
 
 
 def _touch(path):
@@ -72,7 +79,10 @@ def _run(*args):
 
 
 def _add_rfe_assets(ctx):
+    # The rfe pipeline's own assets: its rubric and its scorer agent (pipeline.scorer_agent),
+    # both checked by the bootstrap for the requested type.
     _touch(str(ctx / RFE_RUBRIC))
+    _touch(str(ctx / "agents" / "rfe-scorer.md"))
 
 
 def _add_initiative_assets(ctx, rubric=True, agent=True):
@@ -89,6 +99,19 @@ class TestTypeValidation:
 
         _, stderr, rc = _run()
         assert rc == 0, stderr
+
+    def test_rfe_fails_when_scorer_agent_missing(self, fake_checkout):
+        """The gate is every type's, the rfe pipeline's included: its rubric alone does not
+        let the bootstrap exit 0 when agents/rfe-scorer.md is absent."""
+        _touch(str(fake_checkout / RFE_RUBRIC))
+
+        _, stderr, rc = _run()
+        assert rc == 1
+        assert (
+            "ERROR: Agent definition .claude/agents/rfe-scorer.md not installed by bootstrap"
+        ) in stderr
+        assert "The rfe assess agent launches with subagent_type: rfe-scorer;" in stderr
+        assert "ASSESS phase never completes" in stderr
 
     def test_initiative_fails_when_rubric_missing(self, fake_checkout):
         """The exact upstream state today: RFE rubric present, initiative absent."""
@@ -140,6 +163,21 @@ class TestTypeValidation:
         assert result.returncode == 2
         assert "registered types: rfe, initiative" in result.stderr
         assert result.stdout == ""
+
+    @pytest.mark.parametrize("value", ["-h", "--help"])
+    def test_an_option_shaped_type_value_is_unknown_not_help(self, value):
+        """`--type -h`: the value reaches `type_registry.py canonical -- <value>` behind `--`,
+        so argparse never answers with its help text; the script refuses it as an unknown
+        type, with nothing on stdout."""
+        env = {**os.environ, "RFE_SKIP_BOOTSTRAP": "1"}
+        result = subprocess.run(
+            ["bash", SCRIPT, "--type", value], capture_output=True, text=True, env=env
+        )
+        assert result.returncode == 2
+        assert result.stdout == ""
+        assert result.stderr == (
+            f"ERROR: unknown --type '{value}' (registered types: rfe, initiative)\n"
+        )
 
     def test_drop_in_type_is_accepted(self, fake_checkout, drop_in_root):
         """A type the registry enumerates (here through the RFE_CREATOR_EXTRA_TYPES seam,
@@ -529,10 +567,11 @@ class TestLayout:
 
 
 class TestPathsMatchPipelineRegistry:
-    """The shell script restates paths PIPELINE_TYPES already owns.
+    """The shell script checks the paths PIPELINE_TYPES already owns, read from the same
+    descriptor fields (pipeline.rubric.path, pipeline.scorer_agent) through the registry.
 
-    Duplication is fine, silent divergence is not: if the rubric moves in the
-    registry but not here, bootstrap validates a path nothing reads.
+    Silent divergence is the failure mode: if the rubric moved in the registry but the
+    bootstrap kept a literal, it would validate a path nothing reads.
     """
 
     def _script_text(self):
@@ -543,13 +582,26 @@ class TestPathsMatchPipelineRegistry:
         assert PIPELINE_TYPES["rfe"]["rubric_path"].endswith(RFE_RUBRIC)
         assert RFE_RUBRIC in self._script_text()
 
-    def test_initiative_rubric_matches_registry(self):
+    def test_every_type_rubric_is_read_from_the_registry(self):
+        text = self._script_text()
+        assert 'get "$PIPELINE_TYPE" pipeline.rubric.path' in text
+        assert "INITIATIVE_RUBRIC" not in text, "no per-type literal: the descriptor owns the path"
+        for name, cfg in PIPELINE_TYPES.items():
+            desc = type_registry.load().get(name)
+            assert (
+                cfg["rubric_path"]
+                == f"{type_registry.CONTEXT_DIR}/{desc.get('pipeline.rubric.path')}"
+            )
         assert PIPELINE_TYPES["initiative"]["rubric_path"].endswith(INITIATIVE_RUBRIC)
-        assert INITIATIVE_RUBRIC in self._script_text()
 
-    def test_scorer_agent_filename_matches_registry(self):
-        expected = PIPELINE_TYPES["initiative"]["scorer_type"] + ".md"
-        assert f'INITIATIVE_AGENT="{expected}"' in self._script_text()
+    def test_every_type_scorer_agent_is_read_from_the_registry(self):
+        text = self._script_text()
+        assert 'get "$PIPELINE_TYPE" pipeline.scorer_agent' in text
+        assert "INITIATIVE_AGENT" not in text, "no per-type literal: the descriptor owns the agent"
+        for name, cfg in PIPELINE_TYPES.items():
+            desc = type_registry.load().get(name)
+            assert cfg["scorer_type"] == desc.get("pipeline.scorer_agent")
+        assert PIPELINE_TYPES["initiative"]["scorer_type"] == "initiative-scorer"
 
 
 class TestCallersDeclareType:
@@ -752,6 +804,7 @@ class TestRubricPin:
         subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True)
         env_args = ["-c", "user.name=t", "-c", "user.email=t@example.com"]
         _touch(str(repo / RFE_RUBRIC))
+        _touch(str(repo / "agents" / "rfe-scorer.md"))
         _touch(str(repo / "skills" / "export-rubric" / "scripts" / "export_rubric.py"))
         subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
         subprocess.run(["git", "-C", str(repo), *env_args, "commit", "-q", "-m", "one"], check=True)
@@ -1152,3 +1205,231 @@ class TestRubricPin:
                 values[field] = registry
             assert re.fullmatch(r"[0-9a-f]{40}", values["ref"]), (name, values)
             assert values["repo"] == "https://github.com/fullsend-ai/assess-rfe", (name, values)
+
+
+class TestFamilyFallback:
+    """The single-member type-family alias in the script's no-registry branches (design
+    §3.2.2, AISDLC-851). The shipped-root fallback (``sole_member_from_root``) answers
+    ``--type <family>`` only when the registry could not be read at all — a registry that
+    answered and refused the name is final — and the awk readers follow a member's ``extends:``
+    to the family file that holds the ``rubric:`` block and the ``scorer_agent:`` line
+    (``rubric_descriptor_dir``). The reference family minus ``brief-globex`` is the
+    single-member root; the fixtures id with ACME-/BRA- only."""
+
+    @staticmethod
+    def _single_root(tmp_path):
+        root = tmp_path / "single-member"
+        shutil.copytree(FAMILIES_ROOT, root)
+        shutil.rmtree(root / "brief-globex")
+        return root
+
+    @staticmethod
+    def _stray(tmp_path, name, root, with_registry=False):
+        """A copy of the script beside a types/ root; with ``with_registry`` the registry
+        script too (self-contained: stdlib + PyYAML), so ``python3 <scripts>/type_registry.py``
+        answers over that root exactly as the shipped checkout's does over types/."""
+        stray = tmp_path / name
+        (stray / "scripts").mkdir(parents=True)
+        shutil.copy(SCRIPT, stray / "scripts" / "bootstrap.sh")
+        if with_registry:
+            shutil.copy(os.path.join(REPO_ROOT, "scripts", "type_registry.py"), stray / "scripts")
+        shutil.copytree(root, stray / "types")
+        return stray / "scripts" / "bootstrap.sh"
+
+    @staticmethod
+    def _failing_python(tmp_path):
+        """A python3 that fails: the registry cannot be read, only the root fallback answers."""
+        fakebin = tmp_path / "fakebin"
+        fakebin.mkdir()
+        shim = fakebin / "python3"
+        shim.write_text("#!/bin/sh\necho 'ERROR: fake registry failure' >&2\nexit 1\n")
+        shim.chmod(0o755)
+        return fakebin
+
+    @staticmethod
+    def _env(**extra):
+        """The developer's registry seams, pins and skip flag out; ``extra`` in."""
+        env = {
+            k: v
+            for k, v in os.environ.items()
+            if not k.startswith("RFE_CREATOR_")
+            and k not in ("ASSESS_RFE_REF", "ASSESS_RFE_REPO", "RFE_SKIP_BOOTSTRAP", "PYTHONPATH")
+        }
+        env.update(extra)
+        return env
+
+    @staticmethod
+    def _run(script, *args, env, cwd):
+        return subprocess.run(
+            ["bash", str(script), *args], capture_output=True, text=True, env=env, cwd=str(cwd)
+        )
+
+    def test_a_registry_that_refuses_the_family_is_final(self, tmp_path):
+        """With a readable registry its answer is the last word: ``canonical`` refuses a family
+        with two members and the root fallback must not run. First over a two-member shipped
+        root; then the case that tells the two apart — a single-member shipped root (the
+        fallback alone would answer brief-acme) with the second member registered through the
+        RFE_CREATOR_EXTRA_TYPES seam, so the registry sees two members and refuses."""
+        two = self._stray(tmp_path, "two", FAMILIES_ROOT, with_registry=True)
+        env = self._env(RFE_SKIP_BOOTSTRAP="1")
+        result = self._run(two, "--type", "brief", env=env, cwd=tmp_path)
+        assert (result.returncode, result.stdout) == (2, "")
+        assert result.stderr == (
+            "ERROR: unknown --type 'brief' (registered types: brief-acme, brief-globex)\n"
+        )
+        single = self._stray(tmp_path, "single", self._single_root(tmp_path), with_registry=True)
+        extra = tmp_path / "extra"
+        shutil.copytree(os.path.join(FAMILIES_ROOT, "brief-globex"), extra / "brief-globex")
+        seam = self._env(
+            RFE_SKIP_BOOTSTRAP="1",
+            RFE_CREATOR_EXTRA_TYPES=str(extra),
+            RFE_CREATOR_EXTRA_TYPES_ALLOWLIST=str(extra),
+        )
+        refused = self._run(single, "--type", "brief", env=seam, cwd=tmp_path)
+        assert (refused.returncode, refused.stdout) == (2, "")
+        assert refused.stderr == (
+            "ERROR: unknown --type 'brief' (registered types: brief-acme, brief-globex)\n"
+        )
+        # The same stray without the seam: the registry itself answers the member.
+        alone = self._run(single, "--type", "brief", env=env, cwd=tmp_path)
+        assert (alone.returncode, alone.stdout, alone.stderr) == (0, SKIP_LINE, "")
+
+    def test_an_unreadable_registry_falls_back_to_the_sole_member(self, tmp_path):
+        """No working python3 and a single-member shipped root: ``sole_member_from_root``
+        answers ``--type brief`` with the member; an unknown name keeps the root's list."""
+        script = self._stray(tmp_path, "single", self._single_root(tmp_path))
+        fakebin = self._failing_python(tmp_path)
+        env = self._env(RFE_SKIP_BOOTSTRAP="1", PATH=f"{fakebin}{os.pathsep}{os.environ['PATH']}")
+        result = self._run(script, "--type", "brief", env=env, cwd=tmp_path)
+        assert (result.returncode, result.stdout, result.stderr) == (0, SKIP_LINE, "")
+        bogus = self._run(script, "--type", "bogus", env=env, cwd=tmp_path)
+        assert (bogus.returncode, bogus.stdout) == (2, "")
+        assert bogus.stderr == "ERROR: unknown --type 'bogus' (registered types: brief-acme)\n"
+
+    def test_awk_readers_follow_a_members_extends_to_the_family_file(self, tmp_path):
+        """``rubric_descriptor_dir`` names the family when the member's own file has no
+        ``rubric:`` line, and the two readers then print the family's values; a type with its
+        own block (the shipped rfe) is read from its own file. The functions are sourced from
+        the script as written."""
+        with open(SCRIPT) as f:
+            text = f.read()
+        start = text.index("family_dir_from_root() {")
+        end = text.index("# The repository this checkout is cloned from")
+        probe = (
+            'TYPES_ROOT="$1"; PIPELINE_TYPE="$2"\n'
+            + text[start:end]
+            + "\nrubric_descriptor_dir; echo; rubric_field_from_root path; scorer_agent_from_root\n"
+        )
+
+        def run(root, type_name):
+            return subprocess.run(
+                ["bash", "-c", probe, "probe", str(root), type_name],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout
+
+        assert run(self._single_root(tmp_path), "brief-acme") == (
+            "brief\n.claude/skills/rfe-review/prompts/review-agent.md\nbrief-scorer\n"
+        )
+        assert run(os.path.join(REPO_ROOT, "types"), "rfe") == (
+            "rfe\nskills/assess-rfe/scripts/agent_prompt.md\nrfe-scorer\n"
+        )
+
+    def test_awk_readers_resolve_each_field_member_first_then_family(self, tmp_path):
+        """A member that overrides ONE rubric field keeps the family's others, and its own
+        ``scorer_agent`` wins over the family's: per field, like the registry's merge."""
+        root = self._single_root(tmp_path)
+        member = os.path.join(root, "brief-acme", "type.yaml")
+        with open(member) as f:
+            text = f.read()
+        text = text.replace(
+            "pipeline:\n",
+            "pipeline:\n  scorer_agent: acme-scorer\n  rubric:\n    path: own/rubric.md\n",
+            1,
+        )
+        with open(member, "w") as f:
+            f.write(text)
+        with open(SCRIPT) as f:
+            script = f.read()
+        start = script.index("family_dir_from_root() {")
+        end = script.index("# The repository this checkout is cloned from")
+        probe = (
+            'TYPES_ROOT="$1"; PIPELINE_TYPE="$2"\n'
+            + script[start:end]
+            + "\nrubric_field_from_root path; rubric_field_from_root rubric_version; "
+            "scorer_agent_from_root\n"
+        )
+        out = subprocess.run(
+            ["bash", "-c", probe, "probe", str(root), "brief-acme"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+        # path: the member's own; rubric_version: the family's; scorer_agent: the member's.
+        assert out == "own/rubric.md\n0000000\nacme-scorer\n"
+
+    @pytest.fixture
+    def family_assess_repo(self, tmp_path):
+        """A local assess-rfe stand-in for the brief family: commit one carries the shared
+        rubric file and the family's rubric path, commit two adds agents/brief-scorer.md.
+        Returns (url, sha_without_scorer, sha_with_scorer)."""
+        repo = tmp_path / "assess-origin"
+        repo.mkdir()
+        subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True)
+        git = ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@example.com"]
+        _touch(str(repo / RFE_RUBRIC))
+        _touch(str(repo / FAMILY_RUBRIC))
+        subprocess.run([*git, "add", "-A"], check=True)
+        subprocess.run([*git, "commit", "-q", "-m", "rubrics"], check=True)
+        without_scorer = TestRubricPin._git(repo, "rev-parse", "HEAD")
+        _touch(str(repo / "agents" / "brief-scorer.md"))
+        subprocess.run([*git, "add", "-A"], check=True)
+        subprocess.run([*git, "commit", "-q", "-m", "scorer"], check=True)
+        with_scorer = TestRubricPin._git(repo, "rev-parse", "HEAD")
+        return f"file://{repo}", without_scorer, with_scorer
+
+    def test_no_python_run_passes_the_rubric_and_scorer_checks_through_extends(
+        self, tmp_path, family_assess_repo
+    ):
+        """The first interactive run of a member whose family holds the rubric block: no
+        working python3, the stray script beside a single-member root. ``--type brief`` is
+        the root's sole member; the rubric path and the scorer agent are the family's, read
+        through ``rubric_descriptor_dir``'s ``extends:`` follow, and both checks pass against
+        a clone that has them. The pin is ASSESS_RFE_REF (the fixture family declares no
+        ``ref``). A clone at the commit without the scorer agent fails the scorer check for the
+        member by its family's agent name — the values were read, not skipped."""
+        url, without_scorer, with_scorer = family_assess_repo
+        script = self._stray(tmp_path, "stray", self._single_root(tmp_path))
+        fakebin = self._failing_python(tmp_path)
+        env = self._env(
+            PATH=f"{fakebin}{os.pathsep}{os.environ['PATH']}",
+            ASSESS_RFE_REPO=url,
+            ASSESS_RFE_REF=with_scorer,
+        )
+        wd = tmp_path / "wd"
+        wd.mkdir()
+        result = self._run(script, "--type", "brief", env=env, cwd=wd)
+        assert result.returncode == 0, result.stderr
+        assert f"cloning assess-rfe from {url} (ASSESS_RFE_REPO)" in result.stdout
+        assert (
+            f"assess-rfe at {with_scorer[:12]} (ASSESS_RFE_REF, already checked out)"
+            in result.stdout
+        )
+        assert os.path.isfile(wd / ".context" / "assess-rfe" / FAMILY_RUBRIC)
+        assert os.path.isfile(wd / ".claude" / "agents" / "brief-scorer.md")
+        assert os.path.islink(wd / "types")
+        assert os.path.isfile(wd / "types" / "brief-acme" / "type.yaml")
+        other = tmp_path / "wd-no-scorer"
+        other.mkdir()
+        env["ASSESS_RFE_REF"] = without_scorer
+        failed = self._run(script, "--type", "brief", env=env, cwd=other)
+        assert failed.returncode == 1, (failed.stdout, failed.stderr)
+        assert (
+            "ERROR: Agent definition .claude/agents/brief-scorer.md not installed by bootstrap"
+        ) in failed.stderr
+        assert "The brief-acme assess agent launches with subagent_type: brief-scorer;" in (
+            failed.stderr
+        )
+        assert "ASSESS phase never completes" in failed.stderr
+        assert os.path.isfile(other / ".context" / "assess-rfe" / FAMILY_RUBRIC)

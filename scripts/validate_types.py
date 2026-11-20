@@ -74,8 +74,9 @@ design-proposals/work-item-types-unified.md §3.3:
       snapshot.results_subdir after itself and shares no effective project with another
       member of its family; every
       artifact directory has one owner across types; cross rule 7 reads a member's own
-      signals with the families as participants; a family with no member and an
-      RFE_CREATOR_BINDING_<FAMILY>_* variable are findings; extends naming an unknown type,
+      signals with the families as participants; a family with no member, --verify --type
+      <family> for a family with none or several members, and an RFE_CREATOR_BINDING_<FAMILY>_*
+      variable are findings; extends naming an unknown type,
       a concrete type, a family in another drop-in root or itself, a family carrying
       extends, and abstract with any value but true fail at load ("cannot load type
       registry: ..."). The OK line appends "; k family(ies) checked: ..." only when a
@@ -114,8 +115,9 @@ design-proposals/work-item-types-unified.md §3.3:
       saw only because its scripts/ symlink resolved REPO_ROOT to the full checkout). The
       full lint keeps the eval gate (eval_gate=True, the Python API default).
     * a member of a type family is verified like any type on its merged descriptor; its
-      family's findings concern it and are kept. --verify --type <family> is refused (a
-      family is never run): verify one of its members.
+      family's findings concern it and are kept. --verify --type <family> verifies the sole
+      member of a single-member family (the alias, design §3.2.2) and is refused, naming the
+      members, for a family with none or several: a family is never run.
 
 Usage:
     python3 scripts/validate_types.py [--root DIR] [--extra-roots A:B]
@@ -1807,15 +1809,20 @@ def validate_all(
             text = f"no type descriptors found under {roots} (expected <root>/<name>/type.yaml)"
         return Report([], [Finding("*", text)])
     if only is not None and only not in names:
-        if only in families:
-            members = ", ".join(registry.members(only)) or "none"
-            text = (
-                f"type {only!r} is a type family ({type_registry.FAMILY_MARKER}: true): never "
-                f"bindable and never run; verify one of its members: {members}"
-            )
-        else:
-            text = f"unknown type {only!r} (available: {', '.join(names) or 'none'})"
-        return Report([], [Finding("*", text)])
+        # The one alias seam (design §3.2.2): --verify --type <family> verifies the sole member
+        # of a single-member family; a family with none or several is refused naming them.
+        try:
+            only = registry.canonical(only)
+        except KeyError:
+            if only in families:
+                text = (
+                    f"type {only!r} is a type family ({type_registry.FAMILY_MARKER}: true): "
+                    "never bindable and never run; verify one of its members: "
+                    f"{', '.join(registry.members(only)) or 'none'}"
+                )
+            else:
+                text = f"unknown type {only!r} (available: {', '.join(names) or 'none'})"
+            return Report([], [Finding("*", text)])
 
     findings = []
     warnings = []

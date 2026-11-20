@@ -242,6 +242,18 @@ def _render_thresholds(desc, notes):
     return "\n".join(lines)
 
 
+def eval_stem(desc):
+    """The stem of ``${gen.name}`` (the harness run name eval/runs/<stem>-speedrun/) and of
+    ``${gen.quality_judge}`` (``<stem>_quality``, the ``eval.thresholds`` key): the FAMILY's name
+    for a member of a type family and the type's own name otherwise. The metric history, the
+    pairwise baselines and the thresholds key are the family's (AISDLC-851); the ``--type`` the
+    harness passes stays the member's own name, which always resolves. Read from the merged data
+    (``extends`` stays on it), so a Descriptor hand-built over merged data derives the same stem
+    as the registry's. Two members of one family share the run name and the judge key: a
+    per-member identity is a decision for the second-member story."""
+    return desc.get(type_registry.EXTENDS_KEY, None) or desc.name
+
+
 def derived_values(desc, fragment_flat, repo_root=None):
     """The ${gen.*} table. Everything here is a projection of the descriptor (or, for the
     architecture-context pattern and the threshold notes, of the fragment)."""
@@ -345,12 +357,15 @@ def derived_values(desc, fragment_flat, repo_root=None):
     }
 
     return {
-        # <type>-speedrun: the harness's run name (eval/runs/<name>/<run-id>).
-        "name": f"{desc.name}-speedrun",
+        # <stem>-speedrun: the harness's run name (eval/runs/<name>/<run-id>); the family's
+        # stem for a member (eval_stem).
+        "name": f"{eval_stem(desc)}-speedrun",
         # The generic speedrun skill every type runs through (design §4.4; PR-5b) and the
         # explicit type it is given — `--type <t>` for every type, rfe included, so the CI
         # form never relies on the headless legacy default (plan D2).
         "skill": GENERIC_SPEEDRUN_SKILL,
+        # The type the harness passes is the CONCRETE one (a family name is ambiguous once
+        # it has two members); the run name and the judge key above/below stay the family's.
         "arguments": f"--headless --dry-run --input batch.yaml --type {desc.name}",
         # The generic create skill: the pipeline_flow judge's Phase-1 marker (plan D3).
         "create_skill": GENERIC_CREATE_SKILL,
@@ -362,8 +377,9 @@ def derived_values(desc, fragment_flat, repo_root=None):
         "score_fields_slash": "/".join(score_fields),
         "score_fields_py": repr(score_fields),
         "criteria_count": str(len(score_fields)),
-        # <type>_quality: the per-type LLM judge (eval.thresholds names it the same way).
-        "quality_judge": f"{desc.name}_quality",
+        # <stem>_quality: the per-type LLM judge (eval.thresholds names it the same way); the
+        # family's stem for a member, so the judge key survives the split.
+        "quality_judge": f"{eval_stem(desc)}_quality",
         # eval.annotations_extra as dataset-schema lines; enums from the review schema.
         "annotations_extra": "\n".join(annotations),
         # schema.review.extra_fields as review-schema prose, trailing comma for the list.
@@ -391,6 +407,9 @@ def _header(desc, repo_root=None):
     root = REPO_ROOT if repo_root is None else Path(repo_root)
     frag = Path(os.path.relpath(fragment_path(desc), root)).as_posix()
     typ = Path(os.path.relpath(desc.path, root)).as_posix()
+    family = getattr(desc, "family", None)
+    if family is not None and family.path is not None:
+        typ += f" (extends {Path(os.path.relpath(family.path, root)).as_posix()})"
     return (
         "# GENERATED — do not edit by hand. Regenerate: python3 scripts/generate_eval_config.py\n"
         f"# Sources: {SKELETON_RELPATH} (shared structure, checks and judge prose), {frag}\n"
@@ -566,8 +585,13 @@ def compare(desc, repo_root=None, skeleton_text=None):
 def _select(registry, only):
     if only is None:
         return list(registry)
-    if only not in registry:
-        raise GenerateError(f"unknown type {only!r} (available: {', '.join(registry.names())})")
+    # A single-member family's name renders its member (design §3.2.2).
+    try:
+        only = registry.canonical(only)
+    except KeyError:
+        raise GenerateError(
+            f"unknown type {only!r} (available: {', '.join(registry.names())})"
+        ) from None
     return [registry.get(only)]
 
 

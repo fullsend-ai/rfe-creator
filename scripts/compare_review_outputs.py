@@ -7,25 +7,36 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import type_registry
 import yaml
 from artifact_utils import read_frontmatter
 
 EXACT_FIELDS = ["pass", "recommendation", "auto_revised", "feasibility", "needs_attention"]
 TOLERANCE_FIELDS = ["score"]
 
+_TYPES = type_registry.load()
+
+
+# Per-type layout and sub-scores: the descriptor's dirs (bare form, the directories are joined
+# under golden_dir / new_dir) and schema.review.score_fields, derived for every registered type.
+def _has_compare_facts(desc):
+    """A partial drop-in descriptor without the three directories or the score fields takes
+    no row (and is not a --type choice here) rather than breaking the import."""
+    return all(
+        desc.get(dotted, None) is not None
+        for dotted in ("dirs.reviews", "dirs.originals", "dirs.tasks", "schema.review.score_fields")
+    )
+
+
 _TYPE_CONFIG = {
-    "rfe": {
-        "reviews_dir": "rfe-reviews",
-        "originals_dir": "rfe-originals",
-        "tasks_dir": "rfe-tasks",
-        "score_sub_fields": ["what", "why", "open_to_how", "not_a_task", "right_sized"],
-    },
-    "initiative": {
-        "reviews_dir": "initiative-reviews",
-        "originals_dir": "initiative-originals",
-        "tasks_dir": "initiatives",
-        "score_sub_fields": ["what", "why", "scope", "open_to_how", "right_sized"],
-    },
+    d.name: {
+        "reviews_dir": d.dirs("bare")["reviews"],
+        "originals_dir": d.dirs("bare")["originals"],
+        "tasks_dir": d.dirs("bare")["tasks"],
+        "score_sub_fields": list(d.score_fields),
+    }
+    for d in _TYPES
+    if _has_compare_facts(d)
 }
 
 
@@ -142,8 +153,17 @@ def main():
     )
     parser.add_argument("golden_dir", help="Golden reference artifacts directory")
     parser.add_argument("new_dir", help="New output artifacts directory")
-    parser.add_argument("--type", choices=["rfe", "initiative"], default="rfe")
+    parser.add_argument(
+        "--type", type=type_registry.type_arg(_TYPES), choices=_TYPES.choices(), default="rfe"
+    )
     args = parser.parse_args()
+    if args.type not in _TYPE_CONFIG:
+        # Registered (argparse accepted it) but without the review directories or the score
+        # fields a comparison needs (a partial drop-in): a usage error, not a KeyError.
+        parser.error(
+            f"--type {args.type!r} is registered but declares no review directories or score "
+            f"fields to compare; supported: {', '.join(_TYPE_CONFIG)}"
+        )
 
     tc = _TYPE_CONFIG[args.type]
     golden_reviews = sorted(

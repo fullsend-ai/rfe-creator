@@ -768,6 +768,7 @@ def main():
     parser.add_argument("--ids-file", help="Read IDs from a file (one per line)")
     parser.add_argument(
         "--type",
+        type=type_registry.type_arg(_TYPES),
         choices=_TYPES.choices(),
         default="rfe",
         help="Entry type (default: rfe)",

@@ -40,6 +40,20 @@ from artifact_utils import read_frontmatter
 
 _TYPES = type_registry.load()
 
+# The interactive stages' config files, tmp/<pipeline.state_prefix><stage>-config.yaml, in registry
+# order: the descriptor projection _detect_fast polls (derived; cross rule 3 keeps the prefixes
+# unique). PR-5b added tmp/initiative-speedrun-config.yaml — the generic speedrun body gives an
+# interactive initiative speedrun the same Phase-1 barrier as the rfe one, which must poll at the
+# interactive cadence. The auto-fix skills drive tmp/pipeline-state.yaml through pipeline_state.py
+# and never wrote a *-autofix-config.yaml (PR-5a removed the dead entries).
+_FAST_POLL_STAGES = ("review", "split", "speedrun")
+_FAST_POLL_CONFIGS = tuple(
+    f"tmp/{d.get('pipeline.state_prefix')}{stage}-config.yaml"
+    for d in _TYPES
+    if d.get("pipeline.state_prefix", None) is not None
+    for stage in _FAST_POLL_STAGES
+)
+
 # Type-neutral assess staging dir (design §10: kept byte-stable for every type).
 ASSESS_STAGING = "tmp/rfe-assess/single"
 
@@ -47,7 +61,9 @@ ASSESS_STAGING = "tmp/rfe-assess/single"
 # type's rows are emitted in the order the literal table had. The rfe block is the generic
 # order of _phase_rows(); the initiative block was appended split-first and gained alignment
 # last when that dimension landed. Neither order is a descriptor fact, hence this table; a
-# type without an entry (a drop-in) gets the generic order.
+# type without an entry (a drop-in) gets the generic order. Keyed by the FAMILY's name: the
+# order is the shipped initiative pipeline's and a member of that family inherits it
+# (_phase_rows looks the type's own name up first, then the family its `extends` names).
 _LEGACY_ROW_ORDER = {
     "initiative": (
         "split",
@@ -156,7 +172,7 @@ def _phase_rows(desc):
     rows["review"] = lambda id: f"{dirs['reviews']}/{id}-review.md"
     rows["revise"] = lambda id: f"{dirs['reviews']}/{id}-review.md"
     rows["split"] = lambda id: f"{dirs['reviews']}/{id}-split-status.yaml"
-    legacy = _LEGACY_ROW_ORDER.get(desc.name, ())
+    legacy = _LEGACY_ROW_ORDER.get(desc.name) or _LEGACY_ROW_ORDER.get(desc.extends or "", ())
     order = [base for base in legacy if base in rows] + [b for b in rows if b not in legacy]
     return {base: rows[base] for base in order}
 
@@ -317,21 +333,9 @@ def _detect_fast(explicit_flag):
     """Return True if fast-poll should be used."""
     if explicit_flag:
         return True
-    # The interactive skills write tmp/<pipeline.state_prefix><stage>-config.yaml. The list
-    # is the descriptor projection (state_prefix x the interactive stages review/split/
-    # speedrun) written out: PR-5b added tmp/initiative-speedrun-config.yaml — the generic
-    # speedrun body gives an interactive initiative speedrun the same Phase-1 barrier as the
-    # rfe one, which must poll at the interactive cadence. The auto-fix skills drive
-    # tmp/pipeline-state.yaml through pipeline_state.py and never wrote a *-autofix-config.yaml
-    # (PR-5a removed the dead entries).
-    for cfg in (
-        "tmp/review-config.yaml",
-        "tmp/split-config.yaml",
-        "tmp/speedrun-config.yaml",
-        "tmp/initiative-review-config.yaml",
-        "tmp/initiative-split-config.yaml",
-        "tmp/initiative-speedrun-config.yaml",
-    ):
+    # The interactive skills write tmp/<pipeline.state_prefix><stage>-config.yaml
+    # (_FAST_POLL_CONFIGS, the descriptor projection over every registered type).
+    for cfg in _FAST_POLL_CONFIGS:
         if os.path.exists(cfg):
             try:
                 with open(cfg) as f:

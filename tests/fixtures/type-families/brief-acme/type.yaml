@@ -32,5 +32,3 @@ eval:
   config: eval.yaml                          # existence stand-in: never regenerated in place
   dataset: eval/dataset/cases                # existence stand-in
   mlflow_experiment: brief-acme-speedrun-eval
-  thresholds:
-    brief-acme_quality: { min_mean: 3.5 }    # deep-merges into the family's thresholds

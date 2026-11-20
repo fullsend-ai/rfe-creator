@@ -8,15 +8,16 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import type_registry
 from artifact_utils import (
-    find_artifact_file_including_archived,
     find_review_file,
+    find_task_file_including_archived,
     read_frontmatter,
-    scan_initiative_task_files,
-    scan_task_files,
+    scan_tasks,
     update_frontmatter,
 )
 
+_TYPES = type_registry.load()
 ARTIFACTS_DIR = os.path.join(os.getcwd(), "artifacts")
 
 
@@ -25,7 +26,8 @@ def main():
     parser.add_argument("parent_id", help="Parent ID (e.g. RHAIRFE-100 or RHAISTRAT-100)")
     parser.add_argument(
         "--type",
-        choices=["rfe", "initiative"],
+        type=type_registry.type_arg(_TYPES),
+        choices=_TYPES.choices(),
         default="rfe",
         help="Artifact type (default: rfe)",
     )
@@ -33,21 +35,17 @@ def main():
 
     parent_id = args.parent_id
 
-    if args.type == "initiative":
-        tasks_dir = os.path.join(ARTIFACTS_DIR, "initiatives")
-        reviews_dir = os.path.join(ARTIFACTS_DIR, "initiative-reviews")
-    else:
-        tasks_dir = os.path.join(ARTIFACTS_DIR, "rfe-tasks")
-        reviews_dir = os.path.join(ARTIFACTS_DIR, "rfe-reviews")
+    # The type's own layout, scan and id field come from its descriptor (dirs, identity.id_field);
+    # the schema name is the registry's <type>-task.
+    desc = _TYPES.get(args.type)
+    bare = desc.dirs("bare")
+    tasks_dir = os.path.join(ARTIFACTS_DIR, bare["tasks"])
+    reviews_dir = os.path.join(ARTIFACTS_DIR, bare["reviews"])
 
     # 1. Find and delete orphan children
     deleted = []
-    if args.type == "initiative":
-        all_tasks = scan_initiative_task_files(ARTIFACTS_DIR)
-        id_field = "initiative_id"
-    else:
-        all_tasks = scan_task_files(ARTIFACTS_DIR)
-        id_field = "rfe_id"
+    all_tasks = scan_tasks(ARTIFACTS_DIR, desc)
+    id_field = desc.id_field
 
     for path, data in all_tasks:
         if data.get("parent_key") != parent_id:
@@ -87,14 +85,11 @@ def main():
     if os.path.exists(split_status):
         os.remove(split_status)
 
-    # 3. Un-archive the parent
+    # 3. Un-archive the parent (the descriptor-form lookup: a tracker key matches <id>.md exactly,
+    # a local id also its slug-suffixed file)
     restored = ""
-    if args.type == "initiative":
-        parent_path = os.path.join(ARTIFACTS_DIR, "initiatives", f"{parent_id}.md")
-        schema_type = "initiative-task"
-    else:
-        parent_path = find_artifact_file_including_archived(ARTIFACTS_DIR, parent_id)
-        schema_type = "rfe-task"
+    parent_path = find_task_file_including_archived(ARTIFACTS_DIR, parent_id, desc=desc)
+    schema_type = f"{desc.name}-task"
 
     if parent_path and os.path.isfile(parent_path):
         fm, _ = read_frontmatter(parent_path)
