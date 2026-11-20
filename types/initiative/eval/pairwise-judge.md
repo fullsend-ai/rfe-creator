@@ -23,7 +23,7 @@ Which output produces a better-formed Initiative?
 Which output's pipeline self-assessment is more accurate?
 - Do the rubric scores (0-2 per criterion) match the actual content quality?
 - Is the feasibility verdict (feasible/infeasible/indeterminate) well-calibrated? Note: indeterminate is appropriate when the initiative's domain falls outside available architecture context, when critical technical details are missing, or when a confident assessment isn't possible for any reason — it is not limited to ambiguous text.
-- Is the alignment verdict (strong/partial/weak/not_assessed) accurate given the RHAISTRAT parent context?
+- Is the alignment verdict (strong/partial/weak/not_assessed) accurate given the parent Outcome context?
 - Does the recommendation follow logically from the scores, feasibility, and alignment?
 
 ### 3. Revision Effectiveness (if applicable)

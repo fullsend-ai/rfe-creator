@@ -3208,6 +3208,13 @@ class TestLaunchVars:
         )
         assert init["DIMENSION_ALIGNMENT_CONDITION"] == "parent_key startswith RHAISTRAT-"
         assert init["DIMENSION_ALIGNMENT_BLOCKING"] == "false"
+        # AISDLC-851: the typed prose names the tracker project and the parent-key prefix through
+        # the launch block instead of a project literal, so a type family's files serve every
+        # member. Both are descriptor values (never the binding overlay), like KEY_PREFIX;
+        # PARENT_KEY_PREFIX is the alignment condition's prefix family, empty like PARENT_FIELD
+        # for a type without the condition.
+        assert rfe["PROJECT"] == "RHAIRFE" and rfe["PARENT_KEY_PREFIX"] == ""
+        assert init["PROJECT"] == "RHAISTRAT" and init["PARENT_KEY_PREFIX"] == "RHAISTRAT-"
         assert rfe["RUN_REPORT"] == "artifacts/auto-fix-runs/<timestamp>.yaml"
         assert init["RUN_REPORT"] == "artifacts/auto-fix-runs/initiative-run-<timestamp>.yaml"
         assert rfe["RUBRIC_EXPORT"] == "artifacts/rfe-rubric.md" and init["RUBRIC_EXPORT"] == "none"
