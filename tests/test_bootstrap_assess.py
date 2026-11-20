@@ -1313,7 +1313,7 @@ class TestFamilyFallback:
         the script as written."""
         with open(SCRIPT) as f:
             text = f.read()
-        start = text.index("rubric_descriptor_dir() {")
+        start = text.index("family_dir_from_root() {")
         end = text.index("# The repository this checkout is cloned from")
         probe = (
             'TYPES_ROOT="$1"; PIPELINE_TYPE="$2"\n'
@@ -1335,6 +1335,39 @@ class TestFamilyFallback:
         assert run(os.path.join(REPO_ROOT, "types"), "rfe") == (
             "rfe\nskills/assess-rfe/scripts/agent_prompt.md\nrfe-scorer\n"
         )
+
+    def test_awk_readers_resolve_each_field_member_first_then_family(self, tmp_path):
+        """A member that overrides ONE rubric field keeps the family's others, and its own
+        ``scorer_agent`` wins over the family's: per field, like the registry's merge."""
+        root = self._single_root(tmp_path)
+        member = os.path.join(root, "brief-acme", "type.yaml")
+        with open(member) as f:
+            text = f.read()
+        text = text.replace(
+            "pipeline:\n",
+            "pipeline:\n  scorer_agent: acme-scorer\n  rubric:\n    path: own/rubric.md\n",
+            1,
+        )
+        with open(member, "w") as f:
+            f.write(text)
+        with open(SCRIPT) as f:
+            script = f.read()
+        start = script.index("family_dir_from_root() {")
+        end = script.index("# The repository this checkout is cloned from")
+        probe = (
+            'TYPES_ROOT="$1"; PIPELINE_TYPE="$2"\n'
+            + script[start:end]
+            + "\nrubric_field_from_root path; rubric_field_from_root rubric_version; "
+            "scorer_agent_from_root\n"
+        )
+        out = subprocess.run(
+            ["bash", "-c", probe, "probe", str(root), "brief-acme"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+        # path: the member's own; rubric_version: the family's; scorer_agent: the member's.
+        assert out == "own/rubric.md\n0000000\nacme-scorer\n"
 
     @pytest.fixture
     def family_assess_repo(self, tmp_path):

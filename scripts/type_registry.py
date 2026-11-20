@@ -1215,6 +1215,8 @@ class TypeRegistry:
     def try_canonical(self, name):
         """``canonical(name)``, or None when ``name`` is neither a type nor a single-member
         family — the readers' tolerant compare: an unknown stored name is compared as written."""
+        if not isinstance(name, str):
+            return None  # a corrupted stored value (a list, a mapping) is never a type name
         try:
             return self.canonical(name)
         except KeyError:
@@ -2293,6 +2295,15 @@ def _cmd_launch_vars(reg, args):
     return 0
 
 
+def digest_label(reg, desc):
+    """The name a type renders under in the classification digest: its family's name when it
+    is the family's sole member (the alias resolves it), else its own."""
+    family = desc.extends
+    if family is not None and len(reg.members(family)) == 1:
+        return family
+    return desc.name
+
+
 def classification_digest(reg):
     """Design §6 stage 1 (AISDLC-190): one entry per registered type that lists the ``create``
     stage and declares a ``classification`` block, in registry order — what the generic create
@@ -2306,11 +2317,12 @@ def classification_digest(reg):
             continue
         rows.append(
             {
-                # A member renders under its FAMILY's name: the digest is the create step's and
-                # the review agent's vocabulary (`consider /rfe-create --type <family>`), and
-                # the family alias resolves it; one row per family while it has one member (the
+                # The sole member of a family renders under the FAMILY's name: the digest is
+                # the create step's and the review agent's vocabulary (`consider /rfe-create
+                # --type <family>`) and the alias resolves it. With two or more members each
+                # renders under its own name — the family name would not resolve (the
                 # second-member story decides the digest's shape).
-                "type": desc.extends or desc.name,
+                "type": digest_label(reg, desc),
                 "entity": desc.get("display.entity", desc.name),
                 "summary": block.get("summary", ""),
                 "driver": block.get("driver", ""),
@@ -2356,7 +2368,7 @@ def _cmd_classification(reg, args):
     others = getattr(args, "others", None)
     if others is not None:
         mine = reg.get(reg.canonical(others))  # unknown: the registry's own KeyError text, exit 1
-        label = mine.extends or mine.name  # a member's own row is its family's row
+        label = digest_label(reg, mine)  # the row the type renders under (its family's, if sole)
         rows = [r for r in classification_digest(reg) if r["type"] != label]
         if args.json:
             _emit(rows, True)

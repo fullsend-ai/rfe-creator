@@ -243,13 +243,14 @@ def _render_thresholds(desc, notes):
 
 
 def eval_stem(desc):
-    """The stem of ``${gen.name}`` (the harness run name eval/runs/<stem>-speedrun/), of the
-    ``--type`` in ``${gen.arguments}`` and of ``${gen.quality_judge}`` (``<stem>_quality``, the
-    ``eval.thresholds`` key): the FAMILY's name for a member of a type family and the type's own
-    name otherwise. The metric history, the pairwise baselines and the thresholds key are the
-    family's (AISDLC-851), and a member's ``--type`` resolves through the family alias. Read
-    from the merged data (``extends`` stays on it), so a Descriptor hand-built over merged data
-    derives the same stem as the registry's."""
+    """The stem of ``${gen.name}`` (the harness run name eval/runs/<stem>-speedrun/) and of
+    ``${gen.quality_judge}`` (``<stem>_quality``, the ``eval.thresholds`` key): the FAMILY's name
+    for a member of a type family and the type's own name otherwise. The metric history, the
+    pairwise baselines and the thresholds key are the family's (AISDLC-851); the ``--type`` the
+    harness passes stays the member's own name, which always resolves. Read from the merged data
+    (``extends`` stays on it), so a Descriptor hand-built over merged data derives the same stem
+    as the registry's. Two members of one family share the run name and the judge key: a
+    per-member identity is a decision for the second-member story."""
     return desc.get(type_registry.EXTENDS_KEY, None) or desc.name
 
 
@@ -363,7 +364,9 @@ def derived_values(desc, fragment_flat, repo_root=None):
         # explicit type it is given — `--type <t>` for every type, rfe included, so the CI
         # form never relies on the headless legacy default (plan D2).
         "skill": GENERIC_SPEEDRUN_SKILL,
-        "arguments": f"--headless --dry-run --input batch.yaml --type {eval_stem(desc)}",
+        # The type the harness passes is the CONCRETE one (a family name is ambiguous once
+        # it has two members); the run name and the judge key above/below stay the family's.
+        "arguments": f"--headless --dry-run --input batch.yaml --type {desc.name}",
         # The generic create skill: the pipeline_flow judge's Phase-1 marker (plan D3).
         "create_skill": GENERIC_CREATE_SKILL,
         # identity.local_prefix + the harness's zero-padded batch index.

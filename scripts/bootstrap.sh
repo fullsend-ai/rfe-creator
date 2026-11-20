@@ -267,14 +267,26 @@ lay_out_working_directory
 
 CONTEXT_DIR=".context/assess-rfe"
 
-# The types/<dir>/type.yaml whose `rubric:` block (and scorer_agent line) the no-Python
-# fallback reads: the type's own, else — a member of a type family with no rubric lines of
-# its own — the family its `extends:` line names (one level, like the registry's merge).
+# The no-Python readers of the descriptor (no PyYAML yet, no python3) follow a type family one
+# level, field by field, like the registry's merge: a member's own line wins, a line it does not
+# carry is read from the family its `extends:` line names.
+family_dir_from_root() {
+  local file="$TYPES_ROOT/$PIPELINE_TYPE/type.yaml" family
+  [ -f "$file" ] || return 0
+  family="$(awk '$1 == "extends:" { gsub(/["'"'"']/, "", $2); print $2; exit }' "$file" 2>/dev/null)"
+  if [ -n "$family" ] && [ -f "$TYPES_ROOT/$family/type.yaml" ]; then
+    printf '%s' "$family"
+  fi
+  return 0
+}
+
+# The types/<dir>/type.yaml the `rubric:` block is read from FIRST: the type's own when it
+# carries one, else its family's (a member with no rubric lines of its own).
 rubric_descriptor_dir() {
   local file="$TYPES_ROOT/$PIPELINE_TYPE/type.yaml" family
   if [ -f "$file" ] && ! grep -qE '^  rubric:' "$file"; then
-    family="$(awk '$1 == "extends:" { gsub(/["'"'"']/, "", $2); print $2; exit }' "$file" 2>/dev/null)"
-    if [ -n "$family" ] && [ -f "$TYPES_ROOT/$family/type.yaml" ]; then
+    family="$(family_dir_from_root)"
+    if [ -n "$family" ]; then
       printf '%s' "$family"
       return
     fi
@@ -282,17 +294,35 @@ rubric_descriptor_dir() {
   printf '%s' "$PIPELINE_TYPE"
 }
 
-# One field of the descriptor's `rubric:` block, without the registry (no PyYAML
-# yet, no python3): the `<key>:` line under `  rubric:`, quotes stripped.
+# One field of the `rubric:` block: the `<key>:` line under `  rubric:` of the type's own
+# descriptor, quotes stripped; then the family's when the own file does not carry that key.
 rubric_field_from_root() {
-  awk -v key="$1" '/^  rubric:/ { f = 1; next }
+  local value family
+  value="$(awk -v key="$1" '/^  rubric:/ { f = 1; next }
        f && $1 == key ":" { gsub(/"/, "", $2); print $2; exit }
-       f && /^  [a-z]/ { exit }' "$TYPES_ROOT/$(rubric_descriptor_dir)/type.yaml" 2>/dev/null
+       f && /^  [a-z]/ { exit }' "$TYPES_ROOT/$PIPELINE_TYPE/type.yaml" 2>/dev/null)"
+  if [ -z "$value" ]; then
+    family="$(family_dir_from_root)"
+    if [ -n "$family" ]; then
+      value="$(awk -v key="$1" '/^  rubric:/ { f = 1; next }
+       f && $1 == key ":" { gsub(/"/, "", $2); print $2; exit }
+       f && /^  [a-z]/ { exit }' "$TYPES_ROOT/$family/type.yaml" 2>/dev/null)"
+    fi
+  fi
+  printf '%s\n' "$value"
 }
 
-# The descriptor's `scorer_agent:` line, without the registry (same fallback).
+# The descriptor's `scorer_agent:` line (own first, then the family's; same fallback).
 scorer_agent_from_root() {
-  awk '$1 == "scorer_agent:" { print $2; exit }' "$TYPES_ROOT/$(rubric_descriptor_dir)/type.yaml" 2>/dev/null
+  local value family
+  value="$(awk '$1 == "scorer_agent:" { print $2; exit }' "$TYPES_ROOT/$PIPELINE_TYPE/type.yaml" 2>/dev/null)"
+  if [ -z "$value" ]; then
+    family="$(family_dir_from_root)"
+    if [ -n "$family" ]; then
+      value="$(awk '$1 == "scorer_agent:" { print $2; exit }' "$TYPES_ROOT/$family/type.yaml" 2>/dev/null)"
+    fi
+  fi
+  printf '%s\n' "$value"
 }
 
 # The repository this checkout is cloned from. The descriptor owns it

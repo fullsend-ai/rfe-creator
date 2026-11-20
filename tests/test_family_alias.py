@@ -469,17 +469,36 @@ class TestWorkspaceBindings:
 
 
 class TestClassification:
-    def test_digest_rows_are_family_named_one_per_member(self, two_reg):
+    def test_two_member_rows_render_under_their_own_names(self, two_reg):
+        # The family name would not resolve for a two-member family: each member renders under
+        # its own name there; the sole member of a family renders under the family's (below).
         rows = type_registry.classification_digest(two_reg)
-        assert [r["type"] for r in rows] == [FAMILY, FAMILY]
+        assert [r["type"] for r in rows] == [MEMBER, "brief-globex"]
         assert {r["entity"] for r in rows} == {"Brief"}
         # Still one row per member: each carries its own merged signals.
         assert rows[0]["signals"][-1] == "looked up in the acme catalogue"
         assert rows[1]["signals"][-1] == "a globex-only fixture cue"
 
-    def test_a_member_renders_under_the_family_name_beside_the_shipped_types(self, combined_reg):
+    def test_a_sole_member_renders_under_the_family_name_beside_the_shipped_types(
+        self, combined_reg, single_reg
+    ):
         rows = type_registry.classification_digest(combined_reg)
         assert [r["type"] for r in rows] == ["rfe", FAMILY, "initiative"]
+        assert type_registry.digest_label(single_reg, single_reg.get(MEMBER)) == FAMILY
+        assert type_registry.digest_label(single_reg, single_reg.get(MEMBER)) != MEMBER
+
+    def test_others_on_a_two_member_family_excludes_the_member_itself_only(self):
+        result = _registry("classification", "--others", MEMBER, "--json")
+        assert result.returncode == 0, result.stderr
+        assert [r["type"] for r in json.loads(result.stdout)] == ["brief-globex"]
+
+    def test_try_canonical_ignores_a_corrupted_stored_value(self, single_reg):
+        # A list- or mapping-valued stored `type:` is never a name: the readers compare it as
+        # written instead of crashing.
+        assert single_reg.try_canonical(["brief"]) is None
+        assert single_reg.try_canonical({"type": "brief"}) is None
+        assert single_reg.try_canonical(None) is None
+        assert single_reg.try_canonical(FAMILY) == MEMBER
 
     @pytest.mark.parametrize("others", [MEMBER, FAMILY])
     def test_others_excludes_the_family_row(self, single_root, others):
@@ -568,7 +587,9 @@ class TestGenerateEvalConfig:
         text = generate_eval_config.render_type(member, repo_root=REPO_ROOT)
         rendered = yaml.safe_load(text)
         assert rendered["name"] == "brief-speedrun"
-        assert rendered["execution"]["arguments"].endswith("--type brief")
+        # The --type the harness passes is the member's own: a family name would not resolve
+        # once the family has two members; the run name and the judge key stay the family's.
+        assert rendered["execution"]["arguments"].endswith(f"--type {MEMBER}")
         assert "brief_quality" in {j["name"] for j in rendered["judges"]}
         assert "brief-acme_quality" not in text
         header = text.splitlines()[2]
@@ -585,7 +606,7 @@ class TestGenerateEvalConfig:
         assert out.err == ""
         rendered = yaml.safe_load(out.out)
         assert rendered["name"] == "brief-speedrun"
-        assert rendered["execution"]["arguments"].endswith("--type brief")
+        assert rendered["execution"]["arguments"].endswith(f"--type {MEMBER}")
         assert not (repo_copy / "eval.yaml").exists()
 
 

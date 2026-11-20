@@ -241,7 +241,7 @@ that `extends` it, and the registry merges the family under the member before an
    member name and `eval.config` (one rendered config per type). Add `conventions.query_default`
    and `conventions.parent_key_patterns` when the project changes what they say, the rest of the
    eval facts a render needs — `eval.{dataset,mlflow_experiment}` when the member's differ from the
-   family's; the quality judge, the run name and the `--type` of the generated config are the
+   family's; the quality judge and the run name of the generated config are the
    family's (`generate_eval_config.eval_stem`), so the `<family>_quality` threshold lives on the
    family, not on the member — and the poll/state/snapshot prefixes unless the family carries them
    (the reference family leaves them to its members; the shipped Initiative family, once the split

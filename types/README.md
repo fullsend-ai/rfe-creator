@@ -154,7 +154,8 @@ finding of its own. Everything else may be inherited:
 `pipeline.{poll_prefix,state_prefix}` (hyphens are allowed inside — the grammar of `report_prefix` —
 so `<family>-<project>-` is a valid own value when a member wants one), `snapshot.{prefix,report_prefix}`,
 the labels, the rest of the eval block (`eval.{dataset,mlflow_experiment,thresholds}`; the quality
-judge, the run name and the `--type` of the generated config are named after the FAMILY —
+judge and the run name of the generated config are named after the FAMILY (its `--type` stays the
+member's own name, which always resolves) —
 `generate_eval_config.eval_stem`, `extends` read off the merged data — so a member's thresholds name
 `<family>_quality` and the family carries it) and the `eval/` directory: a member with
 no `eval/` directory of its own renders from the family's (`generate_eval_config.eval_dir`; a member
@@ -211,7 +212,8 @@ split, the next step, turns it into a family with the one member `initiative-rha
 alias is what keeps every `--type initiative` spelling working through that split.
 
 The classification digest (`type_registry.py classification`) renders a member's merged block
-under its FAMILY's name — one row per family while it has one member, so the create step's `Type:`
+under its FAMILY's name while it is the family's sole member (with two or more members each
+renders under its own name, since the family name would not resolve), so the create step's `Type:`
 line and the review agent's misfiled-item sentence name `--type <family>`; `--others <member>`
 excludes the member's family row (two members would repeat the family's signals under one name,
 which the member-signals story refines). Cross rule 7 compares a member's own signals, with the

@@ -989,7 +989,7 @@ class TestGate1:
         # The eval identity is the FAMILY's (generate_eval_config.eval_stem): run name, the
         # --type the harness passes and the judge key; the member's name appears nowhere.
         assert rendered["name"] == "brief-speedrun"
-        assert rendered["execution"]["arguments"].endswith("--type brief")
+        assert rendered["execution"]["arguments"].endswith(f"--type {name}")  # always resolves
         judges = {j["name"] for j in rendered["judges"]}
         assert "brief_quality" in judges
         assert f"{name}_quality" not in text

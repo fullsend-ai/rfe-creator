@@ -16,8 +16,18 @@ TOLERANCE_FIELDS = ["score"]
 
 _TYPES = type_registry.load()
 
+
 # Per-type layout and sub-scores: the descriptor's dirs (bare form, the directories are joined
 # under golden_dir / new_dir) and schema.review.score_fields, derived for every registered type.
+def _has_compare_facts(desc):
+    """A partial drop-in descriptor without the three directories or the score fields takes
+    no row (and is not a --type choice here) rather than breaking the import."""
+    return all(
+        desc.get(dotted, None) is not None
+        for dotted in ("dirs.reviews", "dirs.originals", "dirs.tasks", "schema.review.score_fields")
+    )
+
+
 _TYPE_CONFIG = {
     d.name: {
         "reviews_dir": d.dirs("bare")["reviews"],
@@ -26,6 +36,7 @@ _TYPE_CONFIG = {
         "score_sub_fields": list(d.score_fields),
     }
     for d in _TYPES
+    if _has_compare_facts(d)
 }
 
 
