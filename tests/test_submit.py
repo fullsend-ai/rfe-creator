@@ -2201,7 +2201,7 @@ class TestTypeConfigsProjection:
         import submit as submit_mod
 
         assert list(submit_mod.TYPE_CONFIGS) == submit_mod._TYPES.names()
-        assert list(submit_mod.TYPE_CONFIGS) == ["rfe", "initiative"]
+        assert list(submit_mod.TYPE_CONFIGS) == ["rfe", "initiative", "react-shopping-cart"]
         for cfg in submit_mod.TYPE_CONFIGS.values():
             assert list(cfg) == list(self.RFE)
 
@@ -2231,12 +2231,12 @@ class TestTypeConfigsProjection:
         assert submit_mod.TYPE_CONFIGS["rfe"]["split_type_arg"] is None
 
     def test_type_choices_are_the_registry_choices(self):
-        """--help still offers exactly {rfe,initiative}; an unregistered type is refused."""
+        """--help offers exactly the registered types; an unregistered type is refused."""
         result = subprocess.run(
             [sys.executable, SCRIPT, "--help"], capture_output=True, text=True, env=_clean_env()
         )
         assert result.returncode == 0, result.stderr
-        assert "--type {rfe,initiative}" in result.stdout
+        assert "--type {rfe,initiative,react-shopping-cart}" in result.stdout
 
         result = subprocess.run(
             [sys.executable, SCRIPT, "--type", "epic", "--dry-run"],

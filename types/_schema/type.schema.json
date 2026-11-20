@@ -17,8 +17,7 @@
     "schema",
     "pipeline",
     "snapshot",
-    "reporting",
-    "eval"
+    "reporting"
   ],
   "additionalProperties": false,
   "properties": {
@@ -531,11 +530,11 @@
             "properties": {
               "name": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
               "bootstrap": { "$ref": "#/$defs/repo_path", "description": "Script the SETUP phase runs from the plugin root." },
-              "args": { "type": "array", "items": { "type": "string" }, "description": "Extra argv after the script path (e.g. ['--type', 'rfe'])." },
+              "args": { "type": "array", "items": { "type": "string", "pattern": "^(?!.*\\.\\.)[A-Za-z0-9._:/@=+-]+$" }, "description": "Extra argv after the script path (e.g. ['--type', 'rfe'], or the architecture fetch's ['--repo', <url>, '--path', <dir>, '--dest', '.context/<dir>']). Each arg is one plain word: no whitespace, shell metacharacters, braces or '..'." },
               "required": { "type": "boolean", "description": "Whether a failure is fatal. No consumer at PR-1: SETUP runs its commands concurrently and only logs exit codes." }
             }
           },
-          "description": "DESCRIPTIVE at PR-1: SETUP is still a hardcoded command list in pipeline_state.py; the projection is SETUP.commands[i] == 'bash <bootstrap> <args...>'."
+          "description": "The type's external inputs. pipeline_state.py SETUP runs one command per entry (type_registry.context_source_command: 'bash <bootstrap> <args...>'), the 'architecture-context' entry is also the ARCH_FETCH launch var the generic review body runs, and .fullsend/rfe-creator/pre-rfe-creator.sh runs every type's architecture fetch on the host."
         },
         "poll_prefix": {
           "type": "string",
@@ -704,6 +703,7 @@
     },
     "eval": {
       "type": "object",
+      "description": "OPTIONAL. The type's eval harness binding. A type without it (a demo type) has no generated eval config, no fragment and no dataset: validate_types skips its eval gate and generate_eval_config skips it.",
       "required": ["config", "dataset", "mlflow_experiment", "thresholds", "timeout"],
       "additionalProperties": false,
       "properties": {

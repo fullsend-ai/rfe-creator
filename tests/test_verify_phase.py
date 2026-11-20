@@ -663,7 +663,7 @@ class TestDerivedFromRegistry:
             [sys.executable, "-c", probe], capture_output=True, text=True, env=env, check=True
         )
         got = json.loads(result.stdout)
-        assert got["types"] == ["rfe", "initiative", "widget"]
+        assert got["types"] == ["rfe", "initiative", "react-shopping-cart", "widget"]
         assert got["id_field"] == "widget_id"
         assert got["score_fields"] == ["scores.what=0", "scores.risk=0"]
         assert got["reviews_dir"] == "artifacts/widget-reviews"

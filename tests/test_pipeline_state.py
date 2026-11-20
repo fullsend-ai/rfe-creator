@@ -3722,7 +3722,7 @@ class TestReassessFixupIds:
     the evidence went the other way.
     """
 
-    @pytest.mark.parametrize("ptype", ["rfe", "initiative"])
+    @pytest.mark.parametrize("ptype", ["rfe", "initiative", "react-shopping-cart"])
     def test_fixup_rescans_the_whole_reassess_set(self, ptype):
         cfg = ps._build_phase_config(ptype)
         assert cfg["REASSESS_FIXUP"]["ids_file"] == "tmp/pipeline-reassess-ids.txt"
@@ -3919,7 +3919,7 @@ class TestNoShell:
         assert "SETUP: verify OK: 1 type(s) valid: rfe" in capsys.readouterr().out
         assert open(ps.DISPATCH_MARKER).read() == "SETUP"
 
-    @pytest.mark.parametrize("t", ["rfe", "initiative"])
+    @pytest.mark.parametrize("t", ["rfe", "initiative", "react-shopping-cart"])
     def test_the_verify_command_is_the_registry_gate_for_the_run_type(self, tmp_dir, t):
         config = ps._get_config(make_state(phase="SETUP", type=t))["SETUP"]
         assert config["verify"] == f"python3 scripts/validate_types.py --verify --type {t}"
@@ -4273,12 +4273,12 @@ class TestStateValidatedBeforeDecisionScripts:
 class TestInitTypeChoices:
     def test_help_renders_the_registered_types(self, tmp_dir, capsys):
         """The choices come from the registry; the rendered help is byte-identical to the
-        literal list it replaced ({rfe,initiative} — rfe first, names() order)."""
+        literal list it replaced ({rfe,initiative,...} — rfe first, names() order)."""
         with pytest.raises(SystemExit) as exc_info:
             ps.cmd_init(["--help"])
         assert exc_info.value.code == 0
         out = capsys.readouterr().out
-        assert "--type {rfe,initiative}" in out
+        assert "--type {rfe,initiative,react-shopping-cart}" in out
         assert "--type {" + ",".join(ps._TYPES.choices()) + "}" in out
 
     def test_unknown_type_exits_2_with_the_registered_list(self, tmp_dir, capsys):
@@ -4290,7 +4290,7 @@ class TestInitTypeChoices:
         assert "choose from 'rfe', 'initiative'" in err
         assert not os.path.exists(ps.STATE_FILE)
 
-    @pytest.mark.parametrize("ptype", ["rfe", "initiative"])
+    @pytest.mark.parametrize("ptype", ["rfe", "initiative", "react-shopping-cart"])
     def test_registered_type_is_persisted(self, tmp_dir, ptype):
         import io
         from contextlib import redirect_stdout
@@ -4471,7 +4471,7 @@ class TestInitAndTheRegistry:
         from contextlib import redirect_stdout
 
         self._registry(monkeypatch, drop_in_root.memo())
-        assert list(ps.PIPELINE_TYPES) == ["rfe", "initiative", "memo"]
+        assert list(ps.PIPELINE_TYPES) == ["rfe", "initiative", "memo", "react-shopping-cart"]
         row = ps.PIPELINE_TYPES["memo"]
         assert row["tasks_dir"] == "artifacts/memo-tasks"
         assert row["reviews_dir"] == "artifacts/memo-reviews"
@@ -4495,6 +4495,16 @@ class TestInitAndTheRegistry:
         cfg = ps._build_phase_config("memo")
         assert cfg["ASSESS"]["parallel"] == []
         assert [k for k in cfg["REVIEW"]["vars"] if k.endswith("_PATH")] == ["ASSESS_PATH"]
+
+    def test_a_type_without_context_sources_still_bootstraps_its_rubric(
+        self, tmp_dir, monkeypatch, drop_in_root
+    ):
+        # pipeline.context_sources is optional in the schema: SETUP falls back to the rubric
+        # bootstrap instead of failing to iterate a missing key.
+        drop_in_root.add("memo", overrides=_memo_overrides(), drop=("pipeline.context_sources",))
+        self._registry(monkeypatch, drop_in_root.path)
+        cfg = ps._build_phase_config("memo")
+        assert cfg["SETUP"]["commands"] == ["bash scripts/bootstrap.sh --type memo"]
 
     def test_an_unregistered_name_exits_2_with_the_registered_list(
         self, tmp_dir, monkeypatch, drop_in_root

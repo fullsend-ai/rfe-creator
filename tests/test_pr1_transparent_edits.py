@@ -132,6 +132,10 @@ SAMPLES = {
 
 # Captured on main c1df503 (before `type`/`tracker_ref` existed) by running
 # write_frontmatter + update_frontmatter over SAMPLES with BODY.
+# The schemas that existed before the migration: SAMPLES and GOLDEN hold their pre-change bytes.
+# A type registered later (react-shopping-cart) has no pre-migration artifacts to keep stable.
+LEGACY_SCHEMAS = sorted(SAMPLES)
+
 GOLDEN = {
     "rfe-task": (
         b"---\nrfe_id: RHAIRFE-1595\n"
@@ -195,7 +199,7 @@ class TestBaseSchemaAdditions:
         for field in NEW_FIELDS:
             assert field not in data
 
-    @pytest.mark.parametrize("schema", sorted(SCHEMAS))
+    @pytest.mark.parametrize("schema", LEGACY_SCHEMAS)
     def test_accepted_when_set_and_typed(self, schema):
         _, data, _ = SAMPLES[schema]
         record = dict(data, type=schema.split("-")[0], tracker_ref="RHAIRFE-1595")
@@ -215,14 +219,14 @@ class TestBaseSchemaAdditions:
             assert field not in shown["required"]
             assert "default" not in shown["optional"][field]
 
-    @pytest.mark.parametrize("schema", sorted(SCHEMAS))
+    @pytest.mark.parametrize("schema", LEGACY_SCHEMAS)
     def test_api_writers_are_byte_stable(self, tmp_path, schema):
         """write_frontmatter + update_frontmatter output == pre-change golden bytes."""
         out = _materialize(tmp_path, schema).read_bytes()
         assert not _NEW_FIELD_LINE.search(out)
         assert out == GOLDEN[schema]
 
-    @pytest.mark.parametrize("schema", sorted(SCHEMAS))
+    @pytest.mark.parametrize("schema", LEGACY_SCHEMAS)
     def test_frontmatter_cli_set_is_byte_stable(self, tmp_path, schema):
         """`python3 scripts/frontmatter.py set` (the path every skill uses) is unchanged."""
         rel, data, update = SAMPLES[schema]
@@ -288,6 +292,7 @@ SKILL_STAMPS = {
     # same way — the scan covers types/<t>/prompts and types/<t>/dimensions too.
     ("types/rfe/prompts/split-rules.md", ("type",)),
     ("types/initiative/prompts/split-rules.md", ("type",)),
+    ("types/react-shopping-cart/prompts/split-rules.md", ("type",)),
     (".claude/skills/rfe-create/SKILL.md", ("type",)),
     (".claude/skills/rfe-review/prompts/fetch-agent.md", ("type", "tracker_ref")),
     (".claude/skills/rfe-review/SKILL.md", ("type",)),  # orchestrator error stubs
@@ -466,7 +471,7 @@ class TestSelfDescribingWriters:
 
 # Pre-migration artifacts on disk: the GOLDEN bytes above, exactly as an existing results
 # repo holds them (complete records, schema defaults materialized, no type/tracker_ref).
-LEGACY_FIXTURES = {schema: (SAMPLES[schema][0], GOLDEN[schema]) for schema in sorted(SCHEMAS)}
+LEGACY_FIXTURES = {schema: (SAMPLES[schema][0], GOLDEN[schema]) for schema in LEGACY_SCHEMAS}
 
 
 class TestLegacyArtifactsStayByteIdentical:
@@ -482,7 +487,7 @@ class TestLegacyArtifactsStayByteIdentical:
         path.write_bytes(raw)
         return path, raw
 
-    @pytest.mark.parametrize("schema", sorted(SCHEMAS))
+    @pytest.mark.parametrize("schema", LEGACY_SCHEMAS)
     def test_read_and_defaults_add_nothing(self, tmp_path, schema):
         from artifact_utils import read_frontmatter, read_frontmatter_validated
 
@@ -495,7 +500,7 @@ class TestLegacyArtifactsStayByteIdentical:
         assert not (set(validated) & set(NEW_FIELDS))
         assert path.read_bytes() == raw
 
-    @pytest.mark.parametrize("schema", sorted(SCHEMAS))
+    @pytest.mark.parametrize("schema", LEGACY_SCHEMAS)
     def test_api_update_of_an_unrelated_field_is_byte_identical(self, tmp_path, schema):
         path, raw = self._legacy(tmp_path, schema)
         _, _, update = SAMPLES[schema]
@@ -511,7 +516,7 @@ class TestLegacyArtifactsStayByteIdentical:
         assert len(raw.splitlines()) == len(out.splitlines())
         assert len(diff) <= 1 and all(a.startswith(field.encode()) for a, _ in diff)
 
-    @pytest.mark.parametrize("schema", sorted(SCHEMAS))
+    @pytest.mark.parametrize("schema", LEGACY_SCHEMAS)
     def test_cli_set_of_an_unrelated_field_is_byte_identical(self, tmp_path, schema):
         path, raw = self._legacy(tmp_path, schema)
         (field, value), *_ = SAMPLES[schema][2].items()
@@ -524,7 +529,7 @@ class TestLegacyArtifactsStayByteIdentical:
         assert result.returncode == 0, result.stderr
         assert path.read_bytes() == raw
 
-    @pytest.mark.parametrize("schema", sorted(SCHEMAS))
+    @pytest.mark.parametrize("schema", LEGACY_SCHEMAS)
     def test_cli_set_appends_the_fields_only_when_the_caller_sets_them(self, tmp_path, schema):
         path, raw = self._legacy(tmp_path, schema)
         type_name = schema.split("-")[0]

@@ -279,7 +279,9 @@ def _cases():
     """(type, legacy file, legacy text to cover, corpus text, mode) — mode ``full`` covers every
     sentence (prompts, dimension bodies, the create guidance), ``rules`` only the bold-lead
     rule lines (orchestrator bodies, whose mechanics the collapse restructures on purpose)."""
-    for t in REG.names():
+    # Only the types that existed before the collapse have frozen legacy prompts to cover; a type
+    # registered after it (react-shopping-cart) was written against the generic bodies directly.
+    for t in (n for n in REG.names() if os.path.isdir(os.path.join(ROOT, LEGACY, n))):
         desc = REG.get(t)
         pairs = type_registry.launch_vars(desc, "review")
         prompts = desc.get("pipeline.prompts")
@@ -386,3 +388,15 @@ def test_allowed_entries_are_still_needed():
     }
     stale = sorted((entries - matched) | present)
     assert not stale, stale
+
+
+def test_shop_rfe_stages_agree_on_the_delivery_coupled_example():
+    """The create interview, the review rules and the split rules must all keep a new product
+    together with the store change it cannot be listed without (the size-less product): a
+    create step that splits it would make items the review and split stages never merge back."""
+    root = os.path.join(ROOT, "types", "react-shopping-cart", "prompts")
+    for name in ("create-guidance.md", "review-rules.md", "split-rules.md"):
+        with open(os.path.join(root, name), encoding="utf-8") as f:
+            text = f.read()
+        assert "the store change it cannot be listed without" in text, name
+        assert "size-less" in text and "delivery-coupled" in text, name

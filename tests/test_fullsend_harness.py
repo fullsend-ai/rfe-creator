@@ -336,3 +336,76 @@ class TestPreScriptRegistryFailure:
         assert "listed no types" in result.stderr
         assert "no types/ directory beside scripts/" in result.stderr
         assert "pre-script: complete" not in result.stdout
+
+
+class TestPreScriptArchitectureFetch:
+    """The sandbox skips every fetch (``RFE_SKIP_BOOTSTRAP=1``), so the host pre-script must
+    fetch each type's own architecture context (``pipeline.context_sources`` with
+    ``--repo/--path/--dest``), not only the RHOAI default. Stub bootstrap and fetch scripts
+    record their argv; the real registry and descriptors decide what runs."""
+
+    PRE_SCRIPT = FULLSEND_DIR / "rfe-creator" / "pre-rfe-creator.sh"
+
+    def test_each_types_own_source_is_fetched_once(self, tmp_path):
+        scripts = tmp_path / "scripts"
+        scripts.mkdir()
+        shutil.copy(REPO / "scripts" / "type_registry.py", scripts / "type_registry.py")
+        shutil.copytree(REPO / "types", tmp_path / "types")
+        log = tmp_path / "calls.log"
+        for name in ("bootstrap.sh", "fetch-architecture-context.sh"):
+            (scripts / name).write_text(f'echo "{name} $*" >> "{log}"\n')
+        env = {**os.environ, "TARGET_REPO_DIR": str(tmp_path)}
+        result = subprocess.run(
+            ["bash", str(self.PRE_SCRIPT)], capture_output=True, text=True, env=env
+        )
+        assert result.returncode == 0, result.stderr
+        calls = log.read_text().splitlines()
+        assert calls.count("fetch-architecture-context.sh ") == 1  # the RHOAI default
+        assert (
+            calls.count(
+                "fetch-architecture-context.sh --repo https://github.com/fullsend-ai/react-shopping-cart"
+                " --path docs/architecture --dest .context/react-shopping-cart-architecture"
+            )
+            == 1
+        )
+        types = sorted(path.parent.name for path in (tmp_path / "types").glob("*/type.yaml"))
+        assert sorted(c.split()[-1] for c in calls if c.startswith("bootstrap.sh ")) == types
+
+
+class TestFetchArchitectureContextGuards:
+    """fetch-architecture-context.sh with arguments is allowlisted in .claude/settings.json, so
+    it refuses anything but a source a registered type declares, before any git command."""
+
+    SCRIPT = REPO / "scripts" / "fetch-architecture-context.sh"
+
+    def _run(self, *args):
+        env = {k: v for k, v in os.environ.items() if k != "RFE_SKIP_BOOTSTRAP"}
+        return subprocess.run(
+            ["bash", str(self.SCRIPT), *args], capture_output=True, text=True, env=env, cwd=REPO
+        )
+
+    @pytest.mark.parametrize(
+        "args, message",
+        [
+            (["--dest"], "--dest needs a value"),
+            (["--repo", "x", "--path"], "--path needs a value"),
+            (["--repo", "x", "--path", "d", "--dest", ".context/../x"], "must not contain '..'"),
+            (["--repo", "x", "--path", "../d", "--dest", ".context/x"], "--path must be relative"),
+            (["--repo", "-u", "--path", "d", "--dest", ".context/x"], "must not start with '-'"),
+            (
+                [
+                    "--repo",
+                    "https://github.com/example/other",
+                    "--path",
+                    "docs",
+                    "--dest",
+                    ".context/x",
+                ],
+                "no registered type declares this architecture source",
+            ),
+        ],
+    )
+    def test_refused_before_any_git_command(self, args, message):
+        result = self._run(*args)
+        assert result.returncode == 2, result.stderr
+        assert message in result.stderr

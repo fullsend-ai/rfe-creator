@@ -88,14 +88,14 @@ Remove failed IDs from the processing list and continue with remaining IDs.
 Run these in parallel (two Bash calls):
 
 ```bash
-bash scripts/fetch-architecture-context.sh
+{ARCH_FETCH}
 ```
 
 ```bash
 {BOOTSTRAP}
 ```
 
-If architecture fetch fails, proceed without it. If bootstrap fails, note it — review agents will do basic quality checks instead.
+If architecture fetch fails, or the command above is `none`, proceed without it. If bootstrap fails, note it — review agents will do basic quality checks instead.
 
 ## Review Step 2: Launch Assessment + Dimension Agents
 

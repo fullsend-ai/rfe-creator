@@ -7,25 +7,24 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import type_registry
 import yaml
 from artifact_utils import read_frontmatter
+
+_TYPES = type_registry.load()
 
 EXACT_FIELDS = ["pass", "recommendation", "auto_revised", "feasibility", "needs_attention"]
 TOLERANCE_FIELDS = ["score"]
 
+# Derived from the registry: the bare dirs and the rubric score fields of every type.
 _TYPE_CONFIG = {
-    "rfe": {
-        "reviews_dir": "rfe-reviews",
-        "originals_dir": "rfe-originals",
-        "tasks_dir": "rfe-tasks",
-        "score_sub_fields": ["what", "why", "open_to_how", "not_a_task", "right_sized"],
-    },
-    "initiative": {
-        "reviews_dir": "initiative-reviews",
-        "originals_dir": "initiative-originals",
-        "tasks_dir": "initiatives",
-        "score_sub_fields": ["what", "why", "scope", "open_to_how", "right_sized"],
-    },
+    name: {
+        "reviews_dir": _TYPES.get(name).dirs("bare")["reviews"],
+        "originals_dir": _TYPES.get(name).dirs("bare")["originals"],
+        "tasks_dir": _TYPES.get(name).dirs("bare")["tasks"],
+        "score_sub_fields": list(_TYPES.get(name).get("schema.review.score_fields")),
+    }
+    for name in _TYPES.names()
 }
 
 
@@ -142,7 +141,7 @@ def main():
     )
     parser.add_argument("golden_dir", help="Golden reference artifacts directory")
     parser.add_argument("new_dir", help="New output artifacts directory")
-    parser.add_argument("--type", choices=["rfe", "initiative"], default="rfe")
+    parser.add_argument("--type", choices=_TYPES.choices(), default="rfe")
     args = parser.parse_args()
 
     tc = _TYPE_CONFIG[args.type]

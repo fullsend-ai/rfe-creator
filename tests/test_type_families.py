@@ -46,7 +46,7 @@ REGISTRY_SCRIPT = "scripts/type_registry.py"
 VALIDATE_SCRIPT = "scripts/validate_types.py"
 FAMILY = "brief"
 MEMBERS = ["brief-acme", "brief-globex"]
-SHIPPED_OK_LINE = "OK: 2 type(s) valid: rfe, initiative\n"
+SHIPPED_OK_LINE = "OK: 3 type(s) valid: rfe, initiative, react-shopping-cart\n"
 FAMILY_OK_LINE = "OK: 2 type(s) valid: brief-acme, brief-globex; 1 family(ies) checked: brief\n"
 FAMILY_VERIFY_TEXT = (
     "type 'brief' is a type family (abstract: true): never bindable and never run; verify "
@@ -190,12 +190,12 @@ class TestNeutralityWitnesses:
     def test_shipped_registry_has_no_family(self):
         reg = _load(TYPES_ROOT)
         assert reg.families() == []
-        assert reg.names() == ["rfe", "initiative"]
+        assert reg.names() == ["rfe", "initiative", "react-shopping-cart"]
         with pytest.raises(KeyError) as exc:
             reg.family("rfe")
         assert exc.value.args[0] == "unknown type family 'rfe'; families: (none)"
 
-    @pytest.mark.parametrize("name", ["rfe", "initiative"])
+    @pytest.mark.parametrize("name", ["rfe", "initiative", "react-shopping-cart"])
     def test_shipped_descriptor_is_a_standalone(self, name):
         desc = _load(TYPES_ROOT).get(name)
         assert desc.family is None
@@ -763,7 +763,13 @@ class TestLoadErrors:
 
     def test_a_family_and_its_member_in_one_extra_root_load(self):
         reg = _load(TYPES_ROOT, extra_roots=[FAMILIES_ROOT])
-        assert reg.names() == ["rfe", "brief-acme", "brief-globex", "initiative"]
+        assert reg.names() == [
+            "rfe",
+            "brief-acme",
+            "brief-globex",
+            "initiative",
+            "react-shopping-cart",
+        ]
         assert reg.families() == [FAMILY]
         assert reg.members(FAMILY) == MEMBERS
 
@@ -926,7 +932,13 @@ class TestGate1:
     def test_fixture_beside_the_shipped_tree_passes(self):
         report = _validate(TYPES_ROOT, extra_roots=[FAMILIES_ROOT])
         assert report.ok, report.lines()
-        assert report.types == ["rfe", "brief-acme", "brief-globex", "initiative"]
+        assert report.types == [
+            "rfe",
+            "brief-acme",
+            "brief-globex",
+            "initiative",
+            "react-shopping-cart",
+        ]
         assert report.families == [FAMILY]
 
     def test_to_dict_lists_the_family(self):
@@ -1175,7 +1187,7 @@ class TestGate1Findings:
             shutil.rmtree(families_copy / name)
         # Beside a concrete type the family itself is reported.
         report = _validate(TYPES_ROOT, extra_roots=[families_copy])
-        assert report.types == ["rfe", "initiative"]
+        assert report.types == ["rfe", "initiative", "react-shopping-cart"]
         assert report.families == [FAMILY]
         assert [(f.type, f.message, f.types) for f in report.findings] == [
             (

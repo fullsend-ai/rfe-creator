@@ -356,7 +356,8 @@ class TestFromBatchMappingForm:
         assert result.returncode == 2
         assert result.stdout == ""
         assert result.stderr == (
-            f"unknown type 'epic' ({batch} type:); registered types: rfe, initiative\n"
+            f"unknown type 'epic' ({batch} type:); registered types: rfe, initiative, "
+            f"react-shopping-cart\n"
         )
         assert not (tmp_path / "artifacts").exists()
 

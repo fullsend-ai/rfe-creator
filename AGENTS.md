@@ -143,9 +143,18 @@ Skills that only work with local artifacts (`/rfe-create`) do not require Jira a
 - **Parent field**: Set to a RHAISTRAT Outcome key to link the Initiative to a strategic outcome, in the same project. `fetch_issue.py --fetch-all --type initiative` reads it back into the task's `parent_key` (what arms the alignment check for an Initiative fetched from Jira). The Outcome is in the Initiative's own key family, so the run report, the review report and `submit.py` tell such a hierarchy link from a split parent by the workspace (a split parent has a task here), never by key family — types/README.md "Parent field"
 - **Submission script**: `scripts/submit.py --type initiative`
 
+### TSTAPP Project (Shop RFEs, the [react-shopping-cart](https://github.com/fullsend-ai/react-shopping-cart) demo storefront)
+- **Project**: `TSTAPP`
+- **Issue Type**: `Story`
+- **Priority values** (use these exactly): Blocker, Critical, Major, Normal, Minor, Undefined
+- **Status on creation**: `New`
+- **Workflow**: New, Refinement, In Progress, Closed — no Approved status, so `--auto-approve` is refused for this type
+- **Downstream**: strat-creator adds the HOW to the same Story; fullsend's code agent implements it on a `/fs-code` comment in https://github.com/fullsend-ai/react-shopping-cart
+- **Submission script**: `scripts/submit.py --type react-shopping-cart`
+
 ## Work Item Types
 
-Each work item type (RFE, Initiative) is described by a data-only descriptor at `types/<type>/type.yaml`, validated against `types/_schema/type.schema.json`. `types/README.md` is the field reference and `docs/type-provider-guide.md` the provider guide (adding a type, the gates, the drop-in seam). Scripts adopt the registry one PR at a time (the "Adoption status" table in `docs/work-item-types-development.md` lists which read it): an adopted script derives its per-type table from the descriptors at import, and a pending script's table is pinned by test to the descriptors so the two cannot drift. When a per-type value changes, update the descriptor — and, for a pending script, its table — in the same PR.
+Each work item type (RFE, Initiative, Shop RFE) is described by a data-only descriptor at `types/<type>/type.yaml`, validated against `types/_schema/type.schema.json`. `types/README.md` is the field reference and `docs/type-provider-guide.md` the provider guide (adding a type, the gates, the drop-in seam). Scripts adopt the registry one PR at a time (the "Adoption status" table in `docs/work-item-types-development.md` lists which read it): an adopted script derives its per-type table from the descriptors at import, and a pending script's table is pinned by test to the descriptors so the two cannot drift. When a per-type value changes, update the descriptor — and, for a pending script, its table — in the same PR.
 
 ```bash
 python3 scripts/type_registry.py list              # Registered type names
@@ -202,7 +211,12 @@ Files under `eval/dataset/` must be anonymized before commit. Never commit real 
 
 ## Architecture Context
 
-`/rfe-review` automatically fetches architecture context from [opendatahub-io/architecture-context](https://github.com/opendatahub-io/architecture-context) into `.context/architecture-context/` and detects the latest RHOAI version. No manual setup needed.
+`/rfe-review` automatically fetches the type's architecture context, from the `architecture-context` entry of its descriptor's `pipeline.context_sources` (rendered as the `ARCH_FETCH` launch var; `pipeline_state.py` SETUP runs the same command). No manual setup needed.
+
+- **RFE, Initiative**: [opendatahub-io/architecture-context](https://github.com/opendatahub-io/architecture-context) into `.context/architecture-context/`, at the latest RHOAI version.
+- **Shop RFE** (`react-shopping-cart`): `docs/architecture` of [fullsend-ai/react-shopping-cart](https://github.com/fullsend-ai/react-shopping-cart) into `.context/react-shopping-cart-architecture/`.
+
+In a fullsend run the sandbox skips every fetch (`RFE_SKIP_BOOTSTRAP=1`); `.fullsend/rfe-creator/pre-rfe-creator.sh` fetches each type's context on the host first.
 
 Architecture context is used during `/rfe-review` (technical feasibility fork).
 

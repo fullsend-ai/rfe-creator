@@ -5,7 +5,7 @@ Reads the pipeline state and verifies every item has a review file.
 Exits 0 if all complete, exits 1 with the list of missing IDs if not.
 
 Usage:
-    python3 scripts/check_autofix_complete.py [--type rfe|initiative]
+    python3 scripts/check_autofix_complete.py [--type <registered type>]
 
 An unregistered --type exits 2 with the registered type list.
 """
@@ -16,19 +16,16 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import type_registry
 
-# The registry validates --type; _TYPE_CONFIG stays literal because its ids_file values are
-# pipeline facts (the speedrun state prefix) pinned to the descriptors by test, not derived.
+# Derived from the registry: the ids file carries the type's pipeline.state_prefix (the speedrun
+# state prefix of the generic bodies), the reviews dir its dirs.reviews.
 _TYPES = type_registry.load()
 
 _TYPE_CONFIG = {
-    "rfe": {
-        "ids_file": "tmp/speedrun-all-ids.txt",
-        "reviews_dir": "artifacts/rfe-reviews",
-    },
-    "initiative": {
-        "ids_file": "tmp/initiative-speedrun-all-ids.txt",
-        "reviews_dir": "artifacts/initiative-reviews",
-    },
+    name: {
+        "ids_file": f"tmp/{_TYPES.get(name).get('pipeline.state_prefix', '')}speedrun-all-ids.txt",
+        "reviews_dir": _TYPES.get(name).dirs()["reviews"],
+    }
+    for name in _TYPES.names()
 }
 
 
@@ -41,15 +38,6 @@ def main():
         print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(exc.exit_code)
 
-    if pipeline_type not in _TYPE_CONFIG:
-        # Registered (a drop-in via RFE_CREATOR_EXTRA_TYPES) but this table is still literal:
-        # refuse through the same usage-error path rather than an uncaught KeyError.
-        print(
-            f"ERROR: --type {pipeline_type!r} is registered but has no entry in this script's "
-            f"table yet; supported: {', '.join(_TYPE_CONFIG)}",
-            file=sys.stderr,
-        )
-        sys.exit(2)
     tc = _TYPE_CONFIG[pipeline_type]
 
     ids_file = tc["ids_file"]

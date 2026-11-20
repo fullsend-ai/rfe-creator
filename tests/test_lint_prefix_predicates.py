@@ -38,10 +38,14 @@ EXPECTED_PREFIXES = [
     "initiative-snapshot-",
     "initiative-run-",
     "issue-snapshot-",
+    "rsc-snapshot-",
     "RHAISTRAT-",
     "RHAIRFE-",
+    "rsc-run-",
+    "TSTAPP-",
     "INIT-",
     "RFE-",
+    "RSC-",
 ]
 
 PLANTED = """\

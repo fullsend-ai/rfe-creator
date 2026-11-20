@@ -26,11 +26,25 @@ def _registry():
     return registry
 
 
-def names_type_with_project(text, entity, project):
+def names_type_with_project(text, entity, project, longer=()):
     """True when one line of ``text`` holds both the display name and the Jira project. A
-    letter before the name makes it part of a longer word (RHAIRFE is not an RFE)."""
+    letter before the name makes it part of a longer word (RHAIRFE is not an RFE), and so does
+    another type's longer display name that contains it (a Shop RFE is not an RFE): ``longer``
+    lists those names, removed from a line before the name is searched."""
     name = re.compile(rf"(?<![A-Za-z]){re.escape(entity)}")
-    return any(name.search(line) and project in line for line in text.splitlines())
+
+    def mentions(line):
+        for other in longer:
+            line = line.replace(other, "")
+        return name.search(line)
+
+    return any(mentions(line) and project in line for line in text.splitlines())
+
+
+def _longer(registry, entity):
+    """The other registered display names that contain ``entity``."""
+    names = [registry.get(n).get("display.entity") for n in registry.names()]
+    return tuple(n for n in names if n != entity and entity in n)
 
 
 def spells_type_option(text, name):
@@ -54,7 +68,11 @@ def test_names_every_registered_type_and_its_jira_project():
     for name in registry.names():
         desc = registry.get(name)
         entity, project = desc.get("display.entity"), desc.get("identity.jira.project")
-        assert names_type_with_project(text, entity, project), (name, entity, project)
+        assert names_type_with_project(text, entity, project, _longer(registry, entity)), (
+            name,
+            entity,
+            project,
+        )
 
 
 def test_spells_the_type_option_for_every_registered_type():
@@ -76,8 +94,9 @@ def test_project_check_rejects_a_type_paired_with_another_types_project():
     text = "\n".join(lines)
     for name in names:
         desc = registry.get(name)
+        entity = desc.get("display.entity")
         assert not names_type_with_project(
-            text, desc.get("display.entity"), desc.get("identity.jira.project")
+            text, entity, desc.get("identity.jira.project"), _longer(registry, entity)
         ), name
 
 

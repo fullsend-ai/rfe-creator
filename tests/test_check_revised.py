@@ -372,12 +372,16 @@ class TestTypeArg:
     type_registry.parse_type_arg (PR-3a; pinned in tests/test_type_registry.py): an
     unregistered name exits 2 with the registered list instead of a KeyError traceback."""
 
-    UNKNOWN = "ERROR: unknown --type 'bogus'; registered types: rfe, initiative\n"
-    TRAILING = "ERROR: --type requires a value; registered types: rfe, initiative\n"
+    UNKNOWN = (
+        "ERROR: unknown --type 'bogus'; registered types: rfe, initiative, react-shopping-cart\n"
+    )
+    TRAILING = (
+        "ERROR: --type requires a value; registered types: rfe, initiative, react-shopping-cart\n"
+    )
 
     def test_usage_choices_follow_the_registry(self):
         assert check_revised._TYPE_CHOICES == "|".join(check_revised._TYPES.choices())
-        assert check_revised._TYPE_CHOICES == "rfe|initiative"
+        assert check_revised._TYPE_CHOICES == "rfe|initiative|react-shopping-cart"
 
     def test_cli_unknown_type_in_batch_mode(self, tmp_path):
         result = subprocess.run(
@@ -412,8 +416,9 @@ class TestTypeArg:
         result = subprocess.run(["python3", SCRIPT, "only-one"], capture_output=True, text=True)
         assert result.returncode == 2
         assert result.stderr == (
-            "Usage: check_revised.py [--type rfe|initiative] <original> <task>\n"
-            "       check_revised.py [--type rfe|initiative] --batch [ID ...]\n"
+            "Usage: check_revised.py [--type rfe|initiative|react-shopping-cart] "
+            "<original> <task>\n"
+            "       check_revised.py [--type rfe|initiative|react-shopping-cart] --batch [ID ...]\n"
         )
 
     def test_cli_registered_type_still_works_in_pair_mode(self, tmp_dir):
@@ -783,7 +788,11 @@ class TestPerIdIsolation:
 
 # ---------- AISDLC-442: clear an addressed feasibility flag at REASSESS_FIXUP ----------
 
-_CLEAR_IDS = {"rfe": "RHAIRFE-4400", "initiative": "RHAISTRAT-4400"}
+_CLEAR_IDS = {
+    "rfe": "RHAIRFE-4400",
+    "initiative": "RHAISTRAT-4400",
+    "react-shopping-cart": "TSTAPP-4400",
+}
 _FEASIBILITY_REASON = (
     "Feasibility review identified prescriptive technology framing that contradicts the"
     " assessor's Open to HOW score; human review needed."
@@ -854,7 +863,7 @@ def _clear_run(tmp_path, t, item_id, *flags):
     )
 
 
-@pytest.mark.parametrize("t", ["rfe", "initiative"])
+@pytest.mark.parametrize("t", ["rfe", "initiative", "react-shopping-cart"])
 class TestClearAddressedAttention:
     """REASSESS_FIXUP's --clear-addressed-attention: a needs_attention flag the review agent
     sourced to feasibility is cleared once the revision passes with that dimension at its

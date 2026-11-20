@@ -1150,8 +1150,13 @@ class TestSnapshotConfigDerivesFromTheRegistry:
                 "quarantine_label": "initiative-split-quarantine",
                 "snapshot_prefix": "initiative-snapshot-",
             },
+            "react-shopping-cart": {
+                "ignore_label": "rsc-creator-ignore",
+                "quarantine_label": "rsc-creator-split-quarantine",
+                "snapshot_prefix": "rsc-snapshot-",
+            },
         }
-        assert list(SNAPSHOT_CONFIG) == ["rfe", "initiative"]
+        assert list(SNAPSHOT_CONFIG) == ["rfe", "initiative", "react-shopping-cart"]
         for config in SNAPSHOT_CONFIG.values():
             assert list(config) == ["ignore_label", "quarantine_label", "snapshot_prefix"]
 
@@ -1180,7 +1185,7 @@ class TestSnapshotConfigDerivesFromTheRegistry:
             env=_clean_env(),
         )
         assert result.returncode == 0
-        assert "--type {rfe,initiative}" in result.stdout
+        assert "--type {rfe,initiative,react-shopping-cart}" in result.stdout
 
     def test_a_drop_in_type_is_offered_and_configured(self, tmp_path):
         root = _dropin_root(tmp_path)
@@ -1188,7 +1193,7 @@ class TestSnapshotConfigDerivesFromTheRegistry:
         result = subprocess.run(
             [sys.executable, SCRIPT, "fetch", "--help"], capture_output=True, text=True, env=env
         )
-        assert "--type {rfe,docs,initiative}" in result.stdout
+        assert "--type {rfe,docs,initiative,react-shopping-cart}" in result.stdout
         # The one fetch path that needs no Jira — --reprocess without a JQL reuses the prior
         # IDs — still indexes SNAPSHOT_CONFIG by type, so it proves the drop-in is configured.
         ids_file = tmp_path / "ids.txt"
