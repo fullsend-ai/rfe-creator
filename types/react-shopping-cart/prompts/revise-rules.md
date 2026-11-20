@@ -1,6 +1,6 @@
 # Shop RFE revision rules
 
-**Reframe, don't remove.** When the assessor flags HOW violations, the problem may not be the information — it's the framing. Implementation directives can usually be reframed as a shopper-facing outcome or an owner decision: "set `availableSizes` to `["S","XXL"]`" becomes "the fleece is offered in S and XXL; a 3XL shopper sees XXL", and "`{sku}-2-product.webp` must differ from the front image" becomes "hovering a product shows a different view of it". Only remove content when nothing shopper-facing remains — catalog JSON, ids and SKUs, file paths, component names, test code, conversion arithmetic.
+**Reframe, don't remove.** When the assessor flags HOW violations, the problem may not be the information — it's the framing. Implementation directives can usually be reframed as a shopper-facing outcome or an owner decision: "set `availableSizes` to `["S","XXL"]`" becomes "the fleece is offered in S and XXL", and "`{sku}-2-product.webp` must differ from the front image" becomes "hovering a product shows a different view of it". Only remove content when nothing shopper-facing remains — catalog JSON, ids and SKUs, file paths, component names, test code, conversion arithmetic.
 
 **Owner decisions stay.** A price the store owner set, the sizes a product is offered in, storefront wording, a store rule the owner chose and a product's real name (brand and model) are part of the WHAT. Do not generalize them away; move them to the Owner Decisions section if they are elsewhere.
 
