@@ -35,7 +35,7 @@ descriptor value ("Deployment binding override" below).
 | Which scripts read the registry, delivery history, where the descriptors depart from the design text | [`docs/work-item-types-development.md`](work-item-types-development.md) |
 | Copy-from skeleton | `types/rfe/` (`cp -r types/rfe types/<name>`) |
 | Reference type family | `tests/fixtures/type-families/` (a two-member family that passes gate 1, resolves and renders launch vars; "Type families" in `types/README.md`) |
-| Registry API and CLI | `scripts/type_registry.py` (`list`, `families`, `show`, `get`, `binding`, `candidates`, `resolve`); in code `load()`, `names()`/`choices()`/`get()`, `families()`/`members(family)`/`family(name)`/`canonical(name)`, `Descriptor.family` / `.own` / `.extends`, `detect(item_id)`, `candidates(item_id)`, `resolve(registry, ...)`, `assert_registered_binding(desc)`, `is_headless(env, flag)`, `parse_type_arg(registry, argv)` |
+| Registry API and CLI | `scripts/type_registry.py` (`list`, `families`, `canonical`, `show`, `get`, `binding`, `candidates`, `resolve`); in code `load()`, `names()`/`choices()`/`get()`, `families()`/`members(family)`/`family(name)`/`canonical(name)`/`try_canonical(name)`, `Descriptor.family` / `.own` / `.extends`, `detect(item_id)`, `candidates(item_id)`, `resolve(registry, ...)`, `assert_registered_binding(desc)`, `is_headless(env, flag)`, `parse_type_arg(registry, argv)`, `type_arg(registry)` (the argparse `--type` converter) |
 | Validator (gates 1–3) | `scripts/validate_types.py` (`make lint` runs gate 1) |
 | Anti-regression prefix lint and its ratchet baseline | `scripts/lint_prefix_predicates.py`, `tests/data/prefix_predicate_baseline.json` (only ever shrinks) |
 | Recorded gaps (R1): what the v1 vocabulary cannot say | `NOT EXPRESSIBLE AT V1` comments in `tests/fixtures/types/epic/type.yaml`; `not_expressible_at_v1` in `tests/fixtures/types/strategy-inputs.yaml` |
@@ -240,13 +240,15 @@ that `extends` it, and the registry merges the family under the member before an
    `identity.id_field`, `dirs.{tasks,originals,reviews}`, `snapshot.results_subdir` equal to the
    member name and `eval.config` (one rendered config per type). Add `conventions.query_default`
    and `conventions.parent_key_patterns` when the project changes what they say, the rest of the
-   eval facts a render needs — `eval.{dataset,mlflow_experiment}` and the `<member>_quality`
-   threshold (it deep-merges into the family's thresholds) — and the poll/state/snapshot prefixes
-   unless the family carries them (the reference family leaves them to its members; the shipped
-   Initiative family will carry them). The reference member is
+   eval facts a render needs — `eval.{dataset,mlflow_experiment}` when the member's differ from the
+   family's; the quality judge, the run name and the `--type` of the generated config are the
+   family's (`generate_eval_config.eval_stem`), so the `<family>_quality` threshold lives on the
+   family, not on the member — and the poll/state/snapshot prefixes unless the family carries them
+   (the reference family leaves them to its members; the shipped Initiative family, once the split
+   lands, will carry them). The reference member is
    `tests/fixtures/type-families/brief-acme/type.yaml`, abridged here to the keys a member must own
-   (the file itself adds the prefixes, the eval facts, the query default, the parent-key patterns
-   and one own signal):
+   (the file itself adds the prefixes, the eval dataset and experiment, the query default, the
+   parent-key patterns and one own signal):
 
    ```yaml
    schema_version: 1
@@ -269,8 +271,8 @@ that `extends` it, and the registry merges the family under the member before an
    typed files (`types/<family>/...` paths resolve from the family's directory, wherever its root
    lives), the rubric pin, the schema facts, the eval prose (`types/<family>/eval/` serves a member
    with no `eval/` directory of its own) and — when the family declares them — the poll/state
-   prefixes and the snapshot prefix (the reference family does not; a shipped sole member may
-   inherit them). A second member gives those their own values: the cross-type
+   prefixes and the snapshot prefixes (the reference family does not; the shipped Initiative family
+   will, so its sole member inherits them). A second member gives those their own values: the cross-type
    rules keep the prefixes, `results_subdir` and every `dirs.*` value unique and allow one member
    per project. A file placed under `types/<member>/` is read only when a descriptor key names it.
 
@@ -282,25 +284,25 @@ that `extends` it, and the registry merges the family under the member before an
    render — `TYPE`, `POLL_PREFIX`, `STATE_PREFIX`, the inherited prompt paths) and
    `python3 scripts/generate_eval_config.py --type <member>` (the committed config, rendered from
    the family's fragment when the member has none). Then run the pipeline with `--type <member>`.
-   The family name is accepted by `get`, `binding` and `launch-vars` only while the family has
-   exactly one member (a stderr note names it) and is refused by `resolve --type`,
-   `validate_types.py --verify --type`, `generate_eval_config.py --type` and a workspace
-   `bindings:` key until the Initiative split story widens the alias; the family itself is not
-   runnable, so `/rfe-review --type <family>` is an unknown type.
+   The family name is accepted everywhere a type name is read while the family has exactly one
+   member (`canonical()`: every script's `--type`, `resolve`, `validate_types.py --verify --type`,
+   `generate_eval_config.py --type`, a workspace `bindings:` key, `bootstrap.sh --type`, the
+   artifact and report readers; the `get` / `binding` / `launch-vars` CLI adds a stderr note naming
+   the member) and refused when it has two or more (`canonical()`'s text names the members; the
+   tolerant readers answer with the registered list or the expected member); the family itself is
+   never runnable, so `/rfe-review --type <family>` runs the member or fails naming the members. New
+   artifacts and run reports carry the member's name either way.
 
-Two reminders for a family that lands under `types/` (the first does not apply to a drop-in
-root; the second applies to any type those tables do not list, drop-in or not):
-
-- `scripts/bootstrap.sh` has a no-Python fallback that lists every `types/*/type.yaml` directory as
-  a type (`registered_types_from_root`) and reads `pipeline.rubric.*` from the named type's own
-  file (`rubric_field_from_root`): a family directory is listed by it, and a member that inherits
-  the rubric has no `rubric:` lines of its own for the awk to find. The registry path runs first
-  whenever python3 and PyYAML are present; the fallback is what a bare sandbox gets.
-- The literal state-file tables — `check_review_progress._detect_fast`
-  (`tmp/<state_prefix>{review,split,speedrun}-config.yaml`) and `check_autofix_complete._TYPE_CONFIG`
-  (`tmp/<state_prefix>speedrun-all-ids.txt`) — are keyed by the shipped prefixes. Keep an inherited
-  `pipeline.state_prefix` unless those tables change in the same PR: an own prefix on a member of a
-  shipped family silently loses fast-poll detection and the auto-fix completion check.
+For a family that lands under `types/`: `scripts/bootstrap.sh` reads the type through the registry
+and, without Python, through the shipped root (`registered_types_from_root`, which a drop-in root
+never reaches — it needs the registry, as before): a family directory (`abstract: true`) is skipped,
+a family name resolves to its sole member, and a member without `rubric:` lines of its own is read
+through its `extends:` family (`rubric_field_from_root`); the rubric path and the scorer agent it
+checks after the clone are every type's own `pipeline.rubric.path` / `pipeline.scorer_agent`. The
+state-file tables (`check_review_progress._FAST_POLL_CONFIGS`,
+`tmp/<state_prefix>{review,split,speedrun}-config.yaml`, and `check_autofix_complete._TYPE_CONFIG`,
+`tmp/<state_prefix>speedrun-all-ids.txt`) derive from `pipeline.state_prefix`, so an own prefix on a
+member is followed automatically.
 
 ### Gates checklist
 

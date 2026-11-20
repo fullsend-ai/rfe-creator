@@ -24,7 +24,9 @@ _TYPE_CONFIG = {
 def main():
     parser = argparse.ArgumentParser(description="Aggregate review results for batch summaries.")
     parser.add_argument("ids", nargs="*", help="IDs (e.g. RHAIRFE-100)")
-    parser.add_argument("--type", choices=_TYPES.choices(), default="rfe")
+    parser.add_argument(
+        "--type", type=type_registry.type_arg(_TYPES), choices=_TYPES.choices(), default="rfe"
+    )
     parser.add_argument(
         "--ids-file", help="Read IDs from a file (one per line) instead of positional args"
     )

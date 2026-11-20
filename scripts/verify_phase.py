@@ -44,9 +44,6 @@ def _phase_output(desc):
 
 
 _PHASE_OUTPUT = {name: _phase_output(_TYPES.get(name)) for name in _TYPES.names()}
-# Per-type aliases kept for their existing importers (tests/test_verify_phase.py).
-_RFE_PHASE_OUTPUT = _PHASE_OUTPUT["rfe"]
-_INITIATIVE_PHASE_OUTPUT = _PHASE_OUTPUT["initiative"]
 
 _TYPE_CONFIG = {
     name: {
@@ -284,7 +281,9 @@ def verify(phase, ids_file, pipeline_type="rfe"):
                         exists = False
                     else:
                         stamp_review_type(path, pipeline_type)
-                elif declared != pipeline_type:
+                elif (_TYPES.try_canonical(declared) or declared) != pipeline_type:
+                    # Compared through the family alias (design §3.2.2): a restored review that
+                    # declares the single-member family's name is the member's.
                     print(
                         f"verify_phase: {path}: review declares type={declared!r}, expected "
                         f"{pipeline_type}; not stamped",
@@ -308,7 +307,9 @@ def verify(phase, ids_file, pipeline_type="rfe"):
 
 def main():
     parser = argparse.ArgumentParser(description="Post-barrier verification for agent phases")
-    parser.add_argument("--type", choices=_TYPES.choices(), default="rfe")
+    parser.add_argument(
+        "--type", type=type_registry.type_arg(_TYPES), choices=_TYPES.choices(), default="rfe"
+    )
     parser.add_argument("--phase", required=True, help="Phase to verify")
     parser.add_argument("--ids-file", required=True, help="File containing IDs to check")
     args = parser.parse_args()

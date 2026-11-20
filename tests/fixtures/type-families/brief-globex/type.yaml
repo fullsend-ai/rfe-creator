@@ -41,4 +41,4 @@ eval:
   dataset: eval/initiative-dataset/cases     # existence stand-in
   mlflow_experiment: brief-globex-speedrun-eval
   thresholds:
-    brief-globex_quality: { min_mean: 3.5 }
+    classification_signal: { min_pass_rate: 0.95 }   # deep-merge: one threshold tightened, the other eleven and the family's judge inherited

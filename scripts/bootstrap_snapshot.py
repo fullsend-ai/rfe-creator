@@ -113,8 +113,16 @@ def _load_run_report(results_dir, run_name, config=None):
     if not isinstance(report, dict):
         raise ValueError(f"run report {path} is not a mapping (got {type(report).__name__})")
     report_type = report.get("type")
-    if report_type is not None and expected_type is not None and report_type != expected_type:
-        raise ValueError(f"run report {path} is a {report_type} report, expected {expected_type}")
+    if report_type is not None and expected_type is not None:
+        # Compared through the family alias (design §3.2.2): a report stamped with a
+        # single-member family's name and one stamped with its member's are the same type.
+        same = (_TYPES.try_canonical(report_type) or report_type) == (
+            _TYPES.try_canonical(expected_type) or expected_type
+        )
+        if not same:
+            raise ValueError(
+                f"run report {path} is a {report_type} report, expected {expected_type}"
+            )
     if item_key not in report:
         # The drift shape: a report written under a different item key. An empty LIST is a
         # legitimate zero-count run (the caller walks back); a missing KEY means the
@@ -445,6 +453,7 @@ def main():
     )
     parser.add_argument(
         "--type",
+        type=type_registry.type_arg(_TYPES),
         choices=_TYPES.choices(),
         default="rfe",
         help="Issue type (default: rfe)",

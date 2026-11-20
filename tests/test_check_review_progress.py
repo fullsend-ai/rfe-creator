@@ -1307,10 +1307,12 @@ class TestDerivedFromRegistry:
 
 
 class _FakeDesc:
-    """Minimal Descriptor stand-in: dotted get(), dirs(), and the id properties."""
+    """Minimal Descriptor stand-in: dotted get(), dirs(), the id properties and ``extends``
+    (None: not a type-family member, so the legacy row order is looked up by name only)."""
 
     def __init__(self, name, data, dirs=None):
         self.name = name
+        self.extends = None
         self._data = data
         self._dirs = dirs or {
             "tasks": "artifacts/x-tasks",

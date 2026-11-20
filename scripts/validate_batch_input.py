@@ -219,6 +219,7 @@ def main():
     # mapping-form type: (rung 2); absent both, resolve() returns the legacy default silently.
     parser.add_argument(
         "--type",
+        type=type_registry.type_arg(_TYPES),
         choices=_TYPES.choices(),
         default=None,
         help="Entry type to validate (default: rfe)",

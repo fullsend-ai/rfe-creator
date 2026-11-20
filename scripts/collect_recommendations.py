@@ -17,7 +17,12 @@ ARTIFACTS_DIR = os.path.join(os.getcwd(), "artifacts")
 
 
 def _review_dir(entry_type):
-    """Return the review directory for the given type (anything unregistered: rfe, as before)."""
+    """Return the review directory for the given type (anything unregistered: rfe, as before).
+
+    Unreachable from the command line: ``--type`` is canonicalised through
+    ``type_registry.type_arg`` and an unknown name is refused by argparse. Kept so a library caller
+    passing a raw string still gets a directory, as before.
+    """
     desc = _TYPES.get(entry_type if entry_type in _TYPES else "rfe")
     return os.path.join(ARTIFACTS_DIR, desc.dirs(form="bare")["reviews"])
 
@@ -115,6 +120,7 @@ def main():
     parser.add_argument("--errors", action="store_true", help="Collect IDs with error field set")
     parser.add_argument(
         "--type",
+        type=type_registry.type_arg(_TYPES),
         choices=_TYPES.choices(),
         default="rfe",
         help="Entry type (default: rfe)",
