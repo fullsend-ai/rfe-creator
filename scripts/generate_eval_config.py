@@ -104,9 +104,17 @@ class GenerateError(ValueError):
 
 
 def eval_dir(desc):
+    """``<descriptor dir>/eval``; for a member of a type family without an ``eval/`` directory
+    of its own, the family's (design §3.2.2). The directory, not the file: a member's ``eval/``
+    carries both fragment.yaml and pairwise-judge.md or neither, so a half-populated one is a
+    finding rather than a silent mix with the family's files."""
     if desc.path is None:
         raise GenerateError(f"{desc.name}: descriptor has no path; cannot locate eval/")
-    return Path(desc.path).parent / "eval"
+    own = Path(desc.path).parent / "eval"
+    family = getattr(desc, "family", None)
+    if not own.is_dir() and family is not None and family.path is not None:
+        return Path(family.path).parent / "eval"
+    return own
 
 
 def fragment_path(desc):

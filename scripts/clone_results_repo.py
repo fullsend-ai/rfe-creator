@@ -20,7 +20,8 @@ Examples:
 Results repository layout (AISDLC-202): one repository, one subtree per type. The rfe
 type's runs live at the root (`<run>/` and the root `latest` -- grandfathered), every
 other type's under its `snapshot.results_subdir`, named `<type>-<project lowercased>`
-(`initiative-rhoaieng/<run>/`, `initiative-rhoaieng/latest`). DATA_REPO_TYPES
+(`initiative-rhaistrat/<run>/`, `initiative-rhaistrat/latest`; a member of a type family
+names its subtree after itself). DATA_REPO_TYPES
 (comma-separated registry type names) selects the subtrees to materialize: each type
 contributes `/<subdir>/latest` and `/<subdir>/*/auto-fix-runs/<snapshot.prefix>*.yaml`
 (root forms when the subdir is empty), both read from types/<type>/type.yaml through the

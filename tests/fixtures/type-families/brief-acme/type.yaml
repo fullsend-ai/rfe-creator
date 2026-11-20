@@ -1,0 +1,36 @@
+# tests/fixtures/type-families/brief-acme/type.yaml — member one of the `brief` family: the
+# ACME project. Carries only what a member owns plus what it overrides; everything else is
+# inherited (see brief/type.yaml).
+schema_version: 1
+type: brief-acme
+extends: brief
+identity:
+  jira:
+    project: ACME
+    key_prefixes: ["ACME-"]
+  local_prefix: "BRA-"
+  local_id_pattern: '^BRA-\d+$'
+  id_field: brief_acme_id
+dirs:
+  tasks: artifacts/brief-acme-tasks
+  originals: artifacts/brief-acme-originals
+  reviews: artifacts/brief-acme-reviews
+conventions:
+  query_default: 'project = ACME AND issuetype = Brief'
+  parent_key_patterns: ['ACMEOUT-\d+', 'BRA-\d+']
+classification:
+  signals:                                   # concatenated after the family's two
+    - looked up in the acme catalogue
+pipeline:
+  poll_prefix: "brief-acme-"                 # the hyphen-inside prefix grammar
+  state_prefix: "brief-acme-"
+snapshot:
+  prefix: "brief-acme-snapshot-"
+  report_prefix: "brief-acme-run-"
+  results_subdir: "brief-acme"
+eval:
+  config: eval.yaml                          # existence stand-in: never regenerated in place
+  dataset: eval/dataset/cases                # existence stand-in
+  mlflow_experiment: brief-acme-speedrun-eval
+  thresholds:
+    brief-acme_quality: { min_mean: 3.5 }    # deep-merges into the family's thresholds

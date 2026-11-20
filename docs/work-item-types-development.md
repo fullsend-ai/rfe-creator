@@ -116,6 +116,13 @@ pin.
   AISDLC-301. `classification.*` joined with AISDLC-189 (the block the create body and the review
   launcher read from AISDLC-190 and AISDLC-191; gate 1 checks it, "Classification block" in
   `types/README.md`).
+- **Type families.** AISDLC-850 (#307) added `abstract:` / `extends:`, the relaxed family gate, the
+  member rules, cross rules 8-10 (one owner per artifact directory, one member per project within
+  a family, a family-scoped `RFE_CREATOR_BINDING_*` variable is a finding) and
+  `tests/fixtures/type-families/`; AISDLC-851 splits `initiative` into a family plus
+  `initiative-rhaistrat` and widens the family-name alias through `TypeRegistry.canonical()`
+  (today the `get` / `binding` / `launch-vars` CLI only); AISDLC-853 adds `--project` and member
+  signals.
 - **Reserved vocabulary.** The `schema.task.priority.enum` beside the reserved `map_to_tracker`
   feeds `artifact_utils.SCHEMAS` since PR-2b and `validate_batch_input.ALLOWED_PRIORITIES` per
   type since PR-3b.

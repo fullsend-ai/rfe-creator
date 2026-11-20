@@ -1,0 +1,110 @@
+# tests/fixtures/type-families/brief/type.yaml — a TYPE FAMILY (design §3.2.2): the judgement
+# its members share. Never enumerated, bound or run; validated against the relaxed shape.
+# Deliberately absent: the member-own keys (identity.jira.project / key_prefixes, local_prefix,
+# local_id_pattern, id_field, dirs, snapshot.results_subdir), the poll/state/snapshot prefixes,
+# context_sources, query_default / parent_key_patterns, eval.config / dataset / mlflow_experiment.
+schema_version: 1
+type: brief
+abstract: true
+display: { entity: Brief, entity_plural: Briefs }
+kind: work-item
+classification:
+  summary: A short planning brief for one team and one quarter (fixture)
+  driver: a fixture author
+  signals:
+    - a one-quarter plan for one team
+    - a fixture brief cue
+  counter_signals:
+    - a multi-year programme
+  examples:
+    - Write the Q3 brief for the onboarding team
+identity:
+  tracker: jira
+  jira:
+    issue_type: Brief
+    split_link_type: "Work item split"
+    state_map:
+      approved: Approved
+      close_superseded: { transition: Closed, resolution: Obsolete }
+index: { enabled: false }
+companions:
+  comments: false
+  removed_context: true
+conventions:
+  type_label: Brief
+  label_prefix: brief
+  labels:
+    rubric_pass: brief-autofix-rubric-pass
+    ignore: brief-ignore
+    split_quarantine: brief-split-quarantine
+    split_child_marker: "brief-split-child-{parent}-{child_id}-{fingerprint}"
+    needs_attention: brief-needs-attention
+    type_confirmed: brief-type-confirmed
+    auto_created: brief-auto-created
+    auto_revised: brief-auto-revised
+    split_result: brief-split-result
+    split_original: brief-split-original
+    feasibility:
+      feasible: brief-feasibility-pass
+      infeasible: brief-feasibility-fail
+      indeterminate: brief-feasibility-unknown
+    alignment:
+      strong: brief-alignment-strong
+      partial: brief-alignment-partial
+      weak: brief-alignment-weak
+  comment_prefix: "[Brief Creator]"
+  removed_context_preamble: "*[Brief Creator]* Removed during review:"
+schema:
+  task:
+    extra_fields: {}
+    priority:
+      enum: [Blocker, Critical, Major, Normal, Minor, Undefined]
+      map_to_tracker: {}
+  review:
+    score_fields: [what, why, right_sized]
+    extra_fields: {}
+    extra_rules: []
+pipeline:
+  stages: [create, review, submit, split, auto-fix, speedrun]
+  scorer_agent: brief-scorer
+  prompts:
+    template: types/brief/template.md
+    create_guidance: types/brief/prompts/create-guidance.md
+    review_rules: types/brief/prompts/review-rules.md
+    review_sections: types/brief/prompts/review-sections.md
+    revise_rules: types/brief/prompts/revise-rules.md
+    split_rules: types/brief/prompts/split-rules.md
+  dimensions:
+    - name: feasibility
+      prompt: types/brief/dimensions/feasibility.md
+      blocking: true
+    - name: alignment
+      prompt: types/brief/dimensions/alignment.md
+      blocking: false
+      condition: { frontmatter_field: parent_key, prefix: "ACMEOUT-" }
+      skip_stub: { result: not_assessed, reason: "skipped by pipeline (no Outcome parent)" }
+  rubric:
+    repo: self
+    path: .claude/skills/rfe-review/prompts/review-agent.md
+    rubric_version: "0000000"
+  resplit: { score_field: right_sized, below: 2 }
+batch: { extra_fields: [parent_key] }
+reporting:
+  item_key: per_brief
+  criterion_labels: { what: WHAT, why: WHY, right_sized: Right-sized }
+  before_score_name_map: { WHAT: what, WHY: why, Right-sized: right_sized }
+  run_report: { extra_entry_fields: [needs_attention] }
+eval:
+  timeout: 600
+  thresholds:
+    files_exist: { min_pass_rate: 1.0 }
+    frontmatter_valid: { min_pass_rate: 1.0 }
+    run_report_exists: { min_pass_rate: 1.0 }
+    recommendation_consistency: { min_pass_rate: 1.0 }
+    revision_flag_consistency: { min_pass_rate: 1.0 }
+    needs_attention_expectation: { min_pass_rate: 1.0 }
+    revision_coverage: { min_pass_rate: 0.92 }
+    pipeline_flow: { min_pass_rate: 1.0 }
+    architecture_context_used: { min_pass_rate: 1.0 }
+    revision_quality: { min_mean: 3.5 }
+    classification_signal: { min_pass_rate: 0.92 }
