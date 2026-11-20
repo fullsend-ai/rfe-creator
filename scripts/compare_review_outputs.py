@@ -157,6 +157,13 @@ def main():
         "--type", type=type_registry.type_arg(_TYPES), choices=_TYPES.choices(), default="rfe"
     )
     args = parser.parse_args()
+    if args.type not in _TYPE_CONFIG:
+        # Registered (argparse accepted it) but without the review directories or the score
+        # fields a comparison needs (a partial drop-in): a usage error, not a KeyError.
+        parser.error(
+            f"--type {args.type!r} is registered but declares no review directories or score "
+            f"fields to compare; supported: {', '.join(_TYPE_CONFIG)}"
+        )
 
     tc = _TYPE_CONFIG[args.type]
     golden_reviews = sorted(

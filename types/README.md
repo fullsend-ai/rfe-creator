@@ -716,8 +716,7 @@ are skeleton-only. Generation fails — and writes nothing — on an unresolved 
 unused fragment key, invalid YAML, a `check:` that does not compile, or a threshold naming a judge
 the config does not define (so a copied `rfe_quality` threshold under a new type is caught).
 Derived values (`${gen.*}`) are projections of the descriptor: `<type>-speedrun`,
-`<local_prefix>{n:03d}`, the score-field list, `<type>_quality` (for a member of a type family the
-run name, the `--type` argument and the judge key take the FAMILY's name —
+`<local_prefix>{n:03d}`, the score-field list, `<type>_quality` (for a member of a type family the run name and the judge key take the FAMILY's name (the `--type` argument stays the member's own name, which always resolves) —
 `generate_eval_config.eval_stem` — and the header names both files), the extra-field enum checks and
 the `extra_rules` consistency check, the `annotations_extra` lines, the run-report entry fields,
 `types/<t>/eval/pairwise-judge.md`, and the thresholds block with the fragment's notes as comments.
