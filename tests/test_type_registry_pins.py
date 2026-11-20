@@ -2445,7 +2445,7 @@ class TestSkillLayer:
             configs - allowed_cfg,
         )
         pin("pipeline.state_prefix + stage", "skills tmp/*-all-ids.txt", set(), ids - allowed_ids)
-        polls = set(re.findall(r"tmp/[a-z]+-poll-[a-z-]+", texts))
+        polls = set(re.findall(r"tmp/[a-z][a-z0-9-]*-poll-[a-z-]+", texts))
         assert polls and all(p.startswith(POLL_FILE_PREFIX[ctx.t]) for p in polls), polls
         assert dict(launch(ctx.t))["POLL_FILE_PREFIX"] == POLL_FILE_PREFIX[ctx.t]
 

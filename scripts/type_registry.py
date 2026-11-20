@@ -108,6 +108,19 @@ AISDLC-190); an id nobody owns stays a question to the user. The resolved
 line is ``TYPE RESOLVED: <type> (<rung>[; binding override project=...])``; the ``resolve``
 CLI always prints it (D3), entry scripts stay silent for the legacy default.
 
+Type families (design §3.2.2)
+-----------------------------
+A descriptor carrying ``abstract: true`` is a type FAMILY: it holds the judgement a set of
+types share (prompts, dimensions, rubric, schema, labels, eval prose) and is never enumerated
+(``names()``), bound (``binding()`` raises) or run. A descriptor carrying ``extends: <family>``
+is a MEMBER: its effective ``data`` is the family's merged under its own (``merge_descriptor``:
+mappings deep-merge, lists replace, ``classification.signals`` concatenate family-first,
+``pipeline.dimensions`` merge by name; ``own`` keeps the raw file), and it is a concrete type
+like any other. One level only, and a member's family lives in the member's own root or the
+main root. ``families()`` / ``family()`` / ``members()`` enumerate the families;
+``canonical(name)`` answers a single-member family's name with its sole member — the one seam
+the family-name alias goes through (the ``get`` / ``binding`` / ``launch-vars`` CLI today).
+
 Drop-in roots
 -------------
 ``RFE_CREATOR_EXTRA_TYPES`` (``os.pathsep``-separated directories, each holding
@@ -167,6 +180,14 @@ def _same_file_at(rel, absolute):
 
 
 DESCRIPTOR_FILENAME = "type.yaml"
+# Type families (design §3.2.2): a descriptor carrying ``abstract: true`` is a FAMILY — never
+# enumerated, bound or run; a descriptor carrying ``extends: <family>`` is a MEMBER whose
+# effective data is the family's merged under its own (``merge_descriptor``).
+FAMILY_MARKER = "abstract"
+EXTENDS_KEY = "extends"
+# Dotted paths whose merge is not the default (see ``merge_descriptor``).
+CONCAT_LIST_PATHS = frozenset({"classification.signals"})
+BY_NAME_LIST_PATHS = frozenset({"pipeline.dimensions"})
 EXTRA_ROOTS_ENV = "RFE_CREATOR_EXTRA_TYPES"
 # Design §3.5 / PR1-05: roots the env seam may add in a headless/CI run (os.pathsep-separated).
 EXTRA_ROOTS_ALLOWLIST_ENV = "RFE_CREATOR_EXTRA_TYPES_ALLOWLIST"
@@ -311,6 +332,68 @@ def _env_value(env, var):
     return value.strip() if isinstance(value, str) else ""
 
 
+# -- type families: the merge (design §3.2.2) -------------------------------------------------
+
+
+def merge_descriptor(family_data, member_data):
+    """The member's effective descriptor: ``family_data`` under ``member_data`` (design §3.2.2).
+
+    Mappings deep-merge; an explicit null in the member replaces (null is a value — there is no
+    deletion, a member cannot drop an inherited key); lists replace, except
+    ``classification.signals`` (family first, then the member's, verbatim — no dedupe, gate 1
+    reports a repeat) and ``pipeline.dimensions`` (merged by ``name``: a same-name member entry
+    deep-merges into the family's so ``condition.prefix`` or ``skip_stub`` can be overridden,
+    unknown names append in member order, nothing is removed); ``abstract`` is never copied;
+    ``extends`` and ``type`` are the member's own. Everything is deep-copied: the result never
+    aliases either input.
+    """
+    merged = _deep_merge(copy.deepcopy(family_data), member_data, "")
+    merged.pop(FAMILY_MARKER, None)
+    merged["type"] = member_data.get("type")
+    return merged
+
+
+def _deep_merge(base, over, path):
+    for key, value in over.items():
+        dotted = f"{path}{key}"
+        if value is None:  # null replaces, tested first: no special case may swallow it
+            base[key] = None
+        elif dotted in CONCAT_LIST_PATHS and isinstance(value, list):
+            # A non-list family value is a shape finding on the family (relaxed schema), never a
+            # load error: the member's list stands alone then.
+            inherited = base.get(key)
+            inherited = list(inherited) if isinstance(inherited, list) else []
+            base[key] = inherited + [copy.deepcopy(v) for v in value]
+        elif dotted in BY_NAME_LIST_PATHS and isinstance(value, list):
+            inherited = base.get(key)  # a non-list family value: the family's shape finding
+            inherited = inherited if isinstance(inherited, list) else []
+            base[key] = _merge_by_name(inherited, value, dotted)
+        elif isinstance(value, dict) and isinstance(base.get(key), dict):
+            _deep_merge(base[key], value, dotted + ".")
+        else:  # scalars, lists and a mapping over a non-mapping replace
+            base[key] = copy.deepcopy(value)
+    return base
+
+
+def _merge_by_name(family_entries, member_entries, dotted):
+    """Family entries first, each same-name member entry merged into its family entry, new
+    names appended in member order; an entry without a string ``name`` is appended verbatim
+    (the schema reports its shape)."""
+    out = [copy.deepcopy(entry) for entry in family_entries]
+    by_name = {
+        entry["name"]: entry
+        for entry in out
+        if isinstance(entry, dict) and isinstance(entry.get("name"), str)
+    }
+    for entry in member_entries:
+        name = entry.get("name") if isinstance(entry, dict) else None
+        if isinstance(name, str) and name in by_name:
+            _deep_merge(by_name[name], entry, dotted + ".")
+        else:
+            out.append(copy.deepcopy(entry))
+    return out
+
+
 class Descriptor:
     """Thin wrapper over one parsed ``type.yaml`` dict.
 
@@ -320,13 +403,28 @@ class Descriptor:
     ownership test over it.
     """
 
-    def __init__(self, name, data, path=None, env=None):
+    def __init__(self, name, data, path=None, env=None, family=None, own=None):
         self.name = name
+        # Merged (family under own) for a member of a type family; the raw file mapping otherwise.
         self.data = data
         self.path = Path(path) if path is not None else None
         # Default environment for binding(); the registry hands down the one it was built with
         # so reg.get(t).binding() and reg.bindings()[t] always agree.
         self._env = env
+        # Type families (design §3.2.2): the family Descriptor of a member, else None; ``own`` is
+        # the raw file mapping — the same object as ``data`` for anything but a member.
+        self.family = family
+        self.own = data if own is None else own
+
+    @property
+    def abstract(self):
+        """True for a type family (``abstract: true``): never enumerated, bound or run."""
+        return isinstance(self.data, dict) and self.data.get(FAMILY_MARKER) is True
+
+    @property
+    def extends(self):
+        """The family name a member inherits from, else None."""
+        return self.family.name if self.family is not None else None
 
     def __repr__(self):
         return f"Descriptor({self.name!r}, path={str(self.path) if self.path else None!r})"
@@ -340,9 +438,18 @@ class Descriptor:
         a subagent is ``launch_path``. An empty value (an absent optional file) stays empty."""
         if not rel:
             return ""
-        own = f"types/{self.name}/"
-        if self.path is not None and rel.startswith(own):
-            return str((self.path.parent / rel[len(own) :]).resolve())
+        if self.path is not None:
+            own = f"types/{self.name}/"
+            if rel.startswith(own):
+                return str((self.path.parent / rel[len(own) :]).resolve())
+            # A member of a type family (design §3.2.2): a path inherited from the family
+            # resolves against the FAMILY's directory, wherever its root lives. getattr: the
+            # validator's tests borrow this method on a stand-in without the attribute.
+            family = getattr(self, "family", None)
+            if family is not None and family.path is not None:
+                inherited = f"types/{family.name}/"
+                if rel.startswith(inherited):
+                    return str((family.path.parent / rel[len(inherited) :]).resolve())
         return str((PLUGIN_ROOT / rel).resolve())
 
     def launch_path(self, rel):
@@ -518,6 +625,11 @@ class Descriptor:
         overridden field names in ``project, issue_type, local_prefix`` order). Blank
         variables count as unset; every value passes the same grammar checks.
         """
+        if self.abstract:
+            raise RegistryError(
+                f"{self.name}: a type family (abstract: true) has no tracker binding; bind one "
+                "of its members"
+            )
         if env is None:
             env = self._env if self._env is not None else os.environ
         block = self._tracker_block()
@@ -898,9 +1010,15 @@ class TypeRegistry:
             extra_roots = self._extra_roots_from_env(allowlisted_extra_roots)
         self.extra_roots = [Path(r) for r in extra_roots]
         self.roots = [self.root] + self.extra_roots
+        # Concrete types — standalones and family members — keyed by name: names(), iteration,
+        # len and ``in`` read this and nothing else. Type families (design §3.2.2) live apart.
         self._types = {}
+        self._families = {}  # family name -> Descriptor (raw data, abstract)
+        self._members = {}  # family name -> [member names], names() order
+        raw = {}  # name -> (resolved descriptor path, data, root) across every root
         for candidate in self.roots:
-            self._scan(candidate)
+            self._scan(candidate, raw)
+        self._link_families(raw)
 
     def _extra_roots_from_env(self, allowlisted):
         """The env seam (PR1-05): every RFE_CREATOR_EXTRA_TYPES entry in a normal run; in a
@@ -930,7 +1048,9 @@ class TypeRegistry:
             )
         return kept
 
-    def _scan(self, root):
+    def _scan(self, root, raw):
+        """Collect ``root``'s descriptors into ``raw`` (one namespace across every root, so a
+        family and a concrete type of one name collide like two concrete types do)."""
         if not root.is_dir():
             raise RegistryError(f"type root not found: {root}")
         resolved_root = root.resolve()
@@ -945,13 +1065,79 @@ class TypeRegistry:
             if not real.is_relative_to(resolved_root):
                 raise RegistryError(f"{descriptor_path} resolves outside its root {root}: {real}")
             name = entry.name
-            if name in self._types:
+            if name in raw:
                 raise RegistryError(
-                    f"duplicate type {name!r}: {self._types[name].path} and {descriptor_path}"
+                    f"duplicate type {name!r}: {raw[name][0]} and {descriptor_path}"
                 )
+            raw[name] = (real, _read_descriptor(descriptor_path, name), root)
+
+    def _link_families(self, raw):
+        """Register the families, then the standalones and the members (design §3.2.2).
+
+        One level only: a family may not carry ``extends`` and an ``extends`` target must be a
+        family, so there is no chain and no cycle to check. A member's family must live in the
+        member's own root or the main root: a ``types/`` member depending on a drop-in family
+        would turn the headless root-drop (``_extra_roots_from_env``) into an import-time crash
+        of every pipeline script, and the shipped tree must load alone.
+        """
+        for name, (path, data, _root) in raw.items():
+            if FAMILY_MARKER not in data:
+                continue
+            value = data[FAMILY_MARKER]
+            if value is not True:
+                raise RegistryError(
+                    f"{path}: '{FAMILY_MARKER}: {value!r}' must be the boolean true (the family "
+                    "marker); omit it for a concrete type"
+                )
+            if EXTENDS_KEY in data:
+                raise RegistryError(
+                    f"{path}: a type family cannot extend another ({FAMILY_MARKER}: true together "
+                    f"with {EXTENDS_KEY}: {data[EXTENDS_KEY]}); families are one level deep"
+                )
+            self._families[name] = Descriptor(name, data, path=path, env=self.env)
+            self._members[name] = []
+        for name, (path, data, root) in raw.items():
+            if name in self._families:
+                continue
+            if EXTENDS_KEY not in data:
+                self._types[name] = Descriptor(name, data, path=path, env=self.env)
+                continue
+            target = data[EXTENDS_KEY]
+            if not isinstance(target, str) or not target.strip():
+                raise RegistryError(
+                    f"{path}: '{EXTENDS_KEY}' must be a type name (a non-empty string), got "
+                    f"{target!r}"
+                )
+            if target == name:
+                raise RegistryError(f"{path}: '{EXTENDS_KEY}: {target}' names itself")
+            family = self._families.get(target)
+            if family is None:
+                if target in raw:
+                    raise RegistryError(
+                        f"{path}: '{EXTENDS_KEY}: {target}' names a concrete type, not a family "
+                        f"({raw[target][0]} does not carry {FAMILY_MARKER}: true)"
+                    )
+                families = ", ".join(sorted(self._families)) or "(none)"
+                raise RegistryError(
+                    f"{path}: '{EXTENDS_KEY}: {target}' names no registered type family "
+                    f"(families: {families})"
+                )
+            family_root = raw[target][2]
+            if family_root != root and family_root != self.root:
+                raise RegistryError(
+                    f"{path}: '{EXTENDS_KEY}: {target}' names a family under another root "
+                    f"({family.path}); a member's family must live in the member's own root or "
+                    f"the main root ({self.root})"
+                )
+            merged = merge_descriptor(family.data, data)
             self._types[name] = Descriptor(
-                name, _read_descriptor(descriptor_path, name), path=real, env=self.env
+                name, merged, path=path, env=self.env, family=family, own=data
             )
+            self._members[target].append(name)
+        order = self.names()
+        for family_name, members in self._members.items():
+            chosen = set(members)
+            self._members[family_name] = [n for n in order if n in chosen]
 
     # -- enumeration ----------------------------------------------------------------------
 
@@ -980,6 +1166,48 @@ class TypeRegistry:
 
     def __contains__(self, name):
         return name in self._types
+
+    # -- type families (design §3.2.2) ------------------------------------------------------
+
+    def families(self):
+        """Type-family names, sorted. Never in ``names()``: a family is not a type."""
+        return sorted(self._families)
+
+    def family(self, name):
+        """The family ``Descriptor`` (raw data, ``abstract`` true)."""
+        try:
+            return self._families[name]
+        except KeyError:
+            raise KeyError(
+                f"unknown type family {name!r}; families: {', '.join(self.families()) or '(none)'}"
+            ) from None
+
+    def members(self, family):
+        """Member names of ``family`` in ``names()`` order (``KeyError`` like ``family()``)."""
+        self.family(family)
+        return list(self._members[family])
+
+    def canonical(self, name):
+        """The concrete type name behind ``name``: ``name`` itself when it is a type; the sole
+        member when it is a family with exactly one; ``KeyError`` otherwise. The one seam the
+        family-name alias goes through (the diagnostic CLI today; the Initiative split widens
+        it)."""
+        if name in self._types:
+            return name
+        if name in self._families:
+            members = self._members[name]
+            if len(members) == 1:
+                return members[0]
+            if not members:
+                raise KeyError(
+                    f"type family {name!r} has no member type (a member declares "
+                    f"{EXTENDS_KEY}: {name})"
+                )
+            raise KeyError(
+                f"{name!r} is a type family with {len(members)} members: {', '.join(members)}; "
+                "name one of them"
+            )
+        return self.get(name).name
 
     # -- effective bindings (design §3.2.1) -------------------------------------------------
 
@@ -1949,22 +2177,48 @@ def _cmd_list(reg, args):
     return 0
 
 
+def _cmd_families(reg, args):
+    table = {family: reg.members(family) for family in reg.families()}
+    if args.json:
+        _emit(table, True)
+    else:
+        for family, members in table.items():
+            print(f"{family}: {' '.join(members) or '(no member)'}")
+    return 0
+
+
 def _cmd_show(reg, args):
-    desc = reg.get(args.type)
-    if not args.json:
-        print(f"# {desc.name} ({desc.path})")
+    if args.type in reg.families():
+        # The family file as written (raw, abstract): show prints the file it is given.
+        desc = reg.family(args.type)
+        if not args.json:
+            members = ", ".join(reg.members(args.type)) or "no member"
+            print(f"# {desc.name} (family; members: {members}) ({desc.path})")
+    else:
+        desc = reg.get(args.type)  # merged data for a member (it carries ``extends``)
+        if not args.json:
+            print(f"# {desc.name} ({desc.path})")
     _emit(desc.data, args.json)
     return 0
 
 
+def _resolve_cli_type(reg, name):
+    """``get`` / ``binding`` / ``launch-vars``: a single-member type family answers through its
+    sole member (design §3.2.2); a family with two or more exits 1 naming them (``canonical``)."""
+    concrete = reg.canonical(name)
+    if concrete != name:
+        print(f"# {name}: a type family; answered by its sole member {concrete}", file=sys.stderr)
+    return reg.get(concrete)
+
+
 def _cmd_get(reg, args):
-    desc = reg.get(args.type)
+    desc = _resolve_cli_type(reg, args.type)
     _emit(desc.get(args.dotted), args.json)
     return 0
 
 
 def _cmd_launch_vars(reg, args):
-    desc = reg.get(args.type)
+    desc = _resolve_cli_type(reg, args.type)
     pairs = launch_vars(desc, args.stage)
     if args.json:
         _emit(dict(pairs), True)
@@ -2053,7 +2307,7 @@ def _cmd_classification(reg, args):
 
 
 def _cmd_binding(reg, args):
-    desc = reg.get(args.type)
+    desc = _resolve_cli_type(reg, args.type)
     _emit(_binding_view(desc, desc.binding()), args.json)
     return 0
 
@@ -2141,6 +2395,14 @@ def _build_parser():
 
     p_list = sub.add_parser("list", parents=[common], help="list registered type names")
     p_list.set_defaults(func=_cmd_list)
+
+    p_families = sub.add_parser(
+        "families",
+        parents=[common],
+        help="list type families and their members (a family is never a type: not in list, "
+        "never bound or run; design §3.2.2)",
+    )
+    p_families.set_defaults(func=_cmd_families)
 
     p_show = sub.add_parser("show", parents=[common], help="print a descriptor")
     p_show.add_argument("type")
