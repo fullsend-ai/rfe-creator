@@ -1161,30 +1161,98 @@ def member_messages(desc):
     return messages
 
 
-def family_findings(family, schema, repo_root, members, have_jsonschema):
-    """Gate 1 for one type family: the relaxed shape (``relaxed_schema``; skipped without
-    jsonschema like the full shape check), its own typed files, the rules that read what a
-    family may carry, no member-own key, and at least one member. Every finding is attributed
-    to the family AND its members, so ``--verify --type <member>`` keeps what its family
-    breaks and ``--verify --type <other>`` drops it."""
-    owners = frozenset({family.name, *members})
+def family_shape_messages(family):
+    """``shape_messages`` for a type family, for a run without the JSON-Schema shape check
+    (gate 3): the supported ``schema_version``, the kind, and every value of
+    PATH_VALUE_PATTERNS / ``_path_bound_values`` that is PRESENT full-matches its grammar.
+    Never the identity strings' presence: a family may leave those to its members, and the
+    merged member is held to the full rule."""
     messages = []
-    if schema is not None and have_jsonschema:
-        messages.extend(schema_messages(family, relaxed_schema(schema)))
-    messages.extend(kind_messages(family))
-    messages.extend(path_messages(family, repo_root, eval_gate=False))
-    messages.extend(stage_skill_messages(family, repo_root))
-    messages.extend(typed_prompt_messages(family, repo_root, require_template=False))
-    messages.extend(local_id_pattern_messages(family))
-    messages.extend(classification_messages(family, require=False))
-    if isinstance(_opt(family, "pipeline.rubric"), dict):
-        messages.extend(rubric_ref_messages(family))
-    for dotted in _member_own_keys(_opt(family, "identity.tracker")):
+    version = _opt(family, "schema_version")
+    if isinstance(version, bool) or version != SUPPORTED_SCHEMA_VERSION:
+        messages.append(
+            f"schema_version must be {SUPPORTED_SCHEMA_VERSION} (the v1 descriptor shape), "
+            f"got {version!r}"
+        )
+    kind = _opt(family, "kind", _ABSENT)
+    if kind is not _ABSENT and kind != V1_ENGINE_KIND and kind not in RESERVED_SIBLING_KINDS:
+        messages.append(f"kind must be {V1_ENGINE_KIND!r} (the v1 engine's kind), got {kind!r}")
+    for dotted, pattern in PATH_VALUE_PATTERNS.items():
+        value = _opt(family, dotted, _ABSENT)
+        if value is not _ABSENT:
+            _check_grammar(messages, dotted, value, pattern)
+    values, problems = _path_bound_values(family)
+    messages.extend(problems)
+    for label, value, pattern in values:
+        _check_grammar(messages, label, value, pattern)
+    return messages
+
+
+def _family_rubric_messages(family):
+    """The rubric pin is checked on the family only when the family declares the pin's
+    discriminator ``repo``; a family that carries only ``path`` leaves the pin to its members."""
+    rubric = _opt(family, "pipeline.rubric")
+    if isinstance(rubric, dict) and "repo" in rubric:
+        return rubric_ref_messages(family)
+    return []
+
+
+def _family_member_own_key_messages(family):
+    """A family carries no member-own key — under ANY tracker, whatever ``identity.tracker``
+    says (a family may leave the tracker to its members and still carry a project)."""
+    messages = []
+    tracker_keys = [
+        f"identity.{tracker}.{key}"
+        for tracker, keys in TRACKER_MEMBER_OWN_KEYS.items()
+        for key in keys
+    ]
+    for dotted in [*tracker_keys, *MEMBER_OWN_KEYS]:
         if _has_own(family.data, dotted):
             messages.append(
                 f"family {family.name!r} declares {dotted}, a member-own key: each member "
                 "declares its own value (the project, the key prefixes, the local ids, the "
                 "artifact directories and the eval config are what tell members apart)"
+            )
+    return messages
+
+
+def family_findings(family, schema, repo_root, members, have_jsonschema):
+    """Gate 1 for one type family: the relaxed shape (``relaxed_schema``; the family shape
+    rule without jsonschema, like the concrete types' ``shape_messages``), its own typed
+    files, the rules that read what a family may carry, no member-own key, and at least one
+    member. Without jsonschema every rule runs on its own (one message names a rule that
+    trips over a malformed shape, the rest still decide), as ``per_type_findings`` does.
+    Every finding is attributed to the family AND its members, so ``--verify --type
+    <member>`` keeps what its family breaks and ``--verify --type <other>`` drops it."""
+    owners = frozenset({family.name, *members})
+    rules = [
+        ("kind", lambda: kind_messages(family)),
+        ("file references", lambda: path_messages(family, repo_root, eval_gate=False)),
+        ("stage skills", lambda: stage_skill_messages(family, repo_root)),
+        (
+            "typed prompts",
+            lambda: typed_prompt_messages(family, repo_root, require_template=False),
+        ),
+        ("identity.local_id_pattern", lambda: local_id_pattern_messages(family)),
+        ("classification", lambda: classification_messages(family, require=False)),
+        ("pipeline.rubric", lambda: _family_rubric_messages(family)),
+        ("member-own keys", lambda: _family_member_own_key_messages(family)),
+    ]
+    if schema is not None and have_jsonschema:
+        rules.insert(0, ("schema", lambda: schema_messages(family, relaxed_schema(schema))))
+    else:
+        rules.insert(0, ("shape", lambda: family_shape_messages(family)))
+    messages = []
+    for label, rule in rules:
+        if have_jsonschema:
+            messages.extend(rule())
+            continue
+        try:
+            messages.extend(rule())
+        except Exception as exc:
+            messages.append(
+                f"{label}: could not be checked without the JSON-Schema shape check: "
+                f"{type(exc).__name__}: {exc}"
             )
     findings = [Finding(family.name, m, 1, owners) for m in messages]
     if not members:
@@ -1305,8 +1373,16 @@ def _duplicates(pairs):
 def cross_type_findings(registry, env):
     findings = []
 
+    family_names = set(registry.families())
+
     def cross(message, names):
-        findings.append(Finding("*", message, 1, frozenset(names)))
+        # A finding that names a type family concerns its members too: what a family shares
+        # (a signal, a directory) is the member's, so --verify --type <member> keeps it.
+        owners = set(names)
+        for name in names:
+            if name in family_names:
+                owners.update(registry.members(name))
+        findings.append(Finding("*", message, 1, frozenset(owners)))
 
     bindings, binding_findings = _effective_bindings(registry, env)
     findings.extend(binding_findings)
@@ -1541,8 +1617,9 @@ def cross_type_findings(registry, env):
         members = registry.members(family_name)
         for suffix in type_registry.BINDING_OVERRIDE_FIELDS:
             var = type_registry.binding_env_var(family_name, suffix)
-            if not (env.get(var) or "").strip():
-                continue
+            value = env.get(var, "")
+            if not (isinstance(value, str) and value.strip()):
+                continue  # blank or non-string counts as unset, as the registry reads it
             alternatives = ", ".join(type_registry.binding_env_var(m, suffix) for m in members)
             findings.append(
                 Finding(

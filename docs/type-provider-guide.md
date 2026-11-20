@@ -288,7 +288,8 @@ that `extends` it, and the registry merges the family under the member before an
    `bindings:` key until the Initiative split story widens the alias; the family itself is not
    runnable, so `/rfe-review --type <family>` is an unknown type.
 
-Two reminders for a family that lands under `types/` (a drop-in root has neither problem):
+Two reminders for a family that lands under `types/` (the first does not apply to a drop-in
+root; the second applies to any type those tables do not list, drop-in or not):
 
 - `scripts/bootstrap.sh` has a no-Python fallback that lists every `types/*/type.yaml` directory as
   a type (`registered_types_from_root`) and reads `pipeline.rubric.*` from the named type's own

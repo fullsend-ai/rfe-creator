@@ -1122,7 +1122,8 @@ class TestGate1Findings:
             "duplicate classification signal 'a fixture brief cue' shared by types: brief, "
             "brief-acme"
         )
-        assert hit[0].types == frozenset({FAMILY, "brief-acme"})
+        # Named with the family, so owned by every member: brief-globex's --verify sees it too.
+        assert hit[0].types == frozenset({FAMILY, *MEMBERS})
         # Inherited signals are not the member's: the clean fixture raises no rule-7 finding
         # although both members carry the family's two on their merged data.
         assert _find(_validate(FAMILIES_ROOT), "duplicate classification signal") == []
@@ -1136,8 +1137,14 @@ class TestGate1Findings:
         assert hit[0].message == (
             f"duplicate classification signal {phrase!r} shared by types: brief, rfe"
         )
-        assert hit[0].types == frozenset({FAMILY, "rfe"})
+        # The family's signal is every member's: a member's --verify (gate 3 at SETUP) keeps
+        # the finding, another shipped type's drops it.
+        assert hit[0].types == frozenset({FAMILY, "rfe", *MEMBERS})
         assert len(_find(report, "duplicate classification signal")) == 1  # found once, at source
+        kept = _validate(TYPES_ROOT, extra_roots=[families_copy], only="brief-acme")
+        assert len(_find(kept, "duplicate classification signal")) == 1
+        dropped = _validate(TYPES_ROOT, extra_roots=[families_copy], only="initiative")
+        assert _find(dropped, "duplicate classification signal") == []
 
     def test_two_members_sharing_an_artifact_directory_is_a_finding(self, families_copy):
         _mutate(
@@ -1368,6 +1375,31 @@ class TestGate3WithoutJsonschema:
             eval_gate=False,
         )
         assert beside.findings == []
+
+    def test_a_family_shape_is_checked_without_jsonschema(self, families_copy):
+        # The member's own schema_version: 1 wins the merge, so only the family is wrong.
+        _mutate(families_copy, FAMILY, lambda d: d.__setitem__("schema_version", 2))
+        _mutate(families_copy, FAMILY, lambda d: d["pipeline"].__setitem__("scorer_agent", "Bad"))
+        report = self._verify(families_copy)
+        assert _messages(report, FAMILY) == [
+            "schema_version must be 1 (the v1 descriptor shape), got 2",
+            f"pipeline.scorer_agent must match "
+            f"{validate_types.PATH_VALUE_PATTERNS['pipeline.scorer_agent']}, got 'Bad'",
+        ]
+        assert report.findings[0].types == frozenset({FAMILY, *MEMBERS})
+
+    def test_one_crashing_family_rule_keeps_the_other_findings(self, families_copy, monkeypatch):
+        def boom(*_args, **_kw):
+            raise TypeError("boom")
+
+        monkeypatch.setattr(validate_types, "typed_prompt_messages", boom)
+        _mutate(families_copy, FAMILY, lambda d: d.__setitem__("schema_version", 2))
+        messages = _messages(self._verify(families_copy), FAMILY)
+        assert "schema_version must be 1 (the v1 descriptor shape), got 2" in messages
+        assert (
+            "typed prompts: could not be checked without the JSON-Schema shape check: "
+            "TypeError: boom"
+        ) in messages
 
     def test_the_family_verdict_needs_no_jsonschema(self):
         report = self._verify(FAMILIES_ROOT, only=FAMILY)
@@ -1894,3 +1926,62 @@ class TestCrossRootGate1:
         )
         assert launch.returncode == 0, launch.stderr
         assert f"TEMPLATE_PATH={(main / FAMILY / 'template.md').resolve()}\n" in launch.stdout
+
+
+# ── edges the bot reviews on the PR raised ─────────────────────────────────────
+
+
+class TestFamilyGateEdges:
+    def test_a_non_string_family_override_value_counts_as_unset(self):
+        # An API caller's env mapping may carry a non-string: unset, as the registry reads it.
+        report = _validate(FAMILIES_ROOT, env={"RFE_CREATOR_BINDING_BRIEF_PROJECT": 3})
+        assert report.ok, report.lines()
+        blank = _validate(FAMILIES_ROOT, env={"RFE_CREATOR_BINDING_BRIEF_PROJECT": "  "})
+        assert blank.ok, blank.lines()
+
+    def test_a_family_without_a_tracker_may_still_not_carry_a_project(self, families_copy):
+        """The family leaves the tracker to its members and keeps the project: the member-own
+        check reads every tracker's keys, not the family's (absent) tracker."""
+        _mutate(
+            families_copy,
+            FAMILY,
+            lambda d: d.__setitem__("identity", {"jira": {"project": "ACME"}}),
+        )
+        for name in MEMBERS:
+            _mutate(families_copy, name, lambda d: d["identity"].__setitem__("tracker", "jira"))
+        report = _validate(families_copy)
+        assert (
+            "family 'brief' declares identity.jira.project, a member-own key: each member "
+            "declares its own value (the project, the key prefixes, the local ids, the artifact "
+            "directories and the eval config are what tell members apart)"
+        ) in _messages(report, FAMILY)
+
+    def test_a_family_may_leave_the_rubric_pin_to_its_members(self, families_copy):
+        _mutate(
+            families_copy,
+            FAMILY,
+            lambda d: d["pipeline"].__setitem__(
+                "rubric", {"path": ".claude/skills/rfe-review/prompts/review-agent.md"}
+            ),
+        )
+        for name in MEMBERS:
+            _mutate(
+                families_copy,
+                name,
+                lambda d: d["pipeline"].__setitem__(
+                    "rubric", {"repo": "self", "rubric_version": "0000000"}
+                ),
+            )
+        report = _validate(families_copy)
+        assert report.ok, report.lines()
+        # A family that declares the pin's discriminator is held to the pin.
+        _mutate(
+            families_copy,
+            FAMILY,
+            lambda d: d["pipeline"].__setitem__("rubric", {"repo": "self", "path": "x.md"}),
+        )
+        report = _validate(families_copy)
+        assert (
+            "pipeline.rubric.rubric_version must be a 7-64 character lowercase hex content hash "
+            "when pipeline.rubric.repo is 'self' (D3), got None"
+        ) in _messages(report, FAMILY)
