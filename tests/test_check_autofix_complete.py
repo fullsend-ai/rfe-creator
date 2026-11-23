@@ -16,8 +16,12 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 import check_autofix_complete as cac  # noqa: E402
 
-UNKNOWN = "ERROR: unknown --type 'bogus'; registered types: rfe, initiative\n"
-TRAILING = "ERROR: --type requires a value; registered types: rfe, initiative\n"
+# The registered Initiative type: the sole member of the `initiative` family (AISDLC-851);
+# `--type initiative` is the family alias, kept below as a CLI input.
+MEMBER = "initiative-rhaistrat"
+
+UNKNOWN = f"ERROR: unknown --type 'bogus'; registered types: rfe, {MEMBER}\n"
+TRAILING = f"ERROR: --type requires a value; registered types: rfe, {MEMBER}\n"
 
 
 def _write_ids(path, ids):
@@ -109,6 +113,7 @@ def test_a_registered_type_without_a_table_entry_exits_2(monkeypatch, capsys):
     code, out, err = _main(monkeypatch, capsys, "--type", "initiative")
     assert (code, out) == (2, "")
     assert err == (
-        "ERROR: --type 'initiative' is registered but has no entry in this script's table yet; "
+        # the family alias resolves first: the usage error names the registered member
+        f"ERROR: --type '{MEMBER}' is registered but has no entry in this script's table yet; "
         "supported: rfe\n"
     )

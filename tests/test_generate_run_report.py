@@ -17,6 +17,9 @@ import generate_run_report
 import type_registry
 from generate_run_report import TYPE_CONFIG, _parse_run_id, build_report
 
+# The registered Initiative type: the sole member of the `initiative` family (AISDLC-851).
+MEMBER = "initiative-rhaistrat"
+
 # A descriptor that ships outside types/ (never enumerated by default): the third type the
 # registry-derived config must project without a code change.
 FIXTURE_TYPES = os.path.join(os.path.dirname(__file__), "fixtures", "types")
@@ -1182,11 +1185,9 @@ class TestReportRootMetadata:
             os.makedirs(tmp_path / "artifacts" / d)
         art = str(tmp_path / "artifacts")
 
-        report = build_report(
-            [], "2026-08-18T09:00:00Z", artifacts_dir=art, entry_type="initiative"
-        )
+        report = build_report([], "2026-08-18T09:00:00Z", artifacts_dir=art, entry_type=MEMBER)
 
-        assert report["type"] == "initiative"
+        assert report["type"] == MEMBER
 
     def test_build_report_rejects_an_unknown_stage(self, art_dir):
         """argparse only guards the CLI; a programmatic caller must fail at write time too."""
@@ -1290,7 +1291,7 @@ class TestTypeConfigIsRegistryDerived:
             "---\ninitiative_id: INIT-1\ntitle: T\npriority: Major\nstatus: Draft\n---\n\nbody\n",
         )
         rfe_rows = TYPE_CONFIG["rfe"]["scan_tasks"](art)
-        init_rows = TYPE_CONFIG["initiative"]["scan_tasks"](art)
+        init_rows = TYPE_CONFIG[MEMBER]["scan_tasks"](art)
         assert rfe_rows == artifact_utils.scan_task_files(art)
         assert init_rows == artifact_utils.scan_initiative_task_files(art)
         assert [d["rfe_id"] for _, d in rfe_rows] == ["RHAIRFE-1"]
@@ -1454,7 +1455,7 @@ class TestKeyPrefixUnionFallback:
 
     def test_config_carries_the_union(self):
         assert TYPE_CONFIG["rfe"]["key_prefixes"] == ("RHAIRFE-",)
-        assert TYPE_CONFIG["initiative"]["key_prefixes"] == ("RHAISTRAT-",)
+        assert TYPE_CONFIG[MEMBER]["key_prefixes"] == ("RHAISTRAT-",)
         assert _union_config()["key_prefixes"] == ("RHAIRFE-", "RHAIOLD-")
         assert _union_config()["tracker_prefix"] == "RHAIRFE-"
 
@@ -1694,7 +1695,7 @@ class TestBindingHeader:
             [],
             "2026-08-18T09:00:00Z",
             artifacts_dir=self._initiative_dir(tmp_path),
-            entry_type="initiative",
+            entry_type=MEMBER,
         )
         assert initiative["binding"] == {
             "tracker": "jira",
@@ -1714,7 +1715,7 @@ class TestBindingHeader:
             [],
             "2026-08-18T09:00:00Z",
             artifacts_dir=self._initiative_dir(tmp_path),
-            entry_type="initiative",
+            entry_type=MEMBER,
         )
         assert list(initiative) == self.HEADER + self.BODY + ["per_initiative", "errors"]
         assert generate_run_report.REPORT_SCHEMA_VERSION == 1  # additive: no version bump
@@ -1738,7 +1739,7 @@ class TestBindingHeader:
             [],
             "2026-08-18T09:00:00Z",
             artifacts_dir=self._initiative_dir(tmp_path),
-            entry_type="initiative",
+            entry_type=MEMBER,
         )
         assert initiative["binding"]["project"] == "RHAISTRAT"
         assert initiative["binding"]["source"] == "descriptor"
@@ -1756,8 +1757,8 @@ class TestBindingHeader:
         }
 
     def test_binding_header_helper_reads_the_given_env(self, no_override):
-        env = {type_registry.binding_env_var("initiative", "PROJECT"): "PLAT"}
-        assert generate_run_report._binding_header("initiative", env) == {
+        env = {type_registry.binding_env_var(MEMBER, "PROJECT"): "PLAT"}
+        assert generate_run_report._binding_header(MEMBER, env) == {
             "tracker": "jira",
             "project": "PLAT",
             "issue_type": "Initiative",
@@ -1948,9 +1949,9 @@ class TestProvenanceHeader:
             [],
             "2026-08-18T09:00:00Z",
             artifacts_dir=str(tmp_path / "artifacts"),
-            entry_type="initiative",
+            entry_type=MEMBER,
         )
-        ini = generate_run_report._TYPES.get("initiative")
+        ini = generate_run_report._TYPES.get(MEMBER)
         assert initiative["provenance"]["rubric"]["path"] == ini.get("pipeline.rubric.path")
         assert list(initiative["provenance"]) == ["pipeline_version", "pipeline_commit", "rubric"]
         assert list(initiative["provenance"]["rubric"]) == list(
@@ -2416,7 +2417,7 @@ class TestHierarchyParentIsNotASplitParent:
     )
 
     def _config(self):
-        return generate_run_report.TYPE_CONFIG["initiative"]
+        return generate_run_report.TYPE_CONFIG[MEMBER]
 
     def test_an_outcome_without_a_task_is_a_hierarchy_link(self, art_dir):
         _write(

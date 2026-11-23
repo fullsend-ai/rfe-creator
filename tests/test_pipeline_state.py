@@ -70,6 +70,11 @@ def read_ids(path):
         return [line.strip() for line in f if line.strip()]
 
 
+# The registered Initiative type: the sole member of the `initiative` family (AISDLC-851). The
+# state file, PIPELINE_TYPES and every stub carry it; `--type initiative` is the family alias.
+MEMBER = "initiative-rhaistrat"
+
+
 def make_state(**overrides):
     base = {
         "phase": "INIT",
@@ -2906,7 +2911,7 @@ class TestLaunchWaveFile:
 
     CASES = [
         ("rfe", "RHAIRFE", 25, "rfe-scorer"),
-        ("initiative", "RHAISTRAT", 17, "initiative-scorer"),  # 2 parallel: ceil(50/3) = 17 ids
+        (MEMBER, "RHAISTRAT", 17, "initiative-scorer"),  # 2 parallel: ceil(50/3) = 17 ids
     ]
 
     def _wave(self, monkeypatch, pipeline_type, key, n):
@@ -3016,7 +3021,7 @@ class TestLaunchWaveFile:
             out = read_launch("--agent", bad)
             assert out.returncode == 1 and f"agent_count: {2 * n_ids}" in out.stderr
 
-    @pytest.mark.parametrize("pipeline_type,key", [("rfe", "RHAIRFE"), ("initiative", "RHAISTRAT")])
+    @pytest.mark.parametrize("pipeline_type,key", [("rfe", "RHAIRFE"), (MEMBER, "RHAISTRAT")])
     @pytest.mark.parametrize(
         "phase", ["REVIEW", "REASSESS_REVIEW", "SPLIT_REVIEW", "SPLIT_RE_REVIEW", "ASSESS"]
     )
@@ -3055,7 +3060,7 @@ class TestLaunchWaveFile:
 
         ids = [f"RHAISTRAT-{1000 + i}" for i in range(50)]
         write_ids("tmp/pipeline-active-ids.txt", ids)
-        ps._save_state(make_state(phase="REVIEW", type="initiative", batch=1))
+        ps._save_state(make_state(phase="REVIEW", type=MEMBER, batch=1))
         monkeypatch.setattr(ps, "_run_script", lambda cmd: "")
         first = _run_next_action()
         cut = read_ids(ps.WAVE_IDS_FILE)
@@ -3134,7 +3139,7 @@ class TestLaunchWaveFile:
         the total is exact from the first call, and each wave reads its own number."""
         ids = [f"RHAISTRAT-{1000 + i}" for i in range(100)]
         write_ids("tmp/pipeline-active-ids.txt", ids)
-        ps._save_state(make_state(phase="REVIEW", type="initiative", batch=1, batch_size=100))
+        ps._save_state(make_state(phase="REVIEW", type=MEMBER, batch=1, batch_size=100))
         monkeypatch.setattr(ps, "_run_script", lambda cmd: "")
         seen, total, n = [], None, 0
         while True:
@@ -3722,7 +3727,7 @@ class TestReassessFixupIds:
     the evidence went the other way.
     """
 
-    @pytest.mark.parametrize("ptype", ["rfe", "initiative"])
+    @pytest.mark.parametrize("ptype", ["rfe", MEMBER])
     def test_fixup_rescans_the_whole_reassess_set(self, ptype):
         cfg = ps._build_phase_config(ptype)
         assert cfg["REASSESS_FIXUP"]["ids_file"] == "tmp/pipeline-reassess-ids.txt"
@@ -3919,7 +3924,7 @@ class TestNoShell:
         assert "SETUP: verify OK: 1 type(s) valid: rfe" in capsys.readouterr().out
         assert open(ps.DISPATCH_MARKER).read() == "SETUP"
 
-    @pytest.mark.parametrize("t", ["rfe", "initiative"])
+    @pytest.mark.parametrize("t", ["rfe", MEMBER])
     def test_the_verify_command_is_the_registry_gate_for_the_run_type(self, tmp_dir, t):
         config = ps._get_config(make_state(phase="SETUP", type=t))["SETUP"]
         assert config["verify"] == f"python3 scripts/validate_types.py --verify --type {t}"
@@ -4132,7 +4137,7 @@ class TestNoShell:
         assert not os.path.exists(f"{ps.SETUP_ERROR_FILE}.tmp")
 
     def test_a_finding_without_active_ids_still_routes_to_report(self, tmp_dir, monkeypatch):
-        ps._save_state(make_state(phase="SETUP", type="initiative"))
+        ps._save_state(make_state(phase="SETUP", type=MEMBER))
         monkeypatch.setattr(
             subprocess, "run", lambda argv, **kw: _verify_result(1, "ERROR initiative: broken")
         )
@@ -4264,7 +4269,7 @@ class TestStateValidatedBeforeDecisionScripts:
     def test_get_config_validates(self):
         with pytest.raises(SystemExit):
             ps._get_config(make_state(type="initiative; id"))
-        assert "REPORT" in ps._get_config(make_state(type="initiative"))
+        assert "REPORT" in ps._get_config(make_state(type=MEMBER))
 
 
 # ---------- init --type (registry choices) ----------
@@ -4278,7 +4283,7 @@ class TestInitTypeChoices:
             ps.cmd_init(["--help"])
         assert exc_info.value.code == 0
         out = capsys.readouterr().out
-        assert "--type {rfe,initiative}" in out
+        assert f"--type {{rfe,{MEMBER}}}" in out
         assert "--type {" + ",".join(ps._TYPES.choices()) + "}" in out
 
     def test_unknown_type_exits_2_with_the_registered_list(self, tmp_dir, capsys):
@@ -4287,19 +4292,36 @@ class TestInitTypeChoices:
         assert exc_info.value.code == 2
         err = capsys.readouterr().err
         assert "argument --type: invalid choice: 'bogus'" in err
-        assert "choose from 'rfe', 'initiative'" in err
+        assert f"choose from 'rfe', '{MEMBER}'" in err
         assert not os.path.exists(ps.STATE_FILE)
 
-    @pytest.mark.parametrize("ptype", ["rfe", "initiative"])
-    def test_registered_type_is_persisted(self, tmp_dir, ptype):
+    @pytest.mark.parametrize(
+        "ptype, persisted", [("rfe", "rfe"), ("initiative", MEMBER), (MEMBER, MEMBER)]
+    )
+    def test_registered_type_is_persisted(self, tmp_dir, ptype, persisted):
+        """The state carries the REGISTERED name from the first write: `--type initiative` (the
+        family alias) is converted by argparse before cmd_init sees it (AISDLC-851)."""
         import io
         from contextlib import redirect_stdout
 
         buf = io.StringIO()
         with redirect_stdout(buf):
             ps.cmd_init(["--type", ptype])
-        assert ps._load_state()["type"] == ptype
-        assert buf.getvalue() == f"Initialized pipeline state: type={ptype} batch_size=50\n"
+        assert ps._load_state()["type"] == persisted
+        assert buf.getvalue() == f"Initialized pipeline state: type={persisted} batch_size=50\n"
+
+    def test_pre_split_state_naming_the_family_loads_as_the_member(self, tmp_dir):
+        """A tmp/pipeline-state.yaml written before the split says `type: initiative`; the
+        tables are keyed by the member, so _load_state canonicalises in memory and never
+        rewrites the file on read (AISDLC-851)."""
+        import yaml
+
+        os.makedirs(os.path.dirname(ps.STATE_FILE) or ".", exist_ok=True)
+        with open(ps.STATE_FILE, "w", encoding="utf-8") as fh:
+            yaml.safe_dump(make_state(type="initiative"), fh)
+        assert ps._load_state()["type"] == MEMBER
+        with open(ps.STATE_FILE, encoding="utf-8") as fh:
+            assert yaml.safe_load(fh)["type"] == "initiative"
 
     def test_pipeline_types_cover_the_choices(self):
         """PIPELINE_TYPES is projected from the registry (PR-5b): every registered choice that
@@ -4433,7 +4455,7 @@ class TestWritePollStub:
         assert "confirmed: 'yes'" in text  # the string stays a string
 
     def test_shipped_stub_is_byte_identical_to_the_old_lines(self, tmp_dir):
-        row = ps.PIPELINE_TYPES["initiative"]
+        row = ps.PIPELINE_TYPES[MEMBER]
         stub = next(d["skip_stub"] for d in row["dimensions"] if d["name"] == "alignment")
         ps._write_poll_stub("initiative-alignment", "INIT-002")  # descriptor fallback
         text = open("artifacts/initiative-reviews/INIT-002-alignment.md").read()
@@ -4471,7 +4493,7 @@ class TestInitAndTheRegistry:
         from contextlib import redirect_stdout
 
         self._registry(monkeypatch, drop_in_root.memo())
-        assert list(ps.PIPELINE_TYPES) == ["rfe", "initiative", "memo"]
+        assert list(ps.PIPELINE_TYPES) == ["rfe", MEMBER, "memo"]
         row = ps.PIPELINE_TYPES["memo"]
         assert row["tasks_dir"] == "artifacts/memo-tasks"
         assert row["reviews_dir"] == "artifacts/memo-reviews"
@@ -4529,9 +4551,7 @@ class TestInitAndTheRegistry:
         assert "type 'memo' declares pipeline.stages without auto-fix" in err
         assert "create, review, split, auto-fix" in err
         assert not os.path.exists(ps.STATE_FILE)
-        assert (
-            ps._missing_engine_stages("rfe") == [] and ps._missing_engine_stages("initiative") == []
-        )
+        assert ps._missing_engine_stages("rfe") == [] and ps._missing_engine_stages(MEMBER) == []
 
     def test_children_inherit_the_marker(self, tmp_dir, monkeypatch):
         """The point of the export: a subprocess launched after init --headless sees it."""
@@ -4958,7 +4978,7 @@ class TestWaveStall:
     def test_initiative_stub_uses_its_id_field_and_score_fields(
         self, stall_dir, monkeypatch, capsys
     ):
-        self._assess(["RHAISTRAT-1002"], pipeline_type="initiative")
+        self._assess(["RHAISTRAT-1002"], pipeline_type=MEMBER)
         monkeypatch.setenv("PIPELINE_WAVE_RETRY_CAP", "0")
         clock, pending = _Clock(), {"RHAISTRAT-1002"}
         _arm(monkeypatch, clock, pending)
@@ -4966,7 +4986,7 @@ class TestWaveStall:
         from artifact_utils import read_frontmatter
 
         data, _ = read_frontmatter("artifacts/initiative-reviews/RHAISTRAT-1002-review.md")
-        assert data == _expected_stub("initiative", "RHAISTRAT-1002", "assess_stalled")
+        assert data == _expected_stub(MEMBER, "RHAISTRAT-1002", "assess_stalled")
         assert data["initiative_id"] == "RHAISTRAT-1002"
         assert "scope" in data["scores"] and "not_a_task" not in data["scores"]
         assert not os.path.exists("artifacts/rfe-reviews/RHAISTRAT-1002-review.md")
@@ -6061,12 +6081,12 @@ class TestConditionWorkspaceRule:
 
     def test_an_outcome_parent_arms_the_condition(self, tmp_dir):
         self._task("artifacts/initiatives/RHAISTRAT-8.md", parent_key="RHAISTRAT-50")
-        assert ps._has_rhaistrat_parent("RHAISTRAT-8", {"type": "initiative"}) is True
+        assert ps._has_rhaistrat_parent("RHAISTRAT-8", {"type": MEMBER}) is True
 
     def test_a_split_parent_does_not(self, tmp_dir):
         self._task("artifacts/initiatives/INIT-001.md", parent_key="RHAISTRAT-100")
         self._task("artifacts/initiatives/RHAISTRAT-100.md", status="Archived")
-        assert ps._has_rhaistrat_parent("INIT-001", {"type": "initiative"}) is False
+        assert ps._has_rhaistrat_parent("INIT-001", {"type": MEMBER}) is False
 
     def test_rfe_has_no_such_condition(self, tmp_dir):
         self._task("artifacts/rfe-tasks/RFE-001.md", parent_key="RHAISTRAT-50")
@@ -6077,7 +6097,7 @@ class TestConditionWorkspaceRule:
         self._task("artifacts/initiatives/INIT-001.md", theme="RHAISTRAT-100")
         self._task("artifacts/initiatives/RHAISTRAT-100.md", status="Archived")
         cond = {"frontmatter_field": "theme", "prefix": "RHAISTRAT-"}
-        assert ps._check_condition(cond, "INIT-001", {"type": "initiative"}) is True
+        assert ps._check_condition(cond, "INIT-001", {"type": MEMBER}) is True
         cond = {"frontmatter_field": "parent_key", "prefix": "RHAISTRAT-"}
         self._task("artifacts/initiatives/INIT-002.md", parent_key="RHAISTRAT-100")
-        assert ps._check_condition(cond, "INIT-002", {"type": "initiative"}) is False
+        assert ps._check_condition(cond, "INIT-002", {"type": MEMBER}) is False

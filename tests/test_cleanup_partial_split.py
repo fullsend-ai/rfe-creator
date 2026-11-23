@@ -11,6 +11,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
 from artifact_utils import read_frontmatter, write_frontmatter  # noqa: E402
 
+# The registered Initiative type: the sole member of the `initiative` family (AISDLC-851);
+# `--type initiative` is the family alias, kept below as a CLI input.
+MEMBER = "initiative-rhaistrat"
+
 SCRIPT = os.path.join(os.path.dirname(__file__), "..", "scripts", "cleanup_partial_split.py")
 
 
@@ -233,7 +237,7 @@ class TestInitiativeCleanup:
                 "priority": "Normal",
                 "status": "Archived",
             },
-            "initiative-task",
+            f"{MEMBER}-task",
         )
         write_frontmatter(
             str(init_workspace / "artifacts/initiatives/RHAISTRAT-11.md"),
@@ -244,7 +248,7 @@ class TestInitiativeCleanup:
                 "status": "Ready",
                 "parent_key": "RHAISTRAT-10",
             },
-            "initiative-task",
+            f"{MEMBER}-task",
         )
         out, _, rc = _run(["--type", "initiative", "RHAISTRAT-10"], cwd=str(init_workspace))
         assert rc == 0
@@ -263,7 +267,7 @@ class TestInitiativeCleanup:
                 "status": "Ready",
                 "parent_key": "RHAISTRAT-20",
             },
-            "initiative-task",
+            f"{MEMBER}-task",
         )
         _write_raw(
             str(init_workspace / "artifacts/initiative-reviews/RHAISTRAT-20-split-status.yaml"),
@@ -284,7 +288,7 @@ class TestInitiativeCleanup:
                 "priority": "Normal",
                 "status": "Archived",
             },
-            "initiative-task",
+            f"{MEMBER}-task",
         )
         write_frontmatter(
             str(init_workspace / "artifacts/initiatives/RHAISTRAT-31.md"),
@@ -295,7 +299,7 @@ class TestInitiativeCleanup:
                 "status": "Ready",
                 "parent_key": "RHAISTRAT-30",
             },
-            "initiative-task",
+            f"{MEMBER}-task",
         )
         out, _, rc = _run(["--type", "initiative", "RHAISTRAT-30"], cwd=str(init_workspace))
         assert rc == 0
@@ -316,7 +320,7 @@ class TestInitiativeCleanup:
                 "priority": "Normal",
                 "status": "Archived",
             },
-            "initiative-task",
+            f"{MEMBER}-task",
         )
         write_frontmatter(
             str(init_workspace / "artifacts/initiatives/INIT-8.md"),
@@ -327,7 +331,7 @@ class TestInitiativeCleanup:
                 "status": "Ready",
                 "parent_key": "INIT-7",
             },
-            "initiative-task",
+            f"{MEMBER}-task",
         )
         out, _, rc = _run(["--type", "initiative", "INIT-7"], cwd=str(init_workspace))
         assert rc == 0

@@ -14,6 +14,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
 from artifact_utils import read_frontmatter, write_frontmatter  # noqa: E402
 
+# The registered Initiative type: the sole member of the `initiative` family (AISDLC-851);
+# `--type initiative` is the family alias, kept below as a CLI input.
+MEMBER = "initiative-rhaistrat"
+
 SCRIPT = os.path.join(os.path.dirname(__file__), "..", "scripts", "filter_for_revision.py")
 
 
@@ -95,7 +99,7 @@ class TestInitiativeRouting:
         write_frontmatter(
             str(workspace / "artifacts/initiative-reviews/INIT-001-review.md"),
             data,
-            "initiative-review",
+            f"{MEMBER}-review",
         )
         out, _, rc = _run(["INIT-001"], cwd=str(workspace))
         assert rc == 0
@@ -106,7 +110,7 @@ class TestInitiativeRouting:
         write_frontmatter(
             str(workspace / "artifacts/initiative-reviews/RHAISTRAT-5000-review.md"),
             data,
-            "initiative-review",
+            f"{MEMBER}-review",
         )
         out, _, rc = _run(["RHAISTRAT-5000"], cwd=str(workspace))
         assert rc == 0
@@ -129,7 +133,7 @@ class TestScoreRegressionBlocking:
         write_frontmatter(
             str(workspace / "artifacts/initiative-reviews/INIT-001-review.md"),
             data,
-            "initiative-review",
+            f"{MEMBER}-review",
         )
         out, stderr, rc = _run(["INIT-001"], cwd=str(workspace))
         assert rc == 0
@@ -206,7 +210,7 @@ class TestFilterLogic:
         write_frontmatter(
             str(workspace / "artifacts/initiative-reviews/INIT-001-review.md"),
             data,
-            "initiative-review",
+            f"{MEMBER}-review",
         )
         out, _, rc = _run(["INIT-001"], cwd=str(workspace))
         assert rc == 0
@@ -227,7 +231,7 @@ class TestFilterLogic:
         write_frontmatter(
             str(workspace / "artifacts/initiative-reviews/INIT-002-review.md"),
             init_data,
-            "initiative-review",
+            f"{MEMBER}-review",
         )
         passing = {**RFE_REVIEW_DATA, "rfe_id": "RFE-003", "pass": True, "score": 9}
         write_frontmatter(

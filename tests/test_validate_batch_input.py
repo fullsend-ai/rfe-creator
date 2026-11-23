@@ -29,6 +29,10 @@ import validate_batch_input  # noqa: E402
 from validate_batch_input import validate_entries  # noqa: E402
 
 REG = type_registry.load(extra_roots=[], env={})
+# The registered Initiative type: the sole member of the `initiative` family (AISDLC-851). The
+# tables are keyed by it and the resolve line names it; a batch `type: initiative` and `--type
+# initiative` are the family alias, kept below as inputs that must resolve to the member.
+MEMBER = "initiative-rhaistrat"
 PROTOCOL_PREFIXES = ("ERROR_COUNT=", "WARNING_COUNT=", "ERROR: ", "WARNING: ", "VALID=")
 CLEAN_STDOUT = "ERROR_COUNT=0\nWARNING_COUNT=0\nVALID=true\n"
 INIT_PARENT_ERROR = "entry 0: 'parent_key' must match one of RHAISTRAT-\\d+, INIT-\\d+"
@@ -77,14 +81,14 @@ class TestRegistryDerivedConstants:
             "labels",
             "clarifying_context",
         }
-        assert validate_batch_input.KNOWN_FIELDS["initiative"] == {
+        assert validate_batch_input.KNOWN_FIELDS[MEMBER] == {
             "prompt",
             "priority",
             "labels",
             "clarifying_context",
             "parent_key",
         }
-        assert list(validate_batch_input.KNOWN_FIELDS) == ["rfe", "initiative"]
+        assert list(validate_batch_input.KNOWN_FIELDS) == ["rfe", MEMBER]
 
     def test_known_fields_are_base_plus_the_descriptors_batch_extra_fields(self):
         for name in REG.names():
@@ -115,10 +119,8 @@ class TestRegistryDerivedConstants:
             assert validate_batch_input.PARENT_KEY_PATTERNS[name] == desc.get(
                 "conventions.parent_key_patterns"
             )
-        assert validate_batch_input.PARENT_KEY_PATTERN["initiative"] == (
-            r"^(RHAISTRAT-\d+|INIT-\d+)$"
-        )
-        assert re.match(validate_batch_input.PARENT_KEY_PATTERN["initiative"], "INIT-001")
+        assert validate_batch_input.PARENT_KEY_PATTERN[MEMBER] == (r"^(RHAISTRAT-\d+|INIT-\d+)$")
+        assert re.match(validate_batch_input.PARENT_KEY_PATTERN[MEMBER], "INIT-001")
 
     def test_unknown_entry_type_falls_back_to_the_rfe_fields(self):
         errors, warnings = validate_entries(
@@ -130,7 +132,7 @@ class TestRegistryDerivedConstants:
     def test_type_choices_are_the_registry_choices(self):
         result = subprocess.run(["python3", SCRIPT, "--help"], capture_output=True, text=True)
         assert result.returncode == 0
-        assert "--type {rfe,initiative}" in result.stdout
+        assert f"--type {{rfe,{MEMBER}}}" in result.stdout
 
     def test_a_drop_in_type_brings_its_own_batch_fields(self, tmp_path):
         root = tmp_path / "types"
@@ -219,8 +221,7 @@ class TestValidateEntriesFunction:
             "['Blocker', 'Critical', 'Major', 'Normal', 'Minor', 'Undefined']"
         ]
         assert (
-            errors
-            == validate_entries([{"prompt": "x", "priority": "High"}], entry_type="initiative")[0]
+            errors == validate_entries([{"prompt": "x", "priority": "High"}], entry_type=MEMBER)[0]
         )
 
     def test_labels_not_a_list(self):
@@ -286,7 +287,7 @@ class TestInitiativeValidation:
     def test_parent_key_accepted_for_initiative(self):
         errors, warnings = validate_entries(
             [{"prompt": "Improve onboarding", "parent_key": "RHAISTRAT-100"}],
-            entry_type="initiative",
+            entry_type=MEMBER,
         )
         assert errors == []
         assert warnings == []
@@ -303,7 +304,7 @@ class TestInitiativeValidation:
     def test_parent_key_rhoaieng_accepted(self):
         errors, warnings = validate_entries(
             [{"prompt": "x", "parent_key": "RHAISTRAT-5000"}],
-            entry_type="initiative",
+            entry_type=MEMBER,
         )
         assert errors == []
 
@@ -312,7 +313,7 @@ class TestInitiativeValidation:
         # INIT- parent (a child of an Initiative created in the same run).
         errors, warnings = validate_entries(
             [{"prompt": "x", "parent_key": "INIT-001"}],
-            entry_type="initiative",
+            entry_type=MEMBER,
         )
         assert errors == []
         assert warnings == []
@@ -320,7 +321,7 @@ class TestInitiativeValidation:
     def test_parent_key_invalid_format(self):
         errors, warnings = validate_entries(
             [{"prompt": "x", "parent_key": "BAD-123"}],
-            entry_type="initiative",
+            entry_type=MEMBER,
         )
         assert len(errors) == 1
         assert "parent_key" in errors[0]
@@ -328,7 +329,7 @@ class TestInitiativeValidation:
     def test_parent_key_non_string(self):
         errors, warnings = validate_entries(
             [{"prompt": "x", "parent_key": 123}],
-            entry_type="initiative",
+            entry_type=MEMBER,
         )
         assert len(errors) == 1
         assert "parent_key" in errors[0]
@@ -336,11 +337,9 @@ class TestInitiativeValidation:
     def test_parent_key_error_text_is_rendered_from_the_descriptor(self):
         # No hand-written key names: the alternatives are conventions.parent_key_patterns.
         for bad in ("BAD-123", 123, ""):
-            errors, _ = validate_entries(
-                [{"prompt": "x", "parent_key": bad}], entry_type="initiative"
-            )
+            errors, _ = validate_entries([{"prompt": "x", "parent_key": bad}], entry_type=MEMBER)
             assert errors == [INIT_PARENT_ERROR], bad
-        alternatives = REG.get("initiative").get("conventions.parent_key_patterns")
+        alternatives = REG.get(MEMBER).get("conventions.parent_key_patterns")
         assert INIT_PARENT_ERROR == "entry 0: 'parent_key' must match one of " + ", ".join(
             alternatives
         )
@@ -356,7 +355,7 @@ class TestInitiativeValidation:
     def test_initiative_unknown_field_still_warned(self):
         errors, warnings = validate_entries(
             [{"prompt": "x", "team": "aipcc"}],
-            entry_type="initiative",
+            entry_type=MEMBER,
         )
         assert errors == []
         assert len(warnings) == 1
@@ -407,7 +406,7 @@ class TestMappingForm:
         result = _run(path, "--strict")
         assert result.returncode == 0, result.stdout
         assert result.stdout == CLEAN_STDOUT
-        assert result.stderr == "TYPE RESOLVED: initiative (batch type)\n"
+        assert result.stderr == "TYPE RESOLVED: initiative-rhaistrat (batch type)\n"
 
     def test_mapping_type_rfe_keeps_parent_key_a_warning(self, tmp_path):
         path = str(tmp_path / "batch.yaml")
@@ -436,7 +435,8 @@ class TestMappingForm:
         assert result.returncode == 1
         assert result.stdout == (
             "ERROR_COUNT=1\nWARNING_COUNT=0\n"
-            f"ERROR: batch: unknown type 'epic' ({path} type:); registered types: rfe, initiative\n"
+            f"ERROR: batch: unknown type 'epic' ({path} type:); registered types: rfe, "
+            "initiative-rhaistrat\n"
             "VALID=false\n"
         )
         assert result.stderr == ""
@@ -497,7 +497,7 @@ class TestTypeConflicts:
         result = _run(path, "--type", "initiative", "--strict")
         assert result.returncode == 0
         assert result.stdout == CLEAN_STDOUT
-        assert result.stderr == "TYPE RESOLVED: initiative (--type)\n"
+        assert result.stderr == "TYPE RESOLVED: initiative-rhaistrat (--type)\n"
 
     @pytest.mark.parametrize(
         "content",
@@ -547,7 +547,7 @@ class TestResolveLineOnStderr:
         result = _run(path, "--type", "initiative", "--strict")
         assert result.returncode == 0
         assert result.stdout == CLEAN_STDOUT
-        assert result.stderr == "TYPE RESOLVED: initiative (--type)\n"
+        assert result.stderr == "TYPE RESOLVED: initiative-rhaistrat (--type)\n"
 
     def test_explicit_type_rfe_is_a_non_default_rung_too(self, tmp_path):
         path = str(tmp_path / "batch.yaml")
@@ -561,7 +561,7 @@ class TestResolveLineOnStderr:
         path = str(tmp_path / "batch.yaml")
         _write(path, MAPPING_FORM)
         result = _run(path)
-        assert result.stderr == "TYPE RESOLVED: initiative (batch type)\n"
+        assert result.stderr == "TYPE RESOLVED: initiative-rhaistrat (batch type)\n"
 
     @pytest.mark.parametrize(
         "content, args",
@@ -653,7 +653,7 @@ MALFORMED_OVERRIDES = [
     {"JIRA_PROJECT": "bad project"},
     {"RFE_CREATOR_BINDING_RFE_PROJECT": "foo bar"},
     {"RFE_CREATOR_BINDING_RFE_LOCAL_PREFIX": "X"},
-    {"RFE_CREATOR_BINDING_INITIATIVE_PROJECT": "bad!"},
+    {"RFE_CREATOR_BINDING_INITIATIVE_RHAISTRAT_PROJECT": "bad!"},
 ]
 
 
@@ -684,7 +684,7 @@ class TestLegacyListNeutrality:
         )
         assert result.returncode == 0, result.stderr
         assert result.stdout == CLEAN_STDOUT
-        assert result.stderr == "TYPE RESOLVED: initiative (--type)\n"
+        assert result.stderr == "TYPE RESOLVED: initiative-rhaistrat (--type)\n"
 
     @pytest.mark.parametrize("env", MALFORMED_OVERRIDES, ids=lambda e: "=".join(*e.items()))
     @pytest.mark.parametrize("args", [[], ["--type", "initiative"]], ids=["default", "--type"])
@@ -707,9 +707,9 @@ class TestLegacyListNeutrality:
         # The line names the rung only: this script does not apply the binding it would name.
         path = str(tmp_path / "batch.yaml")
         _write(path, "- prompt: Users need X\n")
-        result = _run(path, "--type", "initiative", "--strict", env={"JIRA_PROJECT": "PLAN"})
+        result = _run(path, "--type", MEMBER, "--strict", env={"JIRA_PROJECT": "PLAN"})
         assert result.returncode == 0
-        assert result.stderr == "TYPE RESOLVED: initiative (--type)\n"
+        assert result.stderr == "TYPE RESOLVED: initiative-rhaistrat (--type)\n"
         result = _run(path, "--strict", env={"RFE_CREATOR_BINDING_RFE_PROJECT": "KONFLUX"})
         assert (result.returncode, result.stdout, result.stderr) == (0, CLEAN_STDOUT, "")
 
@@ -760,10 +760,10 @@ class TestParentKeyPatternIsTheEffectiveJoin:
         plain = self._run(path)
         assert plain.returncode == 1
         assert "ERROR: entry 0: 'parent_key' must match one of RHAISTRAT-" in plain.stdout
-        overridden = self._run(path, RFE_CREATOR_BINDING_INITIATIVE_PROJECT="KONFLUX")
+        overridden = self._run(path, RFE_CREATOR_BINDING_INITIATIVE_RHAISTRAT_PROJECT="KONFLUX")
         assert overridden.returncode == 0, overridden.stderr
         assert overridden.stdout == "ERROR_COUNT=0\nWARNING_COUNT=0\nVALID=true\n"
-        assert overridden.stderr == "TYPE RESOLVED: initiative (batch type)\n"
+        assert overridden.stderr == "TYPE RESOLVED: initiative-rhaistrat (batch type)\n"
         # Another type's override does not reach this type's pattern.
         other = self._run(path, RFE_CREATOR_BINDING_RFE_PROJECT="KONFLUX")
         assert other.returncode == 1 and other.stdout == plain.stdout
@@ -772,6 +772,6 @@ class TestParentKeyPatternIsTheEffectiveJoin:
         path = str(tmp_path / "batch.yaml")
         _write(path, self.BATCH)
         plain = self._run(path)
-        malformed = self._run(path, RFE_CREATOR_BINDING_INITIATIVE_PROJECT="lower")
+        malformed = self._run(path, RFE_CREATOR_BINDING_INITIATIVE_RHAISTRAT_PROJECT="lower")
         assert (malformed.returncode, malformed.stdout) == (plain.returncode, plain.stdout)
         assert "Traceback" not in malformed.stderr

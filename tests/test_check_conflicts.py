@@ -15,6 +15,10 @@ import artifact_utils  # noqa: E402
 import check_conflicts  # noqa: E402
 import type_registry  # noqa: E402
 
+# The registered Initiative type: the sole member of the `initiative` family (AISDLC-851);
+# `--type initiative` is the family alias, kept below as a CLI input.
+MEMBER = "initiative-rhaistrat"
+
 SCRIPT = os.path.join(os.path.dirname(__file__), "..", "scripts", "check_conflicts.py")
 REG = type_registry.load(extra_roots=[], env={})
 
@@ -24,7 +28,7 @@ JIRA_ENV = {"JIRA_SERVER": "https://jira.example.com", "JIRA_USER": "u", "JIRA_T
 # layout every artifact on disk follows today.
 LAYOUT = {
     "rfe": ("rfe-tasks", "rfe-originals", "rfe_id", "RFE-001", "RHAIRFE-1595"),
-    "initiative": (
+    MEMBER: (
         "initiatives",
         "initiative-originals",
         "initiative_id",
@@ -122,14 +126,14 @@ class TestTypeConfigDerivesFromTheRegistry:
         # issues is decided per run against the resolved type's EFFECTIVE binding.
         assert check_conflicts._TYPE_CONFIG == {
             "rfe": {"originals_dir": "rfe-originals", "id_field": "rfe_id"},
-            "initiative": {"originals_dir": "initiative-originals", "id_field": "initiative_id"},
+            MEMBER: {"originals_dir": "initiative-originals", "id_field": "initiative_id"},
         }
-        assert list(check_conflicts._TYPE_CONFIG) == ["rfe", "initiative"]
+        assert list(check_conflicts._TYPE_CONFIG) == ["rfe", MEMBER]
         for config in check_conflicts._TYPE_CONFIG.values():
             assert list(config) == ["originals_dir", "id_field"]
         assert not hasattr(check_conflicts, "_SCAN_FNS")
 
-    @pytest.mark.parametrize("type_name", ["rfe", "initiative"])
+    @pytest.mark.parametrize("type_name", ["rfe", MEMBER])
     def test_main_scans_the_selected_type_through_the_generic(
         self, no_override, monkeypatch, tmp_path, type_name
     ):
@@ -166,7 +170,7 @@ class TestTypeConfigDerivesFromTheRegistry:
     def test_type_choices_are_the_registry_choices(self):
         result = subprocess.run(["python3", SCRIPT, "--help"], capture_output=True, text=True)
         assert result.returncode == 0
-        assert "--type {rfe,initiative}" in result.stdout
+        assert f"--type {{rfe,{MEMBER}}}" in result.stdout
 
     def test_a_drop_in_type_is_offered_and_scanned(self, tmp_path):
         # A third registered type used to be refused (exit 2, "no task scanner is registered")
@@ -181,7 +185,7 @@ class TestTypeConfigDerivesFromTheRegistry:
         result = subprocess.run(
             ["python3", SCRIPT, "--help"], capture_output=True, text=True, env=env
         )
-        assert "--type {rfe,docs,initiative}" in result.stdout
+        assert f"--type {{rfe,docs,{MEMBER}}}" in result.stdout
         result = subprocess.run(
             ["python3", SCRIPT, "--type", "docs", "--artifacts-dir", str(tmp_path)],
             capture_output=True,
@@ -291,7 +295,7 @@ class TestMain:
         assert code == 2
         assert "JIRA_SERVER, JIRA_USER, and JIRA_TOKEN env vars required" in capsys.readouterr().err
 
-    @pytest.mark.parametrize("type_name", ["rfe", "initiative"])
+    @pytest.mark.parametrize("type_name", ["rfe", MEMBER])
     def test_no_jira_sourced_items(self, jira, monkeypatch, capsys, tmp_path, type_name):
         _, _, _, local_id, jira_id = LAYOUT[type_name]
         _task(tmp_path, type_name, local_id)  # local id: never checked
@@ -307,7 +311,7 @@ class TestMain:
         assert out.out == "CONFLICT_COUNT=0\nOK: no Jira-sourced items to check\n"
         assert out.err == f"TYPE RESOLVED: {type_name} (--type)\n"
 
-    @pytest.mark.parametrize("type_name", ["rfe", "initiative"])
+    @pytest.mark.parametrize("type_name", ["rfe", MEMBER])
     def test_conflicts_are_reported_per_item(self, jira, monkeypatch, capsys, tmp_path, type_name):
         # Every fetch succeeds: one line per conflicting id, in scan order, with both conflict
         # reasons — a modified description and a binding mismatch — and an archived item is
@@ -350,7 +354,7 @@ class TestMain:
             (foreign, originals_dir, witnesses),
         ]
 
-    @pytest.mark.parametrize("type_name", ["rfe", "initiative"])
+    @pytest.mark.parametrize("type_name", ["rfe", MEMBER])
     def test_a_fetch_failure_fails_closed(self, jira, monkeypatch, capsys, tmp_path, type_name):
         # A fetch that fails leaves its item unverified: the run stops there with the documented
         # API-failure exit — no CONFLICT_COUNT over the partial result (a caller reading 0 would
@@ -398,8 +402,8 @@ class TestMain:
 
     def test_type_selects_the_tree(self, jira, monkeypatch, capsys, tmp_path):
         # An initiative tree scanned as rfe (the default) has nothing to check, and vice versa.
-        _task(tmp_path, "initiative", "RHAISTRAT-1")
-        _original(tmp_path, "initiative", "RHAISTRAT-1")
+        _task(tmp_path, MEMBER, "RHAISTRAT-1")
+        _original(tmp_path, MEMBER, "RHAISTRAT-1")
         monkeypatch.setattr(
             check_conflicts,
             "check_description_conflict",
@@ -554,8 +558,10 @@ class TestMain:
         assert out.out == ""
         assert out.err == (
             "Error: rfe: effective binding ('jira', 'RHAISTRAT', 'Initiative') (source: env) is "
-            "the binding registered for type 'initiative'; a tracker binding must be owned by "
-            "exactly one type (design §3.3 rule 1) — fix the override or pass --type initiative\n"
+            "the binding registered for type 'initiative-rhaistrat'; a tracker binding must be "
+            "owned by "
+            "exactly one type (design §3.3 rule 1) — fix the override or pass --type "
+            "initiative-rhaistrat\n"
         )
 
     def test_a_malformed_override_exits_two(self, jira, monkeypatch, capsys, tmp_path):

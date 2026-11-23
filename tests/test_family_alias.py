@@ -10,7 +10,8 @@ the argparse converter ``type_arg`` beside ``choices=``, ``parse_type_arg``, the
 clone_results_repo, submit's revise-pass reader, verify_phase's D8 compare),
 ``scripts/bootstrap.sh`` and the ``canonical`` CLI; ``TestWriters`` runs the scripts the
 autofixer launches by argv end to end. The shipped tree is
-unchanged (``initiative`` is still a concrete type), so the alias is exercised on the reference
+alias-free apart from ``initiative`` (one member, ``initiative-rhaistrat``), so the alias is
+exercised on the reference
 family (tests/fixtures/type-families) with ``brief-globex`` removed: ``brief`` then names
 ``brief-acme``. The two-member fixture pins that a family with several members is still
 refused with ``canonical()``'s own text, and the derived tables are pinned to the shipped
@@ -65,6 +66,9 @@ VALIDATE_SCRIPT = "scripts/validate_types.py"
 FRONTMATTER_SCRIPT = "scripts/frontmatter.py"
 RUN_REPORT_SCRIPT = "scripts/generate_run_report.py"
 SUBMIT_SCRIPT = "scripts/submit.py"
+# The shipped family and its sole member (AISDLC-851): beside the reference family below.
+SHIPPED_FAMILY = "initiative"
+SHIPPED_MEMBER = "initiative-rhaistrat"
 SNAPSHOT_BOOTSTRAP_SCRIPT = "scripts/bootstrap_snapshot.py"
 JIRA_VARS = ("JIRA_SERVER", "JIRA_USER", "JIRA_TOKEN")
 BOOTSTRAP_SCRIPT = REPO_ROOT / "scripts" / "bootstrap.sh"
@@ -271,10 +275,17 @@ class TestTypeArg:
     def test_the_converter_is_named_type_and_is_the_identity_on_the_shipped_tree(self, shipped_reg):
         convert = type_registry.type_arg(shipped_reg)
         assert convert.__name__ == "type"
-        assert [convert(n) for n in ("rfe", "initiative")] == ["rfe", "initiative"]
+        # the identity for the registered names; the shipped family name answers its member
+        assert [convert(n) for n in ("rfe", SHIPPED_MEMBER, SHIPPED_FAMILY)] == [
+            "rfe",
+            SHIPPED_MEMBER,
+            SHIPPED_MEMBER,
+        ]
         with pytest.raises(argparse.ArgumentTypeError) as exc:
             convert("bogus")
-        assert str(exc.value) == "invalid choice: 'bogus' (choose from 'rfe', 'initiative')"
+        assert str(exc.value) == (
+            "invalid choice: 'bogus' (choose from 'rfe', 'initiative-rhaistrat')"
+        )
 
 
 # ── parse_type_arg: the hand-parser of the check_* gates ────────────────────────
@@ -573,9 +584,9 @@ class TestGenerateEvalConfig:
     def test_eval_stem_is_the_family_for_a_member_and_the_name_otherwise(self, member, shipped_reg):
         assert generate_eval_config.eval_stem(member) == FAMILY
         shipped = [
-            generate_eval_config.eval_stem(shipped_reg.get(n)) for n in ("rfe", "initiative")
+            generate_eval_config.eval_stem(shipped_reg.get(n)) for n in ("rfe", SHIPPED_MEMBER)
         ]
-        assert shipped == ["rfe", "initiative"]
+        assert shipped == ["rfe", SHIPPED_FAMILY]  # the member renders under the family stem
 
     def test_select_the_family_renders_its_sole_member(self, single_reg, two_reg):
         assert [d.name for d in generate_eval_config._select(single_reg, FAMILY)] == [MEMBER]
@@ -746,7 +757,7 @@ class TestArtifactUtils:
         assert artifact_utils._rename_error_label(member) == "rename_brief_to_jira_key"
         assert artifact_utils._rename_error_label(shipped_reg.get("rfe")) == "rename_to_jira_key"
         assert (
-            artifact_utils._rename_error_label(shipped_reg.get("initiative"))
+            artifact_utils._rename_error_label(shipped_reg.get(SHIPPED_MEMBER))
             == "rename_initiative_to_jira_key"
         )
 
@@ -833,7 +844,7 @@ class TestPipelineState:
         err = capsys.readouterr().err
         assert (
             "argument --type: invalid choice: 'bogus' (choose from 'rfe', 'brief-acme', "
-            "'initiative')"
+            "'initiative-rhaistrat')"
         ) in err
         assert not os.path.exists(ps.STATE_FILE)
 
@@ -865,8 +876,9 @@ class TestCloneResultsRepo:
     ):
         self._seam_env(monkeypatch, single_root)
         assert clone_results_repo.type_layouts([FAMILY]) == [(MEMBER, "brief-acme-snapshot-")]
-        initiative = shipped_reg.get("initiative")
-        assert clone_results_repo.type_layouts(["initiative", FAMILY]) == [
+        initiative = shipped_reg.get(SHIPPED_MEMBER)
+        # both family aliases at once: the shipped one and the fixture's
+        assert clone_results_repo.type_layouts([SHIPPED_FAMILY, FAMILY]) == [
             (initiative.get("snapshot.results_subdir"), initiative.get("snapshot.prefix")),
             (MEMBER, "brief-acme-snapshot-"),
         ]
@@ -882,7 +894,7 @@ class TestCloneResultsRepo:
             clone_results_repo.type_layouts([FAMILY])
         assert str(exc.value) == (
             "DATA_REPO_TYPES: unknown type 'brief' (registered: rfe, brief-acme, brief-globex, "
-            "initiative)"
+            "initiative-rhaistrat)"
         )
 
 
@@ -935,7 +947,8 @@ class TestBootstrapScript:
         bogus = self._run(BOOTSTRAP_SCRIPT, "--type", "bogus", env=env, cwd=tmp_path)
         assert (bogus.returncode, bogus.stdout) == (2, "")
         assert bogus.stderr == (
-            "ERROR: unknown --type 'bogus' (registered types: rfe, brief-acme, initiative)\n"
+            "ERROR: unknown --type 'bogus' (registered types: rfe, brief-acme, "
+            "initiative-rhaistrat)\n"
         )
 
     def test_registry_path_refuses_a_two_member_family(self, tmp_path):
@@ -944,7 +957,7 @@ class TestBootstrapScript:
         assert (result.returncode, result.stdout) == (2, "")
         assert result.stderr == (
             "ERROR: unknown --type 'brief' (registered types: rfe, brief-acme, brief-globex, "
-            "initiative)\n"
+            "initiative-rhaistrat)\n"
         )
 
     def test_no_python_fallback_canonicalises_the_family(self, single_root, tmp_path):
@@ -1098,7 +1111,7 @@ class TestWriters:
         without = self._run_without_jira(SNAPSHOT_BOOTSTRAP_SCRIPT, *args)
         assert (without.returncode, without.stdout) == (2, "")
         assert (
-            "argument --type: invalid choice: 'brief' (choose from 'rfe', 'initiative')"
+            "argument --type: invalid choice: 'brief' (choose from 'rfe', 'initiative-rhaistrat')"
         ) in without.stderr
 
     def test_read_revise_passes_compares_the_state_type_through_the_alias(
@@ -1191,7 +1204,7 @@ class TestDerivedTables:
         # Today's bytes: the literal table the projection replaced.
         assert check_autofix_complete._TYPE_CONFIG == {
             "rfe": {"ids_file": "tmp/speedrun-all-ids.txt", "reviews_dir": "artifacts/rfe-reviews"},
-            "initiative": {
+            SHIPPED_MEMBER: {
                 "ids_file": "tmp/initiative-speedrun-all-ids.txt",
                 "reviews_dir": "artifacts/initiative-reviews",
             },
@@ -1226,7 +1239,7 @@ class TestDerivedTables:
             for d in shipped_reg
         }
         assert compare_review_outputs._TYPE_CONFIG == expected
-        assert compare_review_outputs._TYPE_CONFIG["initiative"] == {
+        assert compare_review_outputs._TYPE_CONFIG[SHIPPED_MEMBER] == {
             "reviews_dir": "initiative-reviews",
             "originals_dir": "initiative-originals",
             "tasks_dir": "initiatives",
@@ -1243,14 +1256,15 @@ class TestDerivedTables:
     def test_legacy_row_order_is_looked_up_through_extends(self, shipped_reg):
         """A member stand-in whose ``extends`` is ``initiative`` gets the shipped initiative
         pipeline's row order; a standalone of another name gets the generic order."""
-        initiative = shipped_reg.get("initiative")
-        assert list(check_review_progress._LEGACY_ROW_ORDER) == ["initiative"]
-        legacy = list(check_review_progress._LEGACY_ROW_ORDER["initiative"])
+        initiative = shipped_reg.get(SHIPPED_MEMBER)  # the shipped member, extends initiative
+        assert list(check_review_progress._LEGACY_ROW_ORDER) == [SHIPPED_FAMILY]
+        legacy = list(check_review_progress._LEGACY_ROW_ORDER[SHIPPED_FAMILY])
+        assert initiative.extends == SHIPPED_FAMILY
         assert list(check_review_progress._phase_rows(initiative)) == legacy
         stand_in = Descriptor(
-            "initiative-x", copy.deepcopy(initiative.data), path=None, family=initiative
+            "initiative-x", copy.deepcopy(initiative.data), path=None, family=initiative.family
         )
-        assert stand_in.extends == "initiative"
+        assert stand_in.extends == SHIPPED_FAMILY
         assert list(check_review_progress._phase_rows(stand_in)) == legacy
         standalone = Descriptor("initiative-x", copy.deepcopy(initiative.data), path=None)
         assert standalone.extends is None

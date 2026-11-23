@@ -13,6 +13,10 @@ import sys
 import pytest
 import yaml
 
+# The registered Initiative type: the sole member of the `initiative` family (AISDLC-851);
+# `--type initiative` is the family alias, kept below as a CLI input.
+MEMBER = "initiative-rhaistrat"
+
 SCRIPT = os.path.join(os.path.dirname(__file__), "..", "scripts", "submit.py")
 
 
@@ -3123,7 +3127,8 @@ class TestOverriddenProjectBinding:
         assert r.stdout == ""
         assert r.stderr.startswith(
             "Error: rfe: effective binding ('jira', 'RHAISTRAT', 'Initiative') (source: env) is "
-            "the binding registered for type 'initiative'; a tracker binding must be owned by "
+            "the binding registered for type 'initiative-rhaistrat'; a tracker binding must be "
+            "owned by "
             "exactly one type"
         )
         assert r.stderr.count("\n") == 1 and "Traceback" not in r.stderr
@@ -3153,7 +3158,8 @@ class TestOverriddenProjectBinding:
         assert r.returncode == 1
         assert r.stdout == ""
         assert r.stderr == (
-            "Error: RHAIRFE-1234 carries tracker_ref 'RHAISTRAT-7', a key type initiative owns, "
+            "Error: RHAIRFE-1234 carries tracker_ref 'RHAISTRAT-7', a key type "
+            "initiative-rhaistrat owns, "
             "not the resolved type rfe (key prefixes: RHAIRFE-); an artifact bound to another "
             "type is never updated or created here — fix the artifact before re-running; "
             "nothing submitted\n"

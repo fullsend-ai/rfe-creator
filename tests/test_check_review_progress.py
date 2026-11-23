@@ -969,8 +969,12 @@ SKILLS_DIR = os.path.join(os.path.dirname(__file__), "..", ".claude", "skills")
 
 
 def _legacy_text(t, stage):
-    """A legacy per-type body, frozen when PR-5c deleted it (fixture README maps the files)."""
-    path = os.path.join(os.path.dirname(__file__), "fixtures", "legacy-prompts", t, f"{stage}.md")
+    """A legacy per-type body, frozen when PR-5c deleted it (fixture README maps the files).
+    A member of a type family reads its family's corpus (the shipped `initiative` files)."""
+    legacy_dir = REG.get(t).extends or t
+    path = os.path.join(
+        os.path.dirname(__file__), "fixtures", "legacy-prompts", legacy_dir, f"{stage}.md"
+    )
     with open(path) as f:
         return f.read()
 

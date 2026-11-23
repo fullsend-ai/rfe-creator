@@ -23,6 +23,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
 from artifact_utils import read_frontmatter, write_frontmatter  # noqa: E402
 
+# The registered Initiative type: the sole member of the `initiative` family (AISDLC-851).
+MEMBER = "initiative-rhaistrat"
+
 REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
 SCRIPTS_DIR = os.path.abspath(os.path.join(REPO_ROOT, "scripts"))
 SCRIPT = os.path.join(SCRIPTS_DIR, "error_collect.py")
@@ -100,7 +103,7 @@ def _init_task(workspace, item_id, **extra):
             "status": "Ready",
             **extra,
         },
-        "initiative-task",
+        f"{MEMBER}-task",
     )
 
 

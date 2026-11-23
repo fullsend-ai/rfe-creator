@@ -11,6 +11,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
 from artifact_utils import write_frontmatter  # noqa: E402
 
+# The registered Initiative type: the sole member of the `initiative` family (AISDLC-851);
+# `--type initiative` is the family alias, kept below as a CLI input.
+MEMBER = "initiative-rhaistrat"
+
 SCRIPT = os.path.join(os.path.dirname(__file__), "..", "scripts", "collect_children.py")
 # A complete descriptor that ships outside types/ (never enumerated by default): the third
 # type the generic scan must serve without a code change.
@@ -108,7 +112,7 @@ class TestInitiativeChildren:
                     "status": "Ready",
                     "parent_key": "RHAISTRAT-10",
                 },
-                "initiative-task",
+                f"{MEMBER}-task",
             )
         out, _, rc = _run(["--type", "initiative", "RHAISTRAT-10"], cwd=str(init_workspace))
         assert rc == 0
@@ -127,7 +131,7 @@ class TestInitiativeChildren:
                 "status": "Ready",
                 "parent_key": "RHAISTRAT-20",
             },
-            "initiative-task",
+            f"{MEMBER}-task",
         )
         write_frontmatter(
             str(init_workspace / "artifacts/initiatives/RHAISTRAT-22.md"),
@@ -138,7 +142,7 @@ class TestInitiativeChildren:
                 "status": "Archived",
                 "parent_key": "RHAISTRAT-20",
             },
-            "initiative-task",
+            f"{MEMBER}-task",
         )
         out, _, rc = _run(["--type", "initiative", "RHAISTRAT-20"], cwd=str(init_workspace))
         assert rc == 0
@@ -155,7 +159,7 @@ class TestInitiativeChildren:
                 "status": "Ready",
                 "parent_key": "RHAISTRAT-30",
             },
-            "initiative-task",
+            f"{MEMBER}-task",
         )
         write_frontmatter(
             str(init_workspace / "artifacts/initiatives/RHAISTRAT-41.md"),
@@ -166,7 +170,7 @@ class TestInitiativeChildren:
                 "status": "Ready",
                 "parent_key": "RHAISTRAT-40",
             },
-            "initiative-task",
+            f"{MEMBER}-task",
         )
         out, _, rc = _run(
             ["--type", "initiative", "RHAISTRAT-30", "RHAISTRAT-40"],
@@ -191,7 +195,7 @@ class TestIdsFile:
                 "status": "Ready",
                 "parent_key": "RHAISTRAT-50",
             },
-            "initiative-task",
+            f"{MEMBER}-task",
         )
         ids_file = str(init_workspace / "parents.txt")
         with open(ids_file, "w") as f:

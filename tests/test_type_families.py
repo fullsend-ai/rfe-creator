@@ -12,7 +12,8 @@ no-member finding, gate 3 without jsonschema) and the eval render
 
 The reference family is ``tests/fixtures/type-families/`` (family ``brief``, members
 ``brief-acme`` and ``brief-globex``); mutation tests copy it into a tmp root. The shipped
-tree carries no family, so the neutrality witnesses pin that nothing visible changed there.
+tree carries one family, ``initiative``, with the sole member ``initiative-rhaistrat``
+(AISDLC-851); TestShippedFamily pins what is visible there.
 Every registry is built with ``load(root=..., extra_roots=[], env={})`` and subprocesses
 scrub the developer's seams, as in tests/test_type_registry.py.
 """
@@ -46,7 +47,11 @@ REGISTRY_SCRIPT = "scripts/type_registry.py"
 VALIDATE_SCRIPT = "scripts/validate_types.py"
 FAMILY = "brief"
 MEMBERS = ["brief-acme", "brief-globex"]
-SHIPPED_OK_LINE = "OK: 2 type(s) valid: rfe, initiative\n"
+SHIPPED_FAMILY = "initiative"
+SHIPPED_MEMBER = "initiative-rhaistrat"
+SHIPPED_OK_LINE = (
+    "OK: 2 type(s) valid: rfe, initiative-rhaistrat; 1 family(ies) checked: initiative\n"
+)
 FAMILY_OK_LINE = "OK: 2 type(s) valid: brief-acme, brief-globex; 1 family(ies) checked: brief\n"
 FAMILY_VERIFY_TEXT = (
     "type 'brief' is a type family (abstract: true): never bindable and never run; verify "
@@ -183,20 +188,23 @@ def fixture_registry():
     return _load(FAMILIES_ROOT)
 
 
-# ── neutrality witnesses: the shipped tree carries no family ────────────────────
+# ── the shipped family: `initiative` and its sole member `initiative-rhaistrat` ──────
 
 
-class TestNeutralityWitnesses:
-    def test_shipped_registry_has_no_family(self):
+class TestShippedFamily:
+    def test_shipped_registry_has_the_initiative_family(self):
         reg = _load(TYPES_ROOT)
-        assert reg.families() == []
-        assert reg.names() == ["rfe", "initiative"]
+        assert reg.families() == [SHIPPED_FAMILY]
+        assert reg.names() == ["rfe", SHIPPED_MEMBER]
+        assert reg.members(SHIPPED_FAMILY) == [SHIPPED_MEMBER]
+        assert reg.canonical(SHIPPED_FAMILY) == SHIPPED_MEMBER
+        assert reg.family(SHIPPED_FAMILY).abstract
         with pytest.raises(KeyError) as exc:
             reg.family("rfe")
-        assert exc.value.args[0] == "unknown type family 'rfe'; families: (none)"
+        assert exc.value.args[0] == f"unknown type family 'rfe'; families: {SHIPPED_FAMILY}"
 
-    @pytest.mark.parametrize("name", ["rfe", "initiative"])
-    def test_shipped_descriptor_is_a_standalone(self, name):
+    @pytest.mark.parametrize("name", ["rfe"])
+    def test_shipped_standalone(self, name):
         desc = _load(TYPES_ROOT).get(name)
         assert desc.family is None
         assert desc.own is desc.data
@@ -205,35 +213,52 @@ class TestNeutralityWitnesses:
         assert "abstract" not in desc.data and "extends" not in desc.data
         assert desc.data == _read_yaml(TYPES_ROOT / name / "type.yaml")
 
-    def test_merge_is_never_called_for_a_standalone(self, monkeypatch):
-        def boom(*_args, **_kw):
-            raise AssertionError("merge_descriptor called on the shipped tree")
+    def test_shipped_member_is_merged_over_the_family(self):
+        desc = _load(TYPES_ROOT).get(SHIPPED_MEMBER)
+        assert desc.family is not None and desc.family.name == SHIPPED_FAMILY
+        assert desc.extends == SHIPPED_FAMILY and not desc.abstract
+        assert desc.own == _read_yaml(TYPES_ROOT / SHIPPED_MEMBER / "type.yaml")
+        assert desc.own is not desc.data and desc.data["extends"] == SHIPPED_FAMILY
+        assert desc.path == (TYPES_ROOT / SHIPPED_MEMBER / "type.yaml").resolve()
+        assert desc.family.path == (TYPES_ROOT / SHIPPED_FAMILY / "type.yaml").resolve()
 
-        monkeypatch.setattr(type_registry, "merge_descriptor", boom)
+    def test_merge_is_called_once_for_the_member_and_never_for_rfe(self, monkeypatch):
+        calls = []
+        original = type_registry.merge_descriptor
+
+        def spy(*args, **kwargs):
+            calls.append((args, kwargs))
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(type_registry, "merge_descriptor", spy)
         reg = _load(TYPES_ROOT)
         assert reg.get("rfe").data == _read_yaml(TYPES_ROOT / "rfe" / "type.yaml")
+        assert len(calls) == 1
 
-    def test_shipped_report_has_no_families_key(self):
+    def test_shipped_report_lists_the_family(self):
         report = _validate(TYPES_ROOT)
         assert report.ok, report.lines()
-        assert report.families == []
-        assert "families" not in report.to_dict()
+        assert report.types == ["rfe", SHIPPED_MEMBER]
+        assert report.families == [SHIPPED_FAMILY]
+        assert report.to_dict()["families"] == [SHIPPED_FAMILY]
 
-    def test_shipped_cli_ok_line_is_unchanged(self):
+    def test_shipped_cli_ok_line_names_the_member_and_the_family(self):
         result = _validator()
         assert result.returncode == 0, result.stderr
         assert result.stdout == SHIPPED_OK_LINE
         assert result.stderr == ""
 
-    def test_shipped_cli_json_has_no_families_key(self):
+    def test_shipped_cli_json_lists_the_family(self):
         result = _validator("--json")
         assert result.returncode == 0, result.stderr
-        assert "families" not in json.loads(result.stdout)
+        assert json.loads(result.stdout)["families"] == [SHIPPED_FAMILY]
 
     def test_generate_check_is_green_on_the_repo(self, capsys):
         assert generate_eval_config.main(["--check"]) == 0
         out = capsys.readouterr()
-        assert out.out == "rfe: eval.yaml up to date\ninitiative: eval-initiative.yaml up to date\n"
+        assert out.out == (
+            f"rfe: eval.yaml up to date\n{SHIPPED_MEMBER}: eval-initiative.yaml up to date\n"
+        )
         assert out.err == ""
 
     def test_schema_declares_the_two_keys_as_optional(self):
@@ -765,8 +790,8 @@ class TestLoadErrors:
 
     def test_a_family_and_its_member_in_one_extra_root_load(self):
         reg = _load(TYPES_ROOT, extra_roots=[FAMILIES_ROOT])
-        assert reg.names() == ["rfe", "brief-acme", "brief-globex", "initiative"]
-        assert reg.families() == [FAMILY]
+        assert reg.names() == ["rfe", "brief-acme", "brief-globex", SHIPPED_MEMBER]
+        assert reg.families() == [FAMILY, SHIPPED_FAMILY]
         assert reg.members(FAMILY) == MEMBERS
 
     def test_a_member_in_one_extra_root_may_not_extend_a_family_in_another(self, tmp_path):
@@ -928,8 +953,8 @@ class TestGate1:
     def test_fixture_beside_the_shipped_tree_passes(self):
         report = _validate(TYPES_ROOT, extra_roots=[FAMILIES_ROOT])
         assert report.ok, report.lines()
-        assert report.types == ["rfe", "brief-acme", "brief-globex", "initiative"]
-        assert report.families == [FAMILY]
+        assert report.types == ["rfe", "brief-acme", "brief-globex", SHIPPED_MEMBER]
+        assert report.families == [FAMILY, SHIPPED_FAMILY]
 
     def test_to_dict_lists_the_family(self):
         data = _validate(FAMILIES_ROOT).to_dict()
@@ -1150,7 +1175,7 @@ class TestGate1Findings:
         assert len(_find(report, "duplicate classification signal")) == 1  # found once, at source
         kept = _validate(TYPES_ROOT, extra_roots=[families_copy], only="brief-acme")
         assert len(_find(kept, "duplicate classification signal")) == 1
-        dropped = _validate(TYPES_ROOT, extra_roots=[families_copy], only="initiative")
+        dropped = _validate(TYPES_ROOT, extra_roots=[families_copy], only=SHIPPED_MEMBER)
         assert _find(dropped, "duplicate classification signal") == []
 
     def test_two_members_sharing_an_artifact_directory_is_a_finding(self, families_copy):
@@ -1182,8 +1207,8 @@ class TestGate1Findings:
             shutil.rmtree(families_copy / name)
         # Beside a concrete type the family itself is reported.
         report = _validate(TYPES_ROOT, extra_roots=[families_copy])
-        assert report.types == ["rfe", "initiative"]
-        assert report.families == [FAMILY]
+        assert report.types == ["rfe", SHIPPED_MEMBER]
+        assert report.families == [FAMILY, SHIPPED_FAMILY]
         assert [(f.type, f.message, f.types) for f in report.findings] == [
             (
                 FAMILY,
@@ -1462,10 +1487,16 @@ class TestRegistryCli:
         assert result.returncode == 0, result.stderr
         assert json.loads(result.stdout) == {FAMILY: MEMBERS}
 
-    def test_families_on_the_shipped_tree_prints_nothing(self):
+    def test_families_on_the_shipped_tree_prints_the_initiative_family(self):
         result = _cli(REGISTRY_SCRIPT, "families")
-        assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
-        assert json.loads(_cli(REGISTRY_SCRIPT, "families", "--json").stdout) == {}
+        assert (result.returncode, result.stdout, result.stderr) == (
+            0,
+            f"{SHIPPED_FAMILY}: {SHIPPED_MEMBER}\n",
+            "",
+        )
+        assert json.loads(_cli(REGISTRY_SCRIPT, "families", "--json").stdout) == {
+            SHIPPED_FAMILY: [SHIPPED_MEMBER]
+        }
 
     def test_families_without_member(self, families_copy):
         for name in MEMBERS:

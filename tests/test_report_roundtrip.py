@@ -40,6 +40,10 @@ import bootstrap_snapshot
 import type_registry
 from generate_run_report import TYPE_CONFIG
 
+# The registered Initiative type: the sole member of the `initiative` family (AISDLC-851);
+# `--type initiative` is the family alias, kept below as a CLI input.
+MEMBER = "initiative-rhaistrat"
+
 SCRIPT = os.path.join(os.path.dirname(__file__), "..", "scripts", "generate_run_report.py")
 RUN = "20260818-120000"
 
@@ -191,7 +195,7 @@ class TestWriterReaderAgree:
         _write_report(tmp_path, "rfe", results_dir)
 
         ids, report = bootstrap_snapshot._load_run_report(
-            results_dir, RUN, config=bootstrap_snapshot.BOOTSTRAP_CONFIG["initiative"]
+            results_dir, RUN, config=bootstrap_snapshot.BOOTSTRAP_CONFIG[MEMBER]
         )
 
         assert ids is None

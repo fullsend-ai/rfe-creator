@@ -24,9 +24,14 @@ from clone_results_repo import (  # noqa: E402
 )
 
 REG = type_registry.load()
+# The registered Initiative type: the sole member of the `initiative` family (AISDLC-851). The
+# production job still says DATA_REPO_TYPES=initiative (the family alias, rfe-autofixer until
+# AISDLC-852), so the tests below pass both spellings where the layout is read.
+MEMBER = "initiative-rhaistrat"
+FAMILY = "initiative"
 RFE_PREFIX = REG.get("rfe").get("snapshot.prefix")
-INIT_SUBDIR = REG.get("initiative").get("snapshot.results_subdir")
-INIT_PREFIX = REG.get("initiative").get("snapshot.prefix")
+INIT_SUBDIR = REG.get(MEMBER).get("snapshot.results_subdir")
+INIT_PREFIX = REG.get(MEMBER).get("snapshot.prefix")
 # The production job's clone, as .gitlab-ci.yml has always run it (no DATA_REPO_TYPES).
 LEGACY_PATTERNS = ["/latest", "/*/auto-fix-runs/issue-snapshot-*.yaml", "!/test-data/**"]
 
@@ -290,8 +295,10 @@ class TestSparsePatterns:
         assert sparse_patterns(["rfe"]) == LEGACY_PATTERNS
         assert LEGACY_PATTERNS[1] == f"/*/auto-fix-runs/{RFE_PREFIX}*.yaml"
 
-    def test_initiative_subtree(self):
-        assert sparse_patterns(["initiative"]) == [
+    @pytest.mark.parametrize("spelling", [MEMBER, FAMILY])
+    def test_initiative_subtree(self, spelling):
+        """The member's subtree, whether DATA_REPO_TYPES names the member or the family alias."""
+        assert sparse_patterns([spelling]) == [
             "/initiative-rhaistrat/latest",
             "/initiative-rhaistrat/*/auto-fix-runs/initiative-snapshot-*.yaml",
             "!/test-data/**",
@@ -316,7 +323,7 @@ class TestSparsePatterns:
     def test_unknown_type_names_it_and_the_registered_ones(self):
         with pytest.raises(ValueError, match=r"DATA_REPO_TYPES: unknown type 'bogus'") as exc:
             sparse_patterns(["initiative", "bogus"])
-        assert "registered: rfe, initiative" in str(exc.value)
+        assert f"registered: rfe, {MEMBER}" in str(exc.value)
 
 
 class _GitRecorder:
@@ -464,10 +471,11 @@ class TestSharedLayoutCheckout:
         assert not _exists(dest, f"{RFE_RUN}/auto-fix-runs/{RFE_RUN}.yaml")
         assert not _exists(dest, "test-data")
 
-    def test_initiative_materializes_its_subtree_only(self, tmp_path):
+    @pytest.mark.parametrize("spelling", [MEMBER, FAMILY])
+    def test_initiative_materializes_its_subtree_only(self, tmp_path, spelling):
         src = _shared_layout_repo(tmp_path)
         dest = str(tmp_path / "clone")
-        r = _run_clone(src, dest, types="initiative")
+        r = _run_clone(src, dest, types=spelling)
         assert r.returncode == 0, r.stderr
         assert r.stdout.strip() == dest
         assert _exists(dest, INIT_SNAP)
