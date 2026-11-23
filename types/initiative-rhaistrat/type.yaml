@@ -1,0 +1,45 @@
+# types/initiative-rhaistrat/type.yaml — the Initiative type bound to the RHAISTRAT Jira project: the sole
+# member of the `initiative` type family (types/initiative/type.yaml, abstract: true; design §3.2.2,
+# AISDLC-851). Own keys only — what validate_types MEMBER_OWN_KEYS / TRACKER_MEMBER_OWN_KEYS require plus
+# what the project changes. Everything else is inherited through merge_descriptor: display, the shape-based
+# classification block (own signals are appended below), issue type, split link type, state map, index,
+# companions, labels, comment prefix, schema, stages, poll/state prefixes (`initiative-`: the state-file
+# tables, the results repository's `initiative-run-` / `initiative-snapshot-` files and the autofixer's
+# tmp/ expectations key on them; a SECOND member must own all four), scorer agent, prompts, dimensions,
+# rubric pin, resplit, batch, snapshot prefixes, reporting, and the eval dataset, experiment, timeout and
+# thresholds (the judge `initiative_quality`, the run name `initiative-speedrun` and the MLflow experiment
+# are the FAMILY's: generate_eval_config.eval_stem). `--type initiative` resolves to this type while it is
+# the family's only member (TypeRegistry.canonical).
+schema_version: 1
+type: initiative-rhaistrat
+extends: initiative
+identity:
+  jira:
+    project: RHAISTRAT                                  # submit.py / split_submit.py project; the one member per project within the family (cross rule 9)
+    key_prefixes: ["RHAISTRAT-"]                        # write prefix; the id grammar's tracker alternative
+  local_prefix: "INIT-"
+  local_id_pattern: '^INIT-\d+$'
+  id_field: initiative_id
+dirs:                                                   # one owner per artifact directory across types (cross rule 8)
+  tasks: artifacts/initiatives
+  originals: artifacts/initiative-originals
+  reviews: artifacts/initiative-reviews
+classification:
+  signals:                                              # appended after the family's six (merge: concatenate); cross rule 7 forbids a repeated phrase
+    - a Red Hat AI platform commitment, framed for the RHOAI product and its components
+    - hangs from a RHAISTRAT Outcome in the Red Hat AI strategy project
+conventions:
+  query_default: 'project = RHAISTRAT AND issuetype = Initiative'   # the autofixer's selection base (rfe-autofixer .gitlab-ci.yml, QUERY_BASE)
+  parent_key_patterns: ['RHAISTRAT-\d+', 'INIT-\d+']  # the task schema's parent_key grammar; an Initiative hangs from a RHAISTRAT Outcome, its own key family
+pipeline:
+  context_sources:                                      # a list REPLACES the family's: --type must name this member so SETUP.commands[0] == the BOOTSTRAP launch var
+    - { name: assess-rubric, bootstrap: scripts/bootstrap.sh, args: ["--type", "initiative-rhaistrat"], required: true }
+    - { name: architecture-context, bootstrap: scripts/fetch-architecture-context.sh, required: false }
+  dimensions:
+    - name: alignment                                   # merged by name: prompt, blocking and frontmatter_field are the family's
+      condition: { prefix: "RHAISTRAT-" }               # the engine's parent_key test and what fetch_issue.py --fetch-all records as parent_key (Descriptor.condition_prefixes)
+      skip_stub: { result: not_assessed, reason: "skipped by pipeline (no RHAISTRAT Outcome parent)" }
+snapshot:
+  results_subdir: "initiative-rhaistrat"                # == the member name (gate 1); the results repository's subtree since 2026-10-28
+eval:
+  config: eval-initiative.yaml                          # one committed render per type; dataset, mlflow_experiment and thresholds are inherited
