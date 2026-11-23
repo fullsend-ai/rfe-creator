@@ -15,6 +15,14 @@ To regenerate after such a change (and only then):
     python3 -c "import json, sys; sys.path.insert(0, 'scripts'); from artifact_utils import \\
         SCHEMAS; print(json.dumps(SCHEMAS, sort_keys=False, indent=2, default=str))" \\
         > tests/data/schemas-golden.json
+
+Reviewed contract changes so far:
+  * AISDLC-851 (#309): `initiative` became a type family and `initiative-rhaistrat` its sole
+    member, so the Initiative schemas are keyed `initiative-rhaistrat-task` /
+    `initiative-rhaistrat-review` (SCHEMAS is keyed by the concrete type name, never by a
+    family: no alias key). The two renamed keys are the whole diff — every per-field byte is
+    unchanged, and `frontmatter.py schema initiative-task` still names the member's schema
+    through the family alias (the argparse converter), so no stored artifact changes.
 """
 
 import difflib
@@ -28,6 +36,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 from artifact_utils import SCHEMAS  # noqa: E402
 
 GOLDEN = Path(__file__).resolve().parent / "data" / "schemas-golden.json"
+MEMBER = "initiative-rhaistrat"  # the Initiative family's sole member: the schema keys' stem
 
 
 def _serialise(schemas):
@@ -64,8 +73,8 @@ def test_schema_key_order_is_types_times_task_review():
     assert list(SCHEMAS) == [
         "rfe-task",
         "rfe-review",
-        "initiative-task",
-        "initiative-review",
+        f"{MEMBER}-task",
+        f"{MEMBER}-review",
         "react-shopping-cart-task",
         "react-shopping-cart-review",
     ]
@@ -75,7 +84,7 @@ def test_schema_key_order_is_types_times_task_review():
 def test_schemas_do_not_alias_each_other():
     """Per-schema specs are independent objects (mutating one never bleeds into another)."""
     rfe_status = SCHEMAS["rfe-task"]["status"]["enum"]
-    init_status = SCHEMAS["initiative-task"]["status"]["enum"]
+    init_status = SCHEMAS[f"{MEMBER}-task"]["status"]["enum"]
     assert rfe_status == init_status and rfe_status is not init_status
-    for name in ("rfe-review", "initiative-review"):
+    for name in ("rfe-review", f"{MEMBER}-review"):
         assert SCHEMAS[name]["scores"]["fields"] is not SCHEMAS[name]["before_scores"]["fields"]

@@ -23,6 +23,10 @@ from generate_review_pdf import (
     generate_diff,
 )
 
+# The registered Initiative type: the sole member of the `initiative` family (AISDLC-851);
+# `--type initiative` is the family alias, kept below as a CLI input.
+MEMBER = "initiative-rhaistrat"
+
 
 class TestSafeArtifactPath:
     def test_normal_file(self, tmp_path):
@@ -426,7 +430,7 @@ class TestReportConfigIsRegistryDerived:
 
     def test_projection_does_not_alias_descriptor_data(self):
         registry = type_registry.load(extra_roots=[], env={})
-        desc = registry.get("initiative")
+        desc = registry.get(MEMBER)
         cfg = generate_review_pdf._report_config(desc)
         cfg["criterion_labels"]["mutated"] = "X"
         cfg["before_score_name_map"]["mutated"] = "x"
@@ -470,7 +474,7 @@ def test_report_config_escapes_descriptor_display_strings():
     assert cfg["entity_name_plural"] == "Widgets&lt;script&gt;"
     assert cfg["report_title"].startswith("&lt;Widget&gt; &amp; Co Review &amp; Remediation Report")
     # Shipped values are unchanged by escaping.
-    for name in ("rfe", "initiative"):
+    for name in ("rfe", MEMBER):
         assert grp.REPORT_CONFIG[name]["entity_name"] in ("RFE", "Initiative")
 
 
@@ -490,7 +494,7 @@ class TestIdPredicates:
         "type_name, tracker, local, foreign",
         [
             ("rfe", "RHAIRFE-1595", "RFE-001", "RHAISTRAT-1"),
-            ("initiative", "RHAISTRAT-12345", "INIT-001", "RHAIRFE-1"),
+            (MEMBER, "RHAISTRAT-12345", "INIT-001", "RHAIRFE-1"),
         ],
     )
     def test_shipped_types(self, type_name, tracker, local, foreign):
@@ -508,7 +512,7 @@ class TestIdPredicates:
     def test_local_id_parity_rung(self):
         """A malformed local id stays with its type (Descriptor.owns' parity rung), so a
         split child whose parent_key is malformed still files under its parent."""
-        assert REPORT_CONFIG["initiative"]["desc"].owns("INIT-x")
+        assert REPORT_CONFIG[MEMBER]["desc"].owns("INIT-x")
         assert REPORT_CONFIG["rfe"]["desc"].owns("RFE-x")
 
     @pytest.mark.parametrize("value", ["", None])
@@ -669,20 +673,20 @@ class TestReportLinksAndSplitClassification:
     def test_initiative_rollup_is_not_a_split(self, tmp_path, monkeypatch):
         root = tmp_path / "artifacts"
         # The RHAISTRAT Outcome rollup is not a split parent: no split section.
-        _task(root, "initiative", "INIT-001", extra="parent_key: RHAISTRAT-42\n")
-        _review(root, "initiative", "INIT-001")
+        _task(root, MEMBER, "INIT-001", extra="parent_key: RHAISTRAT-42\n")
+        _review(root, MEMBER, "INIT-001")
         # A stamped initiative links to its tracker_ref; a legacy key links to itself.
         _task(
             root,
-            "initiative",
+            MEMBER,
             "INIT-002",
             extra="type: initiative\ntracker_ref: RHAISTRAT-777\n",
         )
-        _review(root, "initiative", "INIT-002")
-        _task(root, "initiative", "RHAISTRAT-12345")
-        _review(root, "initiative", "RHAISTRAT-12345")
+        _review(root, MEMBER, "INIT-002")
+        _task(root, MEMBER, "RHAISTRAT-12345")
+        _review(root, MEMBER, "RHAISTRAT-12345")
 
-        html = _render(tmp_path, monkeypatch, "initiative")
+        html = _render(tmp_path, monkeypatch, MEMBER)
 
         assert "from Splits" not in html
         assert _link("RHAISTRAT-777", "INIT-002") in html
@@ -692,14 +696,14 @@ class TestReportLinksAndSplitClassification:
 
     def test_initiative_same_family_parent_is_a_split(self, tmp_path, monkeypatch):
         root = tmp_path / "artifacts"
-        _task(root, "initiative", "RHAISTRAT-100", status="Archived")
-        _review(root, "initiative", "RHAISTRAT-100", recommendation="split")
-        _task(root, "initiative", "INIT-003", extra="parent_key: RHAISTRAT-100\n")
-        _review(root, "initiative", "INIT-003")
-        _task(root, "initiative", "INIT-004", extra="parent_key: INIT-003\n")
-        _review(root, "initiative", "INIT-004")
+        _task(root, MEMBER, "RHAISTRAT-100", status="Archived")
+        _review(root, MEMBER, "RHAISTRAT-100", recommendation="split")
+        _task(root, MEMBER, "INIT-003", extra="parent_key: RHAISTRAT-100\n")
+        _review(root, MEMBER, "INIT-003")
+        _task(root, MEMBER, "INIT-004", extra="parent_key: INIT-003\n")
+        _review(root, MEMBER, "INIT-004")
 
-        html = _render(tmp_path, monkeypatch, "initiative")
+        html = _render(tmp_path, monkeypatch, MEMBER)
 
         assert "New Initiatives from Splits (1)" in html
         assert "Re-split Intermediaries (1)" in html

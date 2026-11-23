@@ -52,8 +52,19 @@ FIXTURES_TYPES_ROOT = EPIC_FIXTURE.parent.parent
 STRAT_INPUTS_FIXTURE = FIXTURES_TYPES_ROOT / "strategy-inputs.yaml"
 # A live repo file to stand in for an embedded (repo: self) rubric in D3 tests.
 SELF_RUBRIC_PATH = ".claude/skills/rfe-review/prompts/review-agent.md"
-SHIPPED = ("rfe", "initiative")
-OK_LINE = "OK: 3 type(s) valid: rfe, initiative, react-shopping-cart\n"
+# The shipped registry (AISDLC-851): `initiative` is a type FAMILY (abstract: checked, never
+# a registered type) and `initiative-rhaistrat` its sole member. A member-own key (identity,
+# dirs, query, results_subdir, eval.config, the alignment condition) is mutated on the MEMBER
+# file, an inherited one on the FAMILY file; every finding is asserted under the member.
+MEMBER = "initiative-rhaistrat"
+FAMILY = "initiative"
+SHIPPED = ("rfe", MEMBER)  # registered names
+SHIPPED_DIRS = ("rfe", FAMILY, MEMBER)  # descriptor directories a copied root needs
+RSC = "react-shopping-cart"  # the Shop RFE type, shipped beside the two above
+OK_LINE = (
+    "OK: 3 type(s) valid: rfe, initiative-rhaistrat, react-shopping-cart; "
+    "1 family(ies) checked: initiative\n"
+)
 
 RFE_RUBRIC = "skills/assess-rfe/scripts/agent_prompt.md"
 INITIATIVE_RUBRIC = "skills/assess-initiative/scripts/agent_prompt.md"
@@ -82,7 +93,7 @@ def _write_yaml(path, data):
     return path
 
 
-def _copy_types(dest, names=SHIPPED, with_schema=True):
+def _copy_types(dest, names=SHIPPED_DIRS, with_schema=True):
     dest.mkdir(parents=True, exist_ok=True)
     for name in names:
         shutil.copytree(TYPES_ROOT / name, dest / name)
@@ -254,7 +265,7 @@ class TestShipped:
     def test_python_api_ok(self):
         report = _validate(TYPES_ROOT)
         assert report.ok, report.lines()
-        assert report.types == ["rfe", "initiative", "react-shopping-cart"]
+        assert report.types == ["rfe", MEMBER, RSC]
         assert report.findings == []
 
     def test_cli_exit_0_and_ok_line(self):
@@ -268,7 +279,8 @@ class TestShipped:
         assert result.returncode == 0
         assert json.loads(result.stdout) == {
             "ok": True,
-            "types": ["rfe", "initiative", "react-shopping-cart"],
+            "types": ["rfe", MEMBER, RSC],
+            "families": [FAMILY],
             "errors": [],
         }
 
@@ -288,26 +300,27 @@ class TestShipped:
         }
 
     def test_cli_json_on_failure_lists_errors(self, types_copy):
-        _mutate(types_copy, "initiative", lambda d: d["pipeline"].__setitem__("poll_prefix", ""))
+        _mutate(types_copy, FAMILY, lambda d: d["pipeline"].__setitem__("poll_prefix", ""))
         result = _cli("--root", str(types_copy), "--json")
         assert result.returncode == 1
         payload = json.loads(result.stdout)
         assert payload["ok"] is False
-        assert payload["types"] == ["rfe", "initiative"]
+        assert payload["types"] == ["rfe", MEMBER]
         assert payload["errors"] == [
             {
                 "type": "*",
-                "message": "pipeline.poll_prefix is empty for type 'initiative' (an empty "
+                "message": "pipeline.poll_prefix is empty for type 'initiative-rhaistrat' (an "
+                "empty "
                 "prefix is grandfathered for type 'rfe' only)",
             }
         ]
 
     def test_cli_text_on_failure_prints_error_lines_and_summary(self, types_copy):
-        _mutate(types_copy, "initiative", lambda d: d["pipeline"].__setitem__("poll_prefix", ""))
+        _mutate(types_copy, FAMILY, lambda d: d["pipeline"].__setitem__("poll_prefix", ""))
         result = _cli("--root", str(types_copy))
         assert result.returncode == 1
         assert result.stdout.startswith(
-            "ERROR *: pipeline.poll_prefix is empty for type 'initiative'"
+            "ERROR *: pipeline.poll_prefix is empty for type 'initiative-rhaistrat'"
         )
         assert "validate_types: 1 finding(s) across 2 type(s)" in result.stderr
 
@@ -329,8 +342,8 @@ class TestSchemaGate:
         assert "'bogus' was unexpected" in hits[0].message
 
     def test_missing_required_block(self, types_copy):
-        _mutate(types_copy, "initiative", lambda d: d.pop("reporting"))
-        _assert_finding(_validate(types_copy), "'reporting' is a required property", "initiative")
+        _mutate(types_copy, FAMILY, lambda d: d.pop("reporting"))
+        _assert_finding(_validate(types_copy), "'reporting' is a required property", MEMBER)
 
     def test_schema_version_is_pinned_to_1(self, types_copy):
         _mutate(types_copy, "rfe", lambda d: d.__setitem__("schema_version", 2))
@@ -490,10 +503,8 @@ class TestPerTypeGate:
             report, "pipeline.stages[6]: no generic skill for stage 'decompose'", "rfe"
         )
         assert ".claude/skills/rfe-decompose/SKILL.md not found" in hits[0].message
-        assert not _find(report, "no generic skill", "initiative")
-        assert not _find(
-            _validate(types_copy, repo_root=REPO_ROOT), "no generic skill", "initiative"
-        )
+        assert not _find(report, "no generic skill", MEMBER)
+        assert not _find(_validate(types_copy, repo_root=REPO_ROOT), "no generic skill", MEMBER)
 
     def test_stage_skill_gate_reads_the_plugin_tree_not_the_descriptor_root(self, types_copy):
         """The generic bodies live under the plugin root even for a drop-in root: a copy of the
@@ -534,7 +545,7 @@ class TestPerTypeGate:
     def test_missing_dimension_prompt(self, types_copy):
         _mutate(
             types_copy,
-            "initiative",
+            FAMILY,
             lambda d: d["pipeline"]["dimensions"][1].__setitem__("prompt", "no/such/SKILL.md"),
         )
         _assert_finding(
@@ -565,12 +576,12 @@ class TestPerTypeGate:
     def test_a_type_without_an_eval_block_has_no_eval_gate(self, types_copy):
         """`eval` is optional (a demo type omits it): no schema finding, and the eval gate
         (config, dataset, fragment, sync) is skipped for that type only."""
-        _mutate(types_copy, "initiative", lambda d: d.pop("eval"))
-        shutil.rmtree(types_copy / "initiative" / "eval")
+        _mutate(types_copy, "rfe", lambda d: d.pop("eval"))
+        shutil.rmtree(types_copy / "rfe" / "eval")
         report = _validate(types_copy, eval_sync=True)
         assert report.ok, [f.message for f in report.findings]
         assert not validate_types.has_eval(
-            type_registry.load(root=types_copy, extra_roots=[], env={}).get("initiative")
+            type_registry.load(root=types_copy, extra_roots=[], env={}).get("rfe")
         )
 
     def test_missing_eval_config_key_is_a_finding_not_a_crash(self, types_copy):
@@ -579,23 +590,23 @@ class TestPerTypeGate:
         compares — the gate saying why it could not compare. Before, the sync gate raised the
         registry's KeyError out of the generator's config_path and the CLI exited 1 with a
         traceback instead of the findings (noticed on rfe-creator #217)."""
-        _mutate(types_copy, "initiative", lambda d: d["eval"].pop("config"))
+        _mutate(types_copy, MEMBER, lambda d: d["eval"].pop("config"))
         report = _validate(types_copy, eval_sync=True)
         assert not report.ok
-        _assert_finding(report, "'config' is a required property", "initiative")
+        _assert_finding(report, "'config' is a required property", MEMBER)
         # The sync comparison only runs for a descriptor inside the repo root, so take the
         # shipped one's data and path, minus the field.
-        shipped = type_registry.load(root=TYPES_ROOT, extra_roots=[], env={}).get("initiative")
+        shipped = type_registry.load(root=TYPES_ROOT, extra_roots=[], env={}).get(MEMBER)
         data = copy.deepcopy(shipped.data)
         data["eval"].pop("config")
-        desc = type_registry.Descriptor("initiative", data, path=shipped.path)
+        desc = type_registry.Descriptor(MEMBER, data, path=shipped.path, family=shipped.family)
         skeleton = (REPO_ROOT / "eval/config/skeleton.yaml").read_text(encoding="utf-8")
         messages = validate_types.eval_fragment_messages(
             desc, None, skeleton, REPO_ROOT, eval_sync=True
         )
         assert len(messages) == 1, messages
         assert messages[0].startswith(
-            "eval config cannot be compared: initiative: descriptor has no 'eval.config'"
+            "eval config cannot be compared: initiative-rhaistrat: descriptor has no 'eval.config'"
         ), messages
 
     def test_references_resolve_against_repo_root_not_cwd(self, types_copy, tmp_path, monkeypatch):
@@ -623,11 +634,11 @@ class TestPerTypeGate:
     def test_empty_score_fields(self, types_copy):
         _mutate(
             types_copy,
-            "initiative",
+            FAMILY,
             lambda d: d["schema"]["review"].__setitem__("score_fields", []),
         )
         report = _validate(types_copy)
-        _assert_finding(report, "schema.review.score_fields must be a non-empty list", "initiative")
+        _assert_finding(report, "schema.review.score_fields must be a non-empty list", MEMBER)
         _assert_finding(report, "schema: $.schema.review.score_fields: [] should be non-empty")
 
     @pytest.mark.parametrize(
@@ -645,7 +656,7 @@ class TestPerTypeGate:
 
     def test_full_length_sha_is_accepted(self, types_copy):
         # Both shipped types share the assess-rfe checkout, so a new pin moves both (rule 6).
-        for name in ("rfe", "initiative"):
+        for name in ("rfe", FAMILY):  # the Initiative rubric pin lives on the family file
             _mutate(
                 types_copy, name, lambda d: d["pipeline"]["rubric"].__setitem__("ref", "a" * 40)
             )
@@ -657,7 +668,7 @@ class TestPerTypeGate:
         repo, identical."""
         refs = {
             name: _read_yaml(TYPES_ROOT / name / "type.yaml")["pipeline"]["rubric"]["ref"]
-            for name in ("rfe", "initiative")
+            for name in ("rfe", FAMILY)  # the pin lives on the family file
         }
         assert all(re.fullmatch(r"[0-9a-f]{40}", ref) for ref in refs.values()), refs
         assert len(set(refs.values())) == 1, refs
@@ -670,7 +681,7 @@ class TestPerTypeGate:
             report, "pipeline.rubric.ref differs across the types sharing rubric repo", "*"
         )
         assert len(hits) == 1 and len(report.findings) == 1, report.lines()
-        assert hits[0].types == frozenset({"rfe", "initiative"})
+        assert hits[0].types == frozenset({"rfe", MEMBER})
         assert "bootstrap.sh keeps one checkout per repo" in hits[0].message
 
     @pytest.mark.parametrize(
@@ -711,8 +722,8 @@ class TestPerTypeGate:
         report = _validate(types_copy)
         hits = _assert_finding(report, "external rubric repositories differ across types", "*")
         assert len(hits) == 1 and len(report.findings) == 1, report.lines()
-        assert hits[0].types == frozenset({"rfe", "initiative"})
-        assert "fullsend-ai/assess-rfe (initiative)" in hits[0].message
+        assert hits[0].types == frozenset({"rfe", MEMBER})
+        assert "fullsend-ai/assess-rfe (initiative-rhaistrat)" in hits[0].message
         assert "other-org/other-rubrics (rfe)" in hits[0].message
         assert "needs bootstrap support" in hits[0].message
 
@@ -855,7 +866,7 @@ class TestPerTypeGate:
             "rfe",
         )
         assert len(hits) == 1
-        assert _messages(report, "initiative") == []
+        assert _messages(report, MEMBER) == []
 
     def test_kind_defaults_to_work_item_when_absent(self, types_copy):
         _mutate(types_copy, "rfe", lambda d: d.pop("kind"))
@@ -884,7 +895,7 @@ class TestPerTypeGate:
         assert [h.message for h in _find(rfe_only, "executable code")] == [
             h.message for h in hits if "helper.py" in h.message
         ]
-        assert not _find(_validate(types_copy, only="initiative"), "executable code")
+        assert not _find(_validate(types_copy, only=MEMBER), "executable code")
 
     def test_shipped_roots_are_data_only(self):
         reg = type_registry.load(root=TYPES_ROOT, extra_roots=[], env={})
@@ -923,21 +934,22 @@ class TestPerTypeGate:
 
     def test_alignment_dimension_without_labels_is_not_flagged(self, types_copy):
         # One direction only (design §3.2 text): labels require a dimension, not vice versa.
-        _mutate(types_copy, "initiative", lambda d: d["conventions"]["labels"].pop("alignment"))
+        _mutate(types_copy, FAMILY, lambda d: d["conventions"]["labels"].pop("alignment"))
         assert _validate(types_copy).ok
 
     def test_error_stub_missing_score_field(self, types_copy):
         fields = ["what", "why", "open_to_how", "right_sized"]  # scope dropped
         _mutate(
             types_copy,
-            "initiative",
+            FAMILY,
             lambda d: d["schema"]["review"].__setitem__("score_fields", fields),
         )
         hits = _assert_finding(
             _validate(types_copy),
             "review error stub (verify_phase.py:105-127) is rejected by "
-            "artifact_utils.SCHEMAS['initiative-review']: Missing required field: scores.scope",
-            "initiative",
+            "artifact_utils.SCHEMAS['initiative-rhaistrat-review']: Missing required field: "
+            "scores.scope",
+            MEMBER,
         )
         assert len(hits) == 1
 
@@ -984,26 +996,26 @@ class TestCrossTypeGate:
     def test_duplicate_binding_via_descriptor(self, types_copy):
         _mutate(
             types_copy,
-            "initiative",
+            MEMBER,
             lambda d: d["identity"]["jira"].update(project="RHAIRFE", issue_type="Feature Request"),
         )
         report = _validate(types_copy)
         hits = _assert_finding(
             report,
             "duplicate effective binding (jira, RHAIRFE, Feature Request) shared by types: "
-            "initiative, rfe",
+            "initiative-rhaistrat, rfe",
             "*",
         )
-        assert hits[0].types == frozenset({"rfe", "initiative"})
+        assert hits[0].types == frozenset({"rfe", MEMBER})
         assert report.lines() == [
             "ERROR *: duplicate effective binding (jira, RHAIRFE, Feature Request) shared by "
-            "types: initiative, rfe"
+            "types: initiative-rhaistrat, rfe"
         ]
 
     def test_duplicate_binding_via_env_override_is_effective(self, types_copy):
         env = {
-            "RFE_CREATOR_BINDING_INITIATIVE_PROJECT": "RHAIRFE",
-            "RFE_CREATOR_BINDING_INITIATIVE_ISSUE_TYPE": "Feature Request",
+            "RFE_CREATOR_BINDING_INITIATIVE_RHAISTRAT_PROJECT": "RHAIRFE",
+            "RFE_CREATOR_BINDING_INITIATIVE_RHAISTRAT_ISSUE_TYPE": "Feature Request",
         }
         assert _validate(types_copy).ok
         _assert_finding(
@@ -1013,21 +1025,19 @@ class TestCrossTypeGate:
         )
 
     def test_same_project_different_issue_type_is_fine(self, types_copy):
-        env = {"RFE_CREATOR_BINDING_INITIATIVE_PROJECT": "RHAIRFE"}
+        env = {"RFE_CREATOR_BINDING_INITIATIVE_RHAISTRAT_PROJECT": "RHAIRFE"}
         assert _validate(types_copy, env=env).ok
 
     def test_duplicate_local_prefix(self, types_copy):
-        _mutate(
-            types_copy, "initiative", lambda d: d["identity"].__setitem__("local_prefix", "RFE-")
-        )
+        _mutate(types_copy, MEMBER, lambda d: d["identity"].__setitem__("local_prefix", "RFE-"))
         _assert_finding(
             _validate(types_copy),
-            "duplicate identity.local_prefix 'RFE-' shared by types: initiative, rfe",
+            "duplicate identity.local_prefix 'RFE-' shared by types: initiative-rhaistrat, rfe",
             "*",
         )
 
     def test_duplicate_local_prefix_via_env_override(self, types_copy):
-        env = {"RFE_CREATOR_BINDING_INITIATIVE_LOCAL_PREFIX": "RFE-"}
+        env = {"RFE_CREATOR_BINDING_INITIATIVE_RHAISTRAT_LOCAL_PREFIX": "RFE-"}
         _assert_finding(
             _validate(types_copy, env=env), "duplicate identity.local_prefix 'RFE-'", "*"
         )
@@ -1035,20 +1045,21 @@ class TestCrossTypeGate:
     def test_duplicate_local_id_pattern(self, types_copy):
         _mutate(
             types_copy,
-            "initiative",
+            MEMBER,
             lambda d: d["identity"].__setitem__("local_id_pattern", r"^RFE-\d+$"),
         )
         _assert_finding(
             _validate(types_copy),
-            "duplicate identity.local_id_pattern '^RFE-\\\\d+$' shared by types: initiative, rfe",
+            "duplicate identity.local_id_pattern '^RFE-\\\\d+$' shared by types: "
+            "initiative-rhaistrat, rfe",
             "*",
         )
 
     def test_duplicate_id_field(self, types_copy):
-        _mutate(types_copy, "initiative", lambda d: d["identity"].__setitem__("id_field", "rfe_id"))
+        _mutate(types_copy, MEMBER, lambda d: d["identity"].__setitem__("id_field", "rfe_id"))
         _assert_finding(
             _validate(types_copy),
-            "duplicate identity.id_field 'rfe_id' shared by types: initiative, rfe",
+            "duplicate identity.id_field 'rfe_id' shared by types: initiative-rhaistrat, rfe",
             "*",
         )
 
@@ -1065,16 +1076,23 @@ class TestCrossTypeGate:
         ],
     )
     def test_empty_prefix_is_grandfathered_for_rfe_only(self, types_copy, dotted, setter):
-        _mutate(types_copy, "initiative", setter)
+        # results_subdir is member-own; the three prefixes are the family's, inherited
+        _mutate(types_copy, MEMBER if dotted == "snapshot.results_subdir" else FAMILY, setter)
         report = _validate(types_copy)
         hits = _assert_finding(
             report,
-            f"{dotted} is empty for type 'initiative' (an empty prefix is grandfathered for "
+            f"{dotted} is empty for type 'initiative-rhaistrat' (an empty prefix is grandfathered "
+            "for "
             "type 'rfe' only)",
             "*",
         )
-        assert hits[0].types == frozenset({"initiative"})
-        assert len(report.findings) == 1
+        assert hits[0].types == frozenset({MEMBER})
+        if dotted == "snapshot.results_subdir":
+            # a member's results_subdir must also equal its name (gate 1): a second finding
+            _assert_finding(report, "must equal the member name", MEMBER)
+            assert len(report.findings) == 2
+        else:
+            assert len(report.findings) == 1
 
     def test_rfe_empty_prefixes_stay_grandfathered(self):
         desc = type_registry.load(root=TYPES_ROOT, extra_roots=[], env={}).get("rfe")
@@ -1092,7 +1110,8 @@ class TestCrossTypeGate:
         )
         _assert_finding(
             _validate(types_copy),
-            "duplicate pipeline.poll_prefix 'initiative-' shared by types: initiative, rfe",
+            "duplicate pipeline.poll_prefix 'initiative-' shared by types: initiative-rhaistrat, "
+            "rfe",
             "*",
         )
 
@@ -1117,20 +1136,20 @@ class TestCrossTypeGate:
         hits = _assert_finding(
             _validate(types_copy),
             "duplicate snapshot.results_subdir 'initiative-rhaistrat' "
-            "shared by types: initiative, rfe",
+            "shared by types: initiative-rhaistrat, rfe",
             "*",
         )
-        assert hits[0].types == frozenset({"rfe", "initiative"})
+        assert hits[0].types == frozenset({"rfe", MEMBER})
 
     def test_shipped_results_subdirs(self):
         """The decision record: rfe at the root (grandfathered); every other type under
         `<type>-<project lowercased>`, so a second deployment of the type against another Jira
         project (AISDLC-8) never shares a subtree — initiative under initiative-rhaistrat/. A
         member of a type family names its subtree after itself: its name already carries the
-        project (gate 1 enforces it; vacuous while no member ships)."""
+        project (gate 1 enforces it: the shipped member is the case)."""
         reg = type_registry.load(root=TYPES_ROOT, extra_roots=[], env={})
         assert reg.get("rfe").get("snapshot.results_subdir") == ""
-        assert reg.get("initiative").get("snapshot.results_subdir") == "initiative-rhaistrat"
+        assert reg.get(MEMBER).get("snapshot.results_subdir") == "initiative-rhaistrat"
         for name in reg.names():
             if name == "rfe":
                 continue
@@ -1145,10 +1164,8 @@ class TestCrossTypeGate:
     def test_results_subdir_grammar(self, types_copy, value):
         """A subtree name starts with a letter and is one path segment, so it can never
         parse as a YYYYMMDD-HHMMSS run name (the readers' timestamp filter) nor nest."""
-        _mutate(
-            types_copy, "initiative", lambda d: d["snapshot"].__setitem__("results_subdir", value)
-        )
-        _assert_finding(_validate(types_copy), "schema: $.snapshot.results_subdir", "initiative")
+        _mutate(types_copy, MEMBER, lambda d: d["snapshot"].__setitem__("results_subdir", value))
+        _assert_finding(_validate(types_copy), "schema: $.snapshot.results_subdir", MEMBER)
 
     @pytest.mark.parametrize("value", ["latest", "test-data", "test-run"])
     def test_results_subdir_reserved_names(self, types_copy, value):
@@ -1156,67 +1173,71 @@ class TestCrossTypeGate:
         subtree's symlink, `test-data` is what the sparse clone excludes and the readers
         skip by name, `test-run` the hand-made fixture directory. No type may claim them."""
         assert validate_types.RESERVED_RESULTS_SUBDIRS == {"latest", "test-data", "test-run"}
-        _mutate(
-            types_copy, "initiative", lambda d: d["snapshot"].__setitem__("results_subdir", value)
-        )
+        _mutate(types_copy, MEMBER, lambda d: d["snapshot"].__setitem__("results_subdir", value))
         report = _validate(types_copy)
         hits = _assert_finding(
-            report, f"snapshot.results_subdir {value!r} is reserved (type 'initiative')", "*"
+            report,
+            f"snapshot.results_subdir {value!r} is reserved (type 'initiative-rhaistrat')",
+            "*",
         )
-        assert hits[0].types == frozenset({"initiative"})
-        assert len(report.findings) == 1
+        assert hits[0].types == frozenset({MEMBER})
+        # a member's results_subdir must also equal its name (gate 1): a second finding
+        _assert_finding(report, "must equal the member name", MEMBER)
+        assert len(report.findings) == 2
 
     def test_results_subdir_is_required(self, types_copy):
         """A drop-in must say where its results live (next to prefix / report_prefix)."""
-        _mutate(types_copy, "initiative", lambda d: d["snapshot"].pop("results_subdir"))
+        _mutate(types_copy, MEMBER, lambda d: d["snapshot"].pop("results_subdir"))
         _assert_finding(
             _validate(types_copy),
             "schema: $.snapshot: 'results_subdir' is a required property",
-            "initiative",
+            MEMBER,
         )
 
     @pytest.mark.parametrize("prefix", ["issue-snapshot-initiative-", "issue-"])
     def test_snapshot_prefix_collision_both_directions(self, types_copy, prefix):
-        _mutate(types_copy, "initiative", lambda d: d["snapshot"].__setitem__("prefix", prefix))
+        _mutate(types_copy, FAMILY, lambda d: d["snapshot"].__setitem__("prefix", prefix))
         hits = _assert_finding(_validate(types_copy), "snapshot.prefix collision:", "*")
-        assert hits[0].types == frozenset({"rfe", "initiative"})
+        assert hits[0].types == frozenset({"rfe", MEMBER})
         assert "one is a prefix of the other" in hits[0].message
 
     def test_empty_snapshot_prefix(self, types_copy):
-        _mutate(types_copy, "initiative", lambda d: d["snapshot"].__setitem__("prefix", ""))
+        _mutate(types_copy, FAMILY, lambda d: d["snapshot"].__setitem__("prefix", ""))
         report = _validate(types_copy)
-        _assert_finding(report, "snapshot.prefix is empty for type 'initiative'", "*")
-        _assert_finding(report, "schema: $.snapshot.prefix", "initiative")
+        _assert_finding(report, "snapshot.prefix is empty for type 'initiative-rhaistrat'", "*")
+        _assert_finding(report, "schema: $.snapshot.prefix", MEMBER)
 
     def test_local_prefix_stem_equal_to_own_project_key(self, types_copy):
         _mutate(
             types_copy,
-            "initiative",
+            MEMBER,
             lambda d: d["identity"].__setitem__("local_prefix", "RHAISTRAT-"),
         )
         hits = _assert_finding(
             _validate(types_copy),
-            "identity.local_prefix 'RHAISTRAT-' of type 'initiative' has the same stem as the "
-            "effective project key 'RHAISTRAT' of type 'initiative'",
+            "identity.local_prefix 'RHAISTRAT-' of type 'initiative-rhaistrat' has the same stem "
+            "as the "
+            "effective project key 'RHAISTRAT' of type 'initiative-rhaistrat'",
             "*",
         )
-        assert hits[0].types == frozenset({"initiative"})
+        assert hits[0].types == frozenset({MEMBER})
 
     def test_local_prefix_stem_equal_to_another_effective_project_key(self, types_copy):
-        env = {"RFE_CREATOR_BINDING_INITIATIVE_LOCAL_PREFIX": "RHAIRFE-"}
+        env = {"RFE_CREATOR_BINDING_INITIATIVE_RHAISTRAT_LOCAL_PREFIX": "RHAIRFE-"}
         hits = _assert_finding(
             _validate(types_copy, env=env),
-            "identity.local_prefix 'RHAIRFE-' of type 'initiative' has the same stem as the "
+            "identity.local_prefix 'RHAIRFE-' of type 'initiative-rhaistrat' has the same stem as "
+            "the "
             "effective project key 'RHAIRFE' of type 'rfe'",
             "*",
         )
-        assert hits[0].types == frozenset({"rfe", "initiative"})
+        assert hits[0].types == frozenset({"rfe", MEMBER})
 
     def test_project_override_moving_onto_a_local_prefix_stem(self, types_copy):
         env = {"RFE_CREATOR_BINDING_RFE_PROJECT": "INIT"}
         _assert_finding(
             _validate(types_copy, env=env),
-            "identity.local_prefix 'INIT-' of type 'initiative' has the same stem as the "
+            "identity.local_prefix 'INIT-' of type 'initiative-rhaistrat' has the same stem as the "
             "effective project key 'INIT' of type 'rfe'",
             "*",
         )
@@ -1237,13 +1258,13 @@ class TestCrossTypeGate:
         assert _validate(types_copy, env=env).ok
 
     def test_cli_reads_overrides_from_the_environment(self, types_copy):
-        env = {"RFE_CREATOR_BINDING_INITIATIVE_LOCAL_PREFIX": "RHAIRFE-"}
+        env = {"RFE_CREATOR_BINDING_INITIATIVE_RHAISTRAT_LOCAL_PREFIX": "RHAIRFE-"}
         result = _cli("--root", str(types_copy), env=env)
         assert result.returncode == 1
         assert "has the same stem as the effective project key 'RHAIRFE'" in result.stdout
 
     def test_cross_type_findings_are_reported_under_star(self, types_copy):
-        _mutate(types_copy, "initiative", lambda d: d["identity"].__setitem__("id_field", "rfe_id"))
+        _mutate(types_copy, MEMBER, lambda d: d["identity"].__setitem__("id_field", "rfe_id"))
         report = _validate(types_copy)
         cross = [f for f in report.findings if f.type == "*"]
         assert cross and all(f.types for f in cross)
@@ -1292,7 +1313,7 @@ class TestLocalIdCollisionGate:
     def test_pattern_admitting_another_types_ids_is_a_finding(self, types_copy):
         _mutate(
             types_copy,
-            "initiative",
+            MEMBER,
             lambda d: d["identity"].__setitem__("local_id_pattern", r"^[A-Z]+-\d+$"),
         )
         report = _validate(types_copy)
@@ -1301,9 +1322,11 @@ class TestLocalIdCollisionGate:
         message = hits[0].message
         assert "identity.local_prefix 'RFE-' of type 'rfe'" in message
         assert "'RFE-1'" in message
-        assert "identity.local_id_pattern '^[A-Z]+-\\\\d+$' of type 'initiative'" in message
-        assert "route type rfe's local ids to type initiative" in message
-        assert hits[0].types == frozenset({"rfe", "initiative"})
+        assert (
+            "identity.local_id_pattern '^[A-Z]+-\\\\d+$' of type 'initiative-rhaistrat'" in message
+        )
+        assert "route type rfe's local ids to type initiative-rhaistrat" in message
+        assert hits[0].types == frozenset({"rfe", MEMBER})
         assert report.lines() == [f"ERROR *: {message}"]
 
     def test_every_ordered_pair_is_checked(self, types_copy):
@@ -1314,17 +1337,17 @@ class TestLocalIdCollisionGate:
         )
         hits = _assert_finding(_validate(types_copy), self.STEM, "*")
         assert len(hits) == 1
-        assert "identity.local_prefix 'INIT-' of type 'initiative'" in hits[0].message
+        assert "identity.local_prefix 'INIT-' of type 'initiative-rhaistrat'" in hits[0].message
         assert "of type 'rfe'" in hits[0].message
 
     def test_collision_via_local_prefix_override_is_effective(self, types_copy):
         """An overridden prefix that mints ids inside another type's grammar collides
         (alongside rule (2)'s duplicate-prefix finding for this particular value)."""
-        env = {"RFE_CREATOR_BINDING_INITIATIVE_LOCAL_PREFIX": "RFE-"}
+        env = {"RFE_CREATOR_BINDING_INITIATIVE_RHAISTRAT_LOCAL_PREFIX": "RFE-"}
         report = _validate(types_copy, env=env)
         hits = _find(report, self.STEM, "*")
         assert any(
-            "identity.local_prefix 'RFE-' of type 'initiative'" in h.message
+            "identity.local_prefix 'RFE-' of type 'initiative-rhaistrat'" in h.message
             and "'RFE-1'" in h.message
             and "of type 'rfe'" in h.message
             for h in hits
@@ -1338,14 +1361,14 @@ class TestLocalIdCollisionGate:
 
         def widened(self, env=None):
             binding = original(self, env)
-            if self.name == "initiative":
+            if self.name == MEMBER:
                 binding["local_id_pattern"] = r"^(RFE|INIT)-\d+$"
             return binding
 
         monkeypatch.setattr(type_registry.Descriptor, "binding", widened)
         hits = _assert_finding(_validate(types_copy), self.STEM, "*")
         assert len(hits) == 1
-        assert "identity.local_id_pattern '^(RFE|INIT)-\\\\d+$' of type 'initiative'" in (
+        assert "identity.local_id_pattern '^(RFE|INIT)-\\\\d+$' of type 'initiative-rhaistrat'" in (
             hits[0].message
         )
 
@@ -1361,29 +1384,29 @@ class TestLocalIdCollisionGate:
         _assert_finding(
             _validate(types_copy),
             "duplicate identity.local_id_pattern '^(RFE|INIT)-\\\\d+$' shared by types: "
-            "initiative, rfe",
+            "initiative-rhaistrat, rfe",
             "*",
         )
 
     def test_uncompilable_pattern_is_the_per_type_finding_only(self, types_copy):
         _mutate(
             types_copy,
-            "initiative",
+            MEMBER,
             lambda d: d["identity"].__setitem__("local_id_pattern", r"^[A-Z]+-(\d+$"),
         )
         report = _validate(types_copy)
         assert not _find(report, self.STEM)
-        _assert_finding(report, "is not a valid regex", "initiative")
+        _assert_finding(report, "is not a valid regex", MEMBER)
 
     def test_missing_or_empty_local_prefix_is_skipped(self, types_copy):
-        _mutate(types_copy, "initiative", lambda d: d["identity"].__setitem__("local_prefix", ""))
+        _mutate(types_copy, MEMBER, lambda d: d["identity"].__setitem__("local_prefix", ""))
         report = _validate(types_copy)
         assert not _find(report, self.STEM)
 
     def test_cli_reports_the_collision(self, types_copy):
         _mutate(
             types_copy,
-            "initiative",
+            MEMBER,
             lambda d: d["identity"].__setitem__("local_id_pattern", r"^[A-Z]+-\d+$"),
         )
         result = _cli("--root", str(types_copy))
@@ -1409,7 +1432,7 @@ class TestWithDeps:
         hits = _assert_finding(
             report,
             f"with-deps: pipeline.rubric.path '{INITIATIVE_RUBRIC}' not found under {ctx}",
-            "initiative",
+            MEMBER,
         )
         assert hits[0].gate == 2
         assert len(report.findings) == 1
@@ -1421,7 +1444,7 @@ class TestWithDeps:
             report,
             f"with-deps: scorer agent file {ctx / 'agents' / 'initiative-scorer.md'} not found "
             "(pipeline.scorer_agent='initiative-scorer')",
-            "initiative",
+            MEMBER,
         )
         assert hits[0].gate == 2
 
@@ -1485,7 +1508,7 @@ class TestWithDeps:
     def test_verify_keeps_only_gate_2_findings_for_that_type(self, tmp_path):
         ctx = _fake_assess_checkout(tmp_path, initiative_rubric=False, initiative_agent=False)
         assert _validate(TYPES_ROOT, with_deps=True, assess_dir=ctx, only="rfe").ok
-        report = _validate(TYPES_ROOT, with_deps=True, assess_dir=ctx, only="initiative")
+        report = _validate(TYPES_ROOT, with_deps=True, assess_dir=ctx, only=MEMBER)
         assert len(report.findings) == 2
 
 
@@ -1497,8 +1520,8 @@ class TestVerify:
         result = _cli("--verify", "--type", "nope")
         assert result.returncode == 1
         assert result.stdout == (
-            "VERIFY FAILED: type 'nope' — unknown type 'nope' (available: rfe, initiative, "
-            "react-shopping-cart)\n"
+            "VERIFY FAILED: type 'nope' — unknown type 'nope' (available: rfe, "
+            "initiative-rhaistrat, react-shopping-cart)\n"
         )
 
     def test_verify_requires_type(self):
@@ -1530,7 +1553,7 @@ class TestVerify:
     def test_verify_keeps_cross_type_findings_involving_the_type(self, types_copy):
         _mutate(
             types_copy,
-            "initiative",
+            MEMBER,
             lambda d: d["identity"]["jira"].update(project="RHAIRFE", issue_type="Feature Request"),
         )
         for name in SHIPPED:
@@ -1543,7 +1566,7 @@ class TestVerify:
         root = _copy_types(tmp_path / "types")
         _third_type(root, "dup")
         _mutate(root, "dup", lambda d: d["identity"].__setitem__("local_prefix", "RFE-"))
-        assert _validate(root, only="initiative").ok
+        assert _validate(root, only=MEMBER).ok
         assert not _validate(root, only="dup").ok
         assert not _validate(root, only="rfe").ok
 
@@ -1628,13 +1651,10 @@ class TestVerify:
             d["pipeline"]["rubric"]["ref"] = "short"
             d["schema"]["review"]["score_fields"] = []
 
-        _mutate(types_copy, "initiative", two)
-        assert (
-            validate_types.main(["--root", str(types_copy), "--verify", "--type", "initiative"])
-            == 1
-        )
+        _mutate(types_copy, FAMILY, two)  # both keys are inherited by the member
+        assert validate_types.main(["--root", str(types_copy), "--verify", "--type", MEMBER]) == 1
         out = capsys.readouterr().out
-        assert out.startswith("VERIFY FAILED: type 'initiative' — ")
+        assert out.startswith("VERIFY FAILED: type 'initiative-rhaistrat' — ")
         assert " | " in out
 
 
@@ -1660,8 +1680,8 @@ class TestMissingJsonschema:
         monkeypatch.setitem(sys.modules, "jsonschema", None)
         assert type_registry.load(root=TYPES_ROOT, extra_roots=[], env={}).names() == [
             "rfe",
-            "initiative",
-            "react-shopping-cart",
+            MEMBER,
+            RSC,
         ]
 
     # Gate 3 runs in the pipeline's sandbox, which has PyYAML and no dev dependency: the
@@ -2226,20 +2246,15 @@ class TestExtraTypes:
     def test_third_type_is_discovered_and_passes_gate_1(self, tmp_path):
         extra = _third_type(tmp_path / "extra")
         reg = type_registry.load(root=TYPES_ROOT, extra_roots=[extra], env={})
-        assert reg.names() == ["rfe", "docs", "initiative", "react-shopping-cart"]
+        assert reg.names() == ["rfe", "docs", MEMBER, RSC]
         report = _validate(TYPES_ROOT, extra_roots=[extra])
         assert report.ok, report.lines()
-        assert report.types == ["rfe", "docs", "initiative", "react-shopping-cart"]
+        assert report.types == ["rfe", "docs", MEMBER, RSC]
 
     def test_third_type_via_env_variable(self, tmp_path):
         extra = _third_type(tmp_path / "extra")
         env = {"RFE_CREATOR_EXTRA_TYPES": str(extra)}
-        assert type_registry.load(root=TYPES_ROOT, env=env).names() == [
-            "rfe",
-            "docs",
-            "initiative",
-            "react-shopping-cart",
-        ]
+        assert type_registry.load(root=TYPES_ROOT, env=env).names() == ["rfe", "docs", MEMBER, RSC]
         report = validate_all(root=TYPES_ROOT, env=env, repo_root=REPO_ROOT)
         assert report.ok, report.lines()
 
@@ -2247,18 +2262,17 @@ class TestExtraTypes:
         extra = _third_type(tmp_path / "extra")
         result = _cli(env={"RFE_CREATOR_EXTRA_TYPES": str(extra)})
         assert result.returncode == 0, result.stdout + result.stderr
-        assert result.stdout == "OK: 4 type(s) valid: rfe, docs, initiative, react-shopping-cart\n"
+        assert result.stdout == (
+            "OK: 4 type(s) valid: rfe, docs, initiative-rhaistrat, react-shopping-cart; "
+            "1 family(ies) checked: "
+            "initiative\n"
+        )
 
     def test_cli_with_extra_roots_option(self, tmp_path):
         extra = _third_type(tmp_path / "extra")
         result = _cli("--extra-roots", str(extra), "--json")
         assert result.returncode == 0, result.stdout + result.stderr
-        assert json.loads(result.stdout)["types"] == [
-            "rfe",
-            "docs",
-            "initiative",
-            "react-shopping-cart",
-        ]
+        assert json.loads(result.stdout)["types"] == ["rfe", "docs", MEMBER, RSC]
 
     def test_third_type_verify(self, tmp_path):
         extra = _third_type(tmp_path / "extra")
@@ -2272,21 +2286,12 @@ class TestExtraTypes:
         extra = _third_type(tmp_path / "extra")
         trailing = _cli("--extra-roots", str(extra) + os.pathsep, "--json")
         assert trailing.returncode == 0, trailing.stdout + trailing.stderr
-        assert json.loads(trailing.stdout)["types"] == [
-            "rfe",
-            "docs",
-            "initiative",
-            "react-shopping-cart",
-        ]
+        assert json.loads(trailing.stdout)["types"] == ["rfe", "docs", MEMBER, RSC]
         explicit_empty = _cli(
             "--extra-roots", "", "--json", env={"RFE_CREATOR_EXTRA_TYPES": str(extra)}
         )
         assert explicit_empty.returncode == 0, explicit_empty.stdout + explicit_empty.stderr
-        assert json.loads(explicit_empty.stdout)["types"] == [
-            "rfe",
-            "initiative",
-            "react-shopping-cart",
-        ]
+        assert json.loads(explicit_empty.stdout)["types"] == ["rfe", MEMBER, RSC]
 
     def test_headless_gate_applies_to_the_validator(self, tmp_path):
         """PR1-05: under a CI marker the env seam is honoured only for allowlisted roots."""
@@ -2296,7 +2301,7 @@ class TestExtraTypes:
             env={"RFE_CREATOR_EXTRA_TYPES": str(extra), "CI": "true"},
             repo_root=REPO_ROOT,
         )
-        assert gated.ok and gated.types == ["rfe", "initiative", "react-shopping-cart"]
+        assert gated.ok and gated.types == ["rfe", MEMBER, RSC]
         allowed = validate_all(
             root=TYPES_ROOT,
             env={
@@ -2306,7 +2311,7 @@ class TestExtraTypes:
             },
             repo_root=REPO_ROOT,
         )
-        assert allowed.ok and allowed.types == ["rfe", "docs", "initiative", "react-shopping-cart"]
+        assert allowed.ok and allowed.types == ["rfe", "docs", MEMBER, RSC]
         cli = _cli(env={"RFE_CREATOR_EXTRA_TYPES": str(extra), "GITHUB_ACTIONS": "true"})
         assert cli.returncode == 0, cli.stdout + cli.stderr
         assert cli.stdout == OK_LINE
@@ -2333,7 +2338,7 @@ class TestExtraTypes:
         report = _validate(TYPES_ROOT, extra_roots=[extra])
         _assert_finding(report, "'index' is a required property", "docs")
         assert _messages(report, "rfe") == []
-        assert _messages(report, "initiative") == []
+        assert _messages(report, MEMBER) == []
 
 
 # ── the reserved inputs: block against strat-creator's real gate (PR1-15, R1) ─────────
@@ -2615,7 +2620,7 @@ class TestEvalFragmentGate:
         data = _read_yaml(path)
         data["not_a_slot"] = "x"
         _write_yaml(path, data)
-        (hit,) = _assert_finding(_validate(types_copy), "eval fragment", "initiative")
+        (hit,) = _assert_finding(_validate(types_copy), "eval fragment", MEMBER)
         assert "schema:" in hit.message and "not_a_slot" in hit.message
 
     def test_fragment_that_cannot_render_is_a_finding(self, types_copy):
@@ -2670,14 +2675,22 @@ class TestClassificationGate:
     kept usable by gate 1 (a model decides between the registered types from its phrases)."""
 
     def test_shipped_descriptors_declare_the_block(self):
-        for name in SHIPPED:
+        # The block's prose lives on the family file; the member's own file appends signals
+        # only, and the merged descriptor (what the digest and cross rule 7 read) has both.
+        for name in ("rfe", FAMILY):
             block = _read_yaml(TYPES_ROOT / name / "type.yaml")["classification"]
             assert block["summary"].strip() and block["driver"].strip(), name
             assert len(block["signals"]) >= 4 and len(block["counter_signals"]) >= 3, name
             assert 1 <= len(block["examples"]) <= 5, name
+        own = _read_yaml(TYPES_ROOT / MEMBER / "type.yaml")["classification"]
+        assert list(own) == ["signals"] and len(own["signals"]) >= 2
+        merged = type_registry.load(root=TYPES_ROOT, extra_roots=[], env={}).get(MEMBER)
+        family_signals = _read_yaml(TYPES_ROOT / FAMILY / "type.yaml")["classification"]["signals"]
+        assert merged.get("classification.signals") == family_signals + own["signals"]
+        assert merged.get("classification.summary").strip()
 
     def test_the_block_is_optional_when_no_type_declares_it(self, types_copy):
-        for name in SHIPPED:
+        for name in SHIPPED_DIRS:  # the member's own signals block too
             _mutate(types_copy, name, lambda d: d.pop("classification"))
         report = _validate(types_copy)
         assert not [m for m in _messages(report) if "classification" in m], report.lines()
@@ -2686,10 +2699,12 @@ class TestClassificationGate:
         assert "classification" not in _read_yaml(EPIC_FIXTURE)
 
     def test_one_type_without_the_block_is_a_cross_finding(self, types_copy):
-        _mutate(types_copy, "initiative", lambda d: d.pop("classification"))
+        for name in (FAMILY, MEMBER):  # the member appends own signals: drop both blocks
+            _mutate(types_copy, name, lambda d: d.pop("classification"))
         _assert_finding(
             _validate(types_copy),
-            "type 'initiative' lists the create stage but declares no classification block "
+            "type 'initiative-rhaistrat' lists the create stage but declares no classification "
+            "block "
             "while rfe do",
             "*",
         )
@@ -2731,7 +2746,7 @@ class TestClassificationGate:
     def test_a_phrase_on_both_sides_is_a_finding(self, types_copy):
         _mutate(
             types_copy,
-            "initiative",
+            FAMILY,
             lambda d: d["classification"]["counter_signals"].append(
                 d["classification"]["signals"][1]
             ),
@@ -2744,13 +2759,13 @@ class TestClassificationGate:
         shared = _read_yaml(types_copy / "rfe" / "type.yaml")["classification"]["signals"][0]
         _mutate(
             types_copy,
-            "initiative",
+            MEMBER,  # cross rule 7 reads a member's OWN signals (the family is checked apart)
             lambda d: d["classification"]["signals"].append("  " + shared.upper()),
         )
         _assert_finding(
             _validate(types_copy),
             f"duplicate classification signal {shared.casefold()!r} shared by types: "
-            "initiative, rfe",
+            "initiative-rhaistrat, rfe",
             "*",
         )
 
@@ -2780,11 +2795,11 @@ class TestClassificationGate:
             d["classification"]["signals"] = 7
             d["pipeline"]["stages"] = "create"
 
-        _mutate(types_copy, "initiative", mutate)
+        _mutate(types_copy, MEMBER, mutate)  # the member's own signals and a restated stages
         if without_jsonschema:
             monkeypatch.setitem(sys.modules, "jsonschema", None)
         report = _validate(types_copy, allow_missing_jsonschema=without_jsonschema)
-        _assert_finding(report, "classification.signals must be a list of phrases", "initiative")
+        _assert_finding(report, "classification.signals must be a list of phrases", MEMBER)
         assert not [m for m in _messages(report) if "TypeError" in m], report.lines()
         assert not [m for m in _messages(report) if "could not be checked" in m], report.lines()
 
@@ -2831,10 +2846,11 @@ class TestClassificationGate:
     def test_verify_of_a_classified_type_keeps_the_missing_block_finding(self, types_copy):
         """Review on #280: the registry-wide finding is owned by the classified types too, so
         --verify --type rfe does not pass while initiative lacks a block."""
-        _mutate(types_copy, "initiative", lambda d: d.pop("classification"))
+        for name in (FAMILY, MEMBER):
+            _mutate(types_copy, name, lambda d: d.pop("classification"))
         report = _validate(types_copy, only="rfe", eval_gate=False)
         [hit] = _assert_finding(report, "declares no classification block", "*")
-        assert hit.types == frozenset({"initiative", "rfe"})
+        assert hit.types == frozenset({MEMBER, "rfe"})
 
     def test_verify_names_the_rule_without_jsonschema(self, types_copy, monkeypatch):
         """Gate 3 in the sandbox: the structural rule still decides when the JSON-Schema shape

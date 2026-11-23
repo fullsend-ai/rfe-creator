@@ -45,7 +45,10 @@ Every run works on exactly one type. The skill decides which one from your argum
 order; the first signal present wins:
 
 1. **`--type rfe` or `--type initiative`** on the command line. Always wins. An unknown name is
-   an error that lists the registered types.
+   an error that lists the registered types. `initiative` is the short name of the Initiative
+   type family; its one member, `initiative-rhaistrat` (the Initiative type bound to the
+   RHAISTRAT project), is what the run resolves to, so `--type initiative-rhaistrat` means the
+   same thing and is the name the run's files and reports record.
 2. **The batch file's `type:`** (`/rfe-speedrun --input <file>`), when the file is written as
    `type: initiative` followed by `items:`. A `--type` that disagrees with it is an error.
 3. **What you pass.** A Jira key or local id names its type on its own: `RHAIRFE-` and `RFE-`
@@ -76,8 +79,8 @@ The first thing every skill prints, before it fetches or writes anything, is one
 which type it settled on and which rule decided it:
 
 ```
-TYPE RESOLVED: initiative (--type)
-TYPE RESOLVED: initiative (id grammar)
+TYPE RESOLVED: initiative-rhaistrat (--type)
+TYPE RESOLVED: initiative-rhaistrat (id grammar)
 TYPE RESOLVED: rfe (legacy default)
 ```
 
@@ -91,19 +94,21 @@ Two signals that name different types stop the run at once; the skill neither pi
 asks. This is what the error looks like:
 
 ```
-ERROR: conflicting type signals: --type initiative vs RHAIRFE-123 -> rfe; a run is single-typed — split the input by type
-ERROR: conflicting type signals: RHAIRFE-123 -> rfe, RHAISTRAT-456 -> initiative; a run is single-typed — split the input by type or pass --type
+ERROR: conflicting type signals: --type initiative-rhaistrat vs RHAIRFE-123 -> rfe; a run is single-typed — split the input by type
+ERROR: conflicting type signals: RHAIRFE-123 -> rfe, RHAISTRAT-456 -> initiative-rhaistrat; a run is single-typed — split the input by type or pass --type
 ```
 
-The fix is what the message says: run the RFEs and the Initiatives as separate invocations.
+The fix is what the message says: run the RFEs and the Initiatives as separate invocations. A
+`--type initiative` you passed is printed as `--type initiative-rhaistrat`, the member it resolved
+to.
 Three more shapes you may meet:
 
-- `ERROR: unknown type 'epic' (--type); registered types: rfe, initiative`: a `--type` that is
-  not registered.
+- `ERROR: unknown type 'epic' (--type); registered types: rfe, initiative-rhaistrat`: a `--type`
+  that is not registered.
 - An id no type owns, say `FOO-1`: in a terminal the skill prints
-  `TYPE AMBIGUOUS: rfe, initiative - pass --type` and stops; re-run with `--type`. In a headless
-  or CI run it stops with `ERROR: ambiguous type for FOO-1: candidates rfe, initiative — pass
-  --type`, because a headless run never guesses.
+  `TYPE AMBIGUOUS: rfe, initiative-rhaistrat - pass --type` and stops; re-run with `--type`. In a
+  headless or CI run it stops with `ERROR: ambiguous type for FOO-1: candidates rfe,
+  initiative-rhaistrat — pass --type`, because a headless run never guesses.
 - A batch file with a `type` on an individual entry is rejected: a batch is single-typed, so
   split it into one file per type.
 
@@ -200,10 +205,10 @@ What to do:
 Add `--parent RHAISTRAT-1234` when you know the Outcome it rolls up to, and `--priority Critical`
 (Blocker, Critical, Major, Normal or Minor; the default is Normal) when the default is wrong.
 
-The run prints `TYPE RESOLVED: initiative (--type)`, asks two to five questions (the objective,
+The run prints `TYPE RESOLVED: initiative-rhaistrat (--type)`, asks two to five questions (the objective,
 the problem and its evidence, the scope boundary, the parent Outcome) and writes
 `artifacts/initiatives/INIT-001.md`: a header with `initiative_id: INIT-001`, `title`,
-`priority`, `status: Draft` and `type: initiative` (plus `parent_key` when given), then the
+`priority`, `status: Draft` and `type: initiative-rhaistrat` (plus `parent_key` when given), then the
 Objective, Problem Statement and Scope sections. Edit the file by hand if you like.
 
 ### 2. Review

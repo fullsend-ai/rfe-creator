@@ -9,7 +9,7 @@ The review file body, in this order (just the body — the frontmatter is set by
    <Content from feasibility file>
 
    ## Strategic Alignment
-   <Content from alignment file, or "Not assessed (no RHAISTRAT parent)" if alignment file was missing>
+   <Content from alignment file, or "Not assessed (no {PROJECT} Outcome parent)" if alignment file was missing>
 
    ## Execution Considerations
    <Items flagged for downstream planning, or "none">

@@ -30,7 +30,7 @@ descriptor value ("Deployment binding override" below).
 
 | What | Where |
 |---|---|
-| Field reference (every key, with its consuming `file:line`) | `types/_schema/type.schema.json` `description` strings; `types/rfe/type.yaml` and `types/initiative/type.yaml` |
+| Field reference (every key, with its consuming `file:line`) | `types/_schema/type.schema.json` `description` strings; `types/rfe/type.yaml`, `types/initiative/type.yaml` (the Initiative family) and `types/initiative-rhaistrat/type.yaml` (its member) |
 | Extension points vs shared machinery, reserved vocabulary, R7 frozen strings, binding override and trust boundary, gate list | [`types/README.md`](../types/README.md) |
 | Which scripts read the registry, delivery history, where the descriptors depart from the design text | [`docs/work-item-types-development.md`](work-item-types-development.md) |
 | Copy-from skeleton | `types/rfe/` (`cp -r types/rfe types/<name>`) |
@@ -200,7 +200,8 @@ Rules that are easy to trip:
 The one block written for a reader rather than a script: `summary`, `driver`, `signals`,
 `counter_signals`, `examples` ("Classification block" in [`types/README.md`](../types/README.md)).
 Optional in the schema, required in practice for a type that lists the `create` stage: once any
-registered type declares the block, and `rfe` and `initiative` do, every create-stage type needs
+registered type declares the block, and `rfe` and the `initiative` family (hence its member
+`initiative-rhaistrat`) do, every create-stage type needs
 one. Within the block `summary`, `signals` (at least one) and `examples` (one to five) are required,
 `driver` and `counter_signals` optional. The generic create body classifies a free-text idea
 against every installed type's block (stage 1, AISDLC-190): it reads
@@ -246,8 +247,8 @@ that `extends` it, and the registry merges the family under the member before an
    family's; the quality judge and the run name of the generated config are the
    family's (`generate_eval_config.eval_stem`), so the `<family>_quality` threshold lives on the
    family, not on the member — and the poll/state/snapshot prefixes unless the family carries them
-   (the reference family leaves them to its members; the shipped Initiative family, once the split
-   lands, will carry them). The reference member is
+   (the reference family leaves them to its members; the shipped Initiative family carries them,
+   inherited by its sole member). The reference member is
    `tests/fixtures/type-families/brief-acme/type.yaml`, abridged here to the keys a member must own
    (the file itself adds the prefixes, the eval dataset and experiment, the query default, the
    parent-key patterns and one own signal):
@@ -274,7 +275,7 @@ that `extends` it, and the registry merges the family under the member before an
    lives), the rubric pin, the schema facts, the eval prose (`types/<family>/eval/` serves a member
    with no `eval/` directory of its own) and — when the family declares them — the poll/state
    prefixes and the snapshot prefixes (the reference family does not; the shipped Initiative family
-   will, so its sole member inherits them). A second member gives those their own values: the cross-type
+   does, and its sole member inherits them). A second member gives those their own values: the cross-type
    rules keep the prefixes, `results_subdir` and every `dirs.*` value unique and allow one member
    per project. A file placed under `types/<member>/` is read only when a descriptor key names it.
 
@@ -315,10 +316,10 @@ field.
 - [ ] **Descriptor lint** — `python3 scripts/validate_types.py` (gate 1; add
   `--extra-roots <dir>` for a drop-in root, `--verify --type <name>` for a one-line verdict on one
   type, without the eval gate the pipeline does not need).
-  - Passes with `OK: <n> type(s) valid: rfe, initiative, <name>` — members only, a family is never a
-    type; when a family exists the line ends with `; <k> family(ies) checked: <family>`, and a
-    family's own finding reads `ERROR <family>: ...` (kept by `--verify --type <member>` for each
-    of its members).
+  - Passes with `OK: <n> type(s) valid: rfe, initiative-rhaistrat, <name>; 1 family(ies) checked:
+    initiative` (add your family to the tail when it has one) — members only, a family is never a
+    type; a family's own finding reads `ERROR <family>: ...` (kept by `--verify --type <member>`
+    for each of its members).
   - Fails with one `ERROR <type>: <message>` line per finding, `*` in place of the type for a
     cross-type finding, then a `validate_types: <n> finding(s) across <m> type(s)` summary on
     stderr and exit 1. A copy of `types/rfe/` with only `type:` changed prints, among others,
@@ -454,7 +455,7 @@ Verify before the first real run:
 ```bash
 python3 scripts/type_registry.py binding rfe            # project: KONFLUX, key_prefixes: [KONFLUX-, RHAIRFE-], source: env, overrides: [project]
 python3 scripts/type_registry.py resolve --type rfe     # TYPE RESOLVED: rfe (--type; binding override project=KONFLUX)
-python3 scripts/type_registry.py candidates KONFLUX-12  # key_prefix: rfe  (without the override: tracker_grammar (provisional): rfe initiative)
+python3 scripts/type_registry.py candidates KONFLUX-12  # key_prefix: rfe  (without the override: tracker_grammar (provisional): rfe initiative-rhaistrat)
 python3 scripts/submit.py --dry-run --type rfe          # the same resolve line on stderr, then the plan against KONFLUX; no tracker write
 ```
 
@@ -470,7 +471,7 @@ resolve clause) and the dry-run plan of a stock deployment, byte for byte.
 through `candidates()` over effective bindings, with the Jira key grammar as a provisional last
 rung) > the legacy `rfe` default. An unknown type, a `--type` disagreeing with the batch `type:`
 (D1), a per-item `type` key (D2) and conflicting deterministic signals exit 1 with an `ERROR:`
-line; an ambiguous run exits 3 (`TYPE AMBIGUOUS: rfe, initiative - pass --type` interactively, an
+line; an ambiguous run exits 3 (`TYPE AMBIGUOUS: rfe, initiative-rhaistrat - pass --type` interactively, an
 `ERROR:` line when headless). A batch file is either the legacy bare list (the type is `--type`, else
 `rfe`) or `{type: <t>, items: [...]}`; `validate_batch_input.py` and `next_rfe_id.py --from-batch`
 accept both through `type_registry.read_batch` — read once, then `resolve(..., batch_items=,

@@ -1,22 +1,33 @@
-# types/initiative/type.yaml — the initiative work-item type descriptor.
-# Contract: types/_schema/type.schema.json; design-proposals/work-item-types-unified.md §3.2 and the worked
-# example §8.2. Status (PR-2d): 26 scripts read this descriptor at import
-# (docs/work-item-types-development.md "Adoption status"); the values a pending script still carries are pinned equal to it by test, so the descriptor
-# is source of truth BY IMPORT for adopted scripts and BY TEST for the rest (design §10). Every value is
-# the live literal on main (c1df503) with the consuming file:line AT THAT COMMIT in a trailing comment
-# (adopted scripts now derive it — the comment records where the literal lived); nothing here is
-# authored. Where §8.2 and main disagree, main wins and the comment says so (Q1, Q3, Q9, Q10, Q11 of
-# the PR-1 checklist; Q14 was reconciled in PR-3b). 2026-10-28 (AISDLC-461): the Jira project moved from
-# RHOAIENG to RHAISTRAT — identity.jira.project, key_prefixes, query_default, parent_key_patterns and
-# snapshot.results_subdir changed together; every other value is unchanged.
+# types/initiative/type.yaml — the Initiative TYPE FAMILY (abstract: true; design §3.2.2, AISDLC-851): the
+# judgement, labels, prompts, dimensions, rubric pin, prefixes and eval identity its members share. Never
+# enumerated, bound or run: `python3 scripts/type_registry.py list` names the members only, and
+# `initiative` as a `--type` (or a stored `type:`) is the family alias, answered by its sole member
+# `initiative-rhaistrat` (types/initiative-rhaistrat/type.yaml) through TypeRegistry.canonical while it is
+# the only one. Deliberately absent here, owned by each member (validate_types MEMBER_OWN_KEYS /
+# TRACKER_MEMBER_OWN_KEYS, plus what the project changes): identity.jira.{project,key_prefixes},
+# identity.{local_prefix,local_id_pattern,id_field}, dirs, conventions.{query_default,parent_key_patterns},
+# pipeline.context_sources (a list replaces whole, and SETUP's bootstrap command must name the member), the
+# alignment condition's prefix and skip_stub reason, snapshot.results_subdir and eval.config. Inherited ON
+# PURPOSE while the family has one member: pipeline.{poll_prefix,state_prefix} and
+# snapshot.{prefix,report_prefix}, all `initiative-` — the state-file tables, the results repository's
+# `initiative-run-` / `initiative-snapshot-` files and the autofixer's tmp/ expectations key on them, so a
+# SECOND member must own all four — and the eval dataset, experiment, timeout and thresholds (the judge
+# `initiative_quality` and the run name `initiative-speedrun` are the family's: generate_eval_config.eval_stem).
+# Contract: types/_schema/type.schema.json (the relaxed shape for a family); design-proposals/
+# work-item-types-unified.md §3.2 and the worked example §8.2. Every value is the live literal on main
+# (c1df503) with the consuming file:line AT THAT COMMIT in a trailing comment (adopted scripts derive it —
+# the comment records where the literal lived); nothing here is authored. Where §8.2 and main disagree,
+# main wins and the comment says so (Q1, Q3, Q9, Q10, Q11 of the PR-1 checklist; Q14 was reconciled in
+# PR-3b). 2026-10-28 (AISDLC-461): the Jira project moved from RHOAIENG to RHAISTRAT; the member carries it.
 schema_version: 1
 type: initiative
+abstract: true
 display: { entity: Initiative, entity_plural: Initiatives }   # split_submit.py:133-134 entity_name/_plural; generate_review_pdf.py:66-67
 kind: work-item                                         # RESERVED (design §3.2); v1 constant, no consumer. inputs/produces omitted = []
 
 classification:                                         # design §6 (AISDLC-189): read by the create body (stage 1, AISDLC-190) and the review launcher (stage 2, AISDLC-191), neither shipped yet; gate 1 checks the block (validate_types.classification_messages + cross rule 7)
   summary: A scoped body of work a team commits to deliver toward a strategic Outcome — its objective, the problem it answers and its boundaries, not one user-facing capability
-  driver: a team lead or Product Manager answering a strategic goal, usually under a RHAISTRAT Outcome
+  driver: a team lead or Product Manager answering a strategic goal, usually under a strategic Outcome
   signals:
     - an objective with a measurable target over a quarter or more
     - an effort spanning several teams, components or releases
@@ -37,21 +48,12 @@ classification:                                         # design §6 (AISDLC-189
 identity:
   tracker: jira                                         # every write goes through jira_utils.py REST (create_issue :172-179)
   jira:
-    project: RHAISTRAT                                  # submit.py:94; split_submit.py:129 — RHAISTRAT since 2026-10-28 (AISDLC-461: Initiatives live in the Red Hat AI Strategy project, next to the Outcomes they hang from; RHOAIENG before, never live beyond test runs)
     issue_type: Initiative                              # submit.py:95; split_submit.py:130; sent BY NAME jira_utils.py:175 (id 10103 in AGENTS.md:129 is unused)
-    key_prefixes: ["RHAISTRAT-"]                        # submit.py:99 jira_prefix; generate_run_report.py:55 tracker_prefix; generate_review_pdf.py:64; check_conflicts.py:47
     split_link_type: "Work item split"                  # split_submit.py:210,:410,:497,:610,:685,:716 (shared with rfe)
     state_map:
       approved: Approved                                # submit.py:987 (shared); emulator RHAISTRAT workflow patched in tests/conftest.py. RHAISTRAT's Initiative workflow has no Approved status (New, Backlog, Refinement, To Do, In Progress, Review, Release Pending, Closed), so the live transition is skipped until AISDLC-206 names a target
       close_superseded: { transition: Closed, resolution: Obsolete }   # split_submit.py:820 (target status name .lower()=="closed"), :837 resolution (shared)
-  local_prefix: "INIT-"                                 # submit.py:98; generate_run_report.py:56; generate_review_pdf.py:65; next_rfe_id.py --prefix INIT (the NEXT_ID_FLAGS launch var of rfe-create / rfe-speedrun)
-  local_id_pattern: '^INIT-\d+$'                        # artifact_utils.py:199 (initiative-task.local_id), :237 (initiative-review.local_id); rename guard :1058 re.fullmatch(r"INIT-\d+"). ONE backslash (the design's YAML doubled it)
-  id_field: initiative_id                               # submit.py:97; artifact_utils.py:191,:229; verify_phase.py:57; generate_run_report.py:53; check_conflicts.py:46
 
-dirs:                                                   # artifacts/ form (Q13); consumers holding the bare form get it via Descriptor.dirs(form="bare")
-  tasks: artifacts/initiatives                          # pipeline_state.py:116; submit.py:100 (bare); error_collect.py:58; prep_assess.py:20
-  originals: artifacts/initiative-originals             # submit.py:102 (bare); error_collect.py:57; check_revised.py:54; pipeline_state.py:562-563 (derived by str.replace)
-  reviews: artifacts/initiative-reviews                 # pipeline_state.py:117; verify_phase.py:56; submit.py:101 (bare); reassess_save.py:21
 index: { enabled: false }                               # submit.py:126 has_index; split_submit.py:145 do_rebuild_index; no initiative index file exists
 companions:
   comments: false                                       # the fetch skeleton (rfe-review/prompts/fetch-agent.md) fetches without comments for this type and writes only task + original; fetch_issue.py --fetch-all gates the comments companion (and the comment request) on this flag (PR-2c). Means "the fetch step produces one" — rename_initiative_to_jira_key (artifact_utils.py:1079-1080) still maps -comments.md and a test pins it
@@ -82,8 +84,6 @@ conventions:
       weak: initiative-alignment-weak
   comment_prefix: "[Initiative Creator]"                # submit.py:125; split_submit.py:131 comment_marker — PUBLISHED CONTRACT (R7)
   removed_context_preamble: "*[Initiative Creator]* The following technical implementation details were removed from the Initiative description during review. This content may be useful as strategy context and is preserved here for reference:"   # submit.py:119-124 — PUBLISHED CONTRACT (R7); the design's "…" truncation is not the value; frozen
-  query_default: 'project = RHAISTRAT AND issuetype = Initiative'  # Q10: no consumer at PR-1 (queries arrive via --jql: snapshot_fetch.py:489, bootstrap_snapshot.py:407, jql_query.py:64); not pinned; JQL because identity.tracker is jira
-  parent_key_patterns: ['RHAISTRAT-\d+', 'INIT-\d+']   # artifact_utils.py:219 (initiative-task.parent_key); was RHAISTRAT-/RHOAIENG-/INIT- while the type lived in RHOAIENG — an Initiative in RHAISTRAT hangs from a RHAISTRAT Outcome, its own key family, which is also the alignment dimension's condition prefix. Q14 reconciled in PR-3b: validate_batch_input derives PARENT_KEY_PATTERN[type] from this list through Descriptor.parent_key_pattern, the task schema's join
 
 schema:
   task:
@@ -100,9 +100,6 @@ schema:
 
 pipeline:
   stages: [create, review, submit, split, auto-fix, speedrun]   # the generic .claude/skills/rfe-{create,review,submit,split,auto-fix,speedrun}/SKILL.md (PR-5b); gate 1 requires one per entry (validate_types.stage_skill_messages, PR-5c); the initiative-* tree was deleted in PR-5c
-  context_sources:                                      # SETUP runs one command per entry (type_registry.context_source_command, "bash <bootstrap> <args...>"; concurrent, exit codes logged, not fatal, so `required` has no consumer); the architecture-context entry is also the ARCH_FETCH launch var
-    - { name: assess-rubric, bootstrap: scripts/bootstrap.sh, args: ["--type", "initiative"], required: true }
-    - { name: architecture-context, bootstrap: scripts/fetch-architecture-context.sh, required: false }
   poll_prefix: "initiative-"                            # pipeline_state.py:119; check_review_progress.py:28-34 keys initiative-{split,fetch,assess,feasibility,review,revise,alignment}; REPORT_CONFIG.default_output "initiative-review-report.html" (generate_review_pdf.py:69, Q15)
   state_prefix: "initiative-"                           # check_autofix_complete.py ids_file; check_review_progress.py _detect_fast tmp/<state_prefix>{review,split,speedrun}-config.yaml; the STATE_PREFIX launch var of the generic bodies
   scorer_agent: initiative-scorer                       # pipeline_state.PIPELINE_TYPES scorer_type (subagent_type of every assess wave) and the SCORER_AGENT launch var read by .claude/skills/rfe-review/prompts/assess-agent.md
@@ -120,8 +117,8 @@ pipeline:
     - name: alignment                                   # poll phase "initiative-alignment" (check_review_progress.py:34; pipeline_state.py:206)
       prompt: types/initiative/dimensions/alignment.md      # pipeline_state.py:115 alignment_skill (truthiness is the only switch, :202)
       blocking: false                                   # Q17: the generic rfe-review body renders a non-blocking dimension as "informational, not blocking" — unpinned
-      condition: { frontmatter_field: parent_key, prefix: "RHAISTRAT-" }   # pipeline_state.py:143-144 _has_rhaistrat_parent (a parent_key that names a task of the workspace is a split parent, not an Outcome: not met, since the move to RHAISTRAT put both in one key family); the engine's closed name is "has_rhaistrat_parent" (:149/:208). Also what makes fetch_issue.py --fetch-all request Jira's parent and record a RHAISTRAT- one as parent_key (Descriptor.condition_prefixes, AISDLC-280)
-      skip_stub: { result: not_assessed, reason: "skipped by pipeline (no RHAISTRAT Outcome parent)" }   # pipeline_state.py:161-162 _write_poll_stub writes BOTH keys (§8.2 shows one)
+      condition: { frontmatter_field: parent_key }   # the parent_key test; the PREFIX is the member's (the Outcome key family of its project: pipeline_state.py:143-144 _has_rhaistrat_parent, Descriptor.condition_prefixes, what fetch_issue.py --fetch-all records as parent_key, AISDLC-280). A parent_key that names a task of the workspace is a split parent, not an Outcome: not met. The engine's closed name is "has_rhaistrat_parent" (:149/:208)
+      skip_stub: { result: not_assessed, reason: "skipped by pipeline (no Outcome parent)" }   # pipeline_state.py:161-162 _write_poll_stub writes BOTH keys (§8.2 shows one); the member restates the reason with its project's name
   rubric:
     repo: https://github.com/fullsend-ai/assess-rfe     # bootstrap.sh:45 (verbatim URL; shared)
     ref: "d8391ae379fba0497164550e3a33495bc2007aa2"            # same commit as rfe (one shared checkout; validate_types cross rule 6): the assess-rfe PR #10 merge that brought skills/assess-initiative onto main. bootstrap.sh checks it out and verifies it unless ASSESS_RFE_REF overrides. Quoted: a digits-only ref would parse as a number
@@ -133,7 +130,6 @@ batch: { extra_fields: [parent_key] }                   # validate_batch_input.p
 snapshot:
   prefix: "initiative-snapshot-"                        # snapshot_fetch.py:65; submit.py:105 (forwarded when truthy :672-673,:1170-1171); bootstrap_snapshot.py:676-677
   report_prefix: "initiative-run-"                      # generate_run_report.py:50 output_prefix; bootstrap_snapshot.py:49; submit.py:325
-  results_subdir: "initiative-rhaistrat"                # <type>-<project lowercased> (initiative-rhoaieng/ in the results repository is the pre-2026-10-28 subtree, kept as history): a second deployment of this type against another Jira project (AISDLC-8) gets its own subtree; clone_results_repo.py sparse set (DATA_REPO_TYPES), autofixer push-results.py / restore-artifacts.sh via `type_registry.py get` — initiative-rhoaieng/<run>/ and initiative-rhoaieng/latest in the shared results repository (AISDLC-202)
 reporting:
   item_key: per_initiative                              # generate_run_report.py:49; bootstrap_snapshot.py:50
   criterion_labels: { what: WHAT, why: WHY, scope: Scope, open_to_how: HOW, right_sized: Right-sized }   # generate_review_pdf.py:82-88 (key order = display order)
@@ -150,7 +146,6 @@ reporting:
   pdf: { extra_fields: [alignment] }                    # generate_review_pdf.py:106 REPORT_CONFIG.extra_fields (:1537 has_alignment)
   run_report: { extra_entry_fields: [alignment, feasibility, needs_attention, needs_attention_source, needs_attention_reason] } # + source/reason (AISDLC-191: a misfiled item's note reaches the run report)   # generate_run_report.py:51 TYPE_CONFIG.extra_entry_fields
 eval:
-  config: eval-initiative.yaml
   dataset: eval/initiative-dataset/cases                # eval-initiative.yaml:36 dataset.path (§8.2 omits /cases)
   mlflow_experiment: initiative-speedrun-eval           # eval-initiative.yaml:33
   timeout: 12000                                        # eval-initiative.yaml:12 — 3 h 20: the same ceiling as the RFE eval, since the fullsend child (timeout_minutes 180) is shared; 21 cases at opus pace ran ~107 min on 2026-09-22

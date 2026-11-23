@@ -16,9 +16,12 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 import check_autofix_complete as cac  # noqa: E402
 
-_REGISTERED = ", ".join(cac._TYPES.names())
-UNKNOWN = f"ERROR: unknown --type 'bogus'; registered types: {_REGISTERED}\n"
-TRAILING = f"ERROR: --type requires a value; registered types: {_REGISTERED}\n"
+# The registered Initiative type: the sole member of the `initiative` family (AISDLC-851);
+# `--type initiative` is the family alias, kept below as a CLI input.
+MEMBER = "initiative-rhaistrat"
+
+UNKNOWN = f"ERROR: unknown --type 'bogus'; registered types: rfe, {MEMBER}, react-shopping-cart\n"
+TRAILING = f"ERROR: --type requires a value; registered types: rfe, {MEMBER}, react-shopping-cart\n"
 
 
 def _write_ids(path, ids):
@@ -103,6 +106,14 @@ class TestTypeArg:
         assert err == TRAILING
 
 
-def test_every_registered_type_has_a_table_entry():
-    """_TYPE_CONFIG is derived from the registry, so no registered type is missing from it."""
-    assert set(cac._TYPE_CONFIG) == set(cac._TYPES.names())
+def test_a_registered_type_without_a_table_entry_exits_2(monkeypatch, capsys):
+    """A drop-in type is registered but _TYPE_CONFIG is still literal: the usage-error path,
+    not a KeyError."""
+    monkeypatch.setattr(cac, "_TYPE_CONFIG", {"rfe": cac._TYPE_CONFIG["rfe"]})
+    code, out, err = _main(monkeypatch, capsys, "--type", "initiative")
+    assert (code, out) == (2, "")
+    assert err == (
+        # the family alias resolves first: the usage error names the registered member
+        f"ERROR: --type '{MEMBER}' is registered but has no entry in this script's table yet; "
+        "supported: rfe\n"
+    )

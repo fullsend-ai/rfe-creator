@@ -1856,6 +1856,8 @@ LAUNCH_KEYS = (
     "COMMENTS_FIELD",
     "PARENT_FIELD",
     "PARENT_KEY_SET",
+    "PROJECT",
+    "PARENT_KEY_PREFIX",
     "STATE_PREFIX",
     "POLL_PREFIX",
     "POLL_FILE_PREFIX",
@@ -1935,6 +1937,9 @@ def dimension_key_collisions(names):
 
 # Interactive skills poll through a second prefix the descriptor does not carry (tmp/<type>-poll-).
 _POLL_FILE_PREFIX = "tmp/{type}-poll-"
+# The identity.<tracker> key that names the project a type writes to, per tracker — what the
+# PROJECT launch var renders (the descriptor value, like KEY_PREFIX; never the binding overlay).
+_TRACKER_PROJECT_KEY = {"jira": "project", "github": "repo"}
 _ASSESS_STAGING = "tmp/rfe-assess/single"
 
 
@@ -1987,9 +1992,11 @@ def launch_vars(desc, stage):
     Every typed literal a generic ``rfe-*`` body or a prompt skeleton needs — ids, dirs,
     schemas, state and poll prefixes, the scorer agent, the composed rubric path, the typed
     prompt files, the dimensions and their verdict-label families, the score-field stubs, the
-    declarative review rules, the re-split threshold, the report prefix — rendered from the
-    descriptor, so no body hand-writes a typed path (PR-5 plan D13). Deterministic: same
-    descriptor, same lines, same order.
+    declarative review rules, the re-split threshold, the report prefix, the tracker project
+    and the parent-key prefix the typed prose names (``PROJECT`` / ``PARENT_KEY_PREFIX``) —
+    rendered from the descriptor, so no body hand-writes a typed path (PR-5 plan D13) and no
+    typed file of a type family names one member's project. Deterministic: same descriptor,
+    same lines, same order.
     Values are single-line; runtime placeholders (``{ID}``, ``{KEY}``) are left for the agent.
     ``stage`` must be one of the type's ``pipeline.stages``.
 
@@ -2028,6 +2035,7 @@ def launch_vars(desc, stage):
     local_prefix = desc.local_prefix
     comments = bool(desc.get("companions.comments", False))
     parent_prefixes = desc.condition_prefixes("parent_key")
+    tracker = desc.get("identity.tracker", "") or ""
     report_prefix = desc.get("snapshot.report_prefix", "") or ""
     size = task_extra.get("size") if isinstance(task_extra, dict) else None
 
@@ -2081,6 +2089,18 @@ def launch_vars(desc, stage):
             if parent_prefixes
             else "",
         ),
+        # The tracker project the type writes to (the DESCRIPTOR value, like KEY_PREFIX: never the
+        # binding overlay) and the parent-key family its dimension conditions read — what the
+        # typed prose names instead of a project literal, so a type family's files serve every
+        # member (AISDLC-851).
+        (
+            "PROJECT",
+            str(
+                desc.get(f"identity.{tracker}.{_TRACKER_PROJECT_KEY.get(tracker, 'project')}", "")
+                or ""
+            ),
+        ),
+        ("PARENT_KEY_PREFIX", " or ".join(parent_prefixes)),
         ("STATE_PREFIX", pipe.get("state_prefix", "") or ""),
         ("POLL_PREFIX", pipe.get("poll_prefix", "") or ""),
         ("POLL_FILE_PREFIX", _POLL_FILE_PREFIX.format(type=desc.name)),

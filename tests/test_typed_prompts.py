@@ -2,7 +2,9 @@
 
 Every sentence of the legacy per-type prompt files survives in the generic surface: the prompt
 skeleton rendered with the type's launch block (``type_registry.py launch-vars``) plus the
-typed files under ``types/<t>/``. PR-5c deleted the legacy files; the corpus is frozen under
+typed files under ``types/<t>/``, rendered the same way (an agent reads them with the launch
+block in context, so a ``{PROJECT}`` or ``{TASKS_DIR}`` in them is a value, not a token; see
+``_cases``). PR-5c deleted the legacy files; the corpus is frozen under
 ``tests/fixtures/legacy-prompts/<type>/`` (its README maps each fixture to the file it was) and
 is never edited — a later prose change to the generic surface is recorded in ALLOWED, not by
 rewriting the fixture. Sentences are compared after a mechanical normalisation
@@ -28,6 +30,10 @@ SKELETONS = ".claude/skills/rfe-review/prompts"
 # The frozen legacy corpus: tests/fixtures/legacy-prompts/<type>/{<stage>.md, prompts/*.md,
 # dimensions/<name>.md, template.md} — one fixture per deleted legacy file (see its README).
 LEGACY = "tests/fixtures/legacy-prompts"
+# The registered Initiative type: the sole member of the `initiative` family (AISDLC-851). The
+# frozen corpus stays under the FAMILY directory (the member has no prose of its own), so the
+# ALLOWED keys pair the member's name with the family's legacy files, as _cases() yields them.
+MEMBER = "initiative-rhaistrat"
 MIN_SENTENCE = 12
 
 
@@ -160,18 +166,18 @@ def _allow(t, rel, *entries):
 
 
 _allow("rfe", f"{LEGACY}/rfe/prompts/revise-agent.md", *_REWRITTEN_REVISE_RFE)
-_allow("initiative", f"{LEGACY}/initiative/prompts/revise-agent.md", *_REWRITTEN_REVISE_INIT)
-for _t in ("rfe", "initiative"):
-    _allow(_t, f"{LEGACY}/{_t}/review.md", *_STEP_COMPLETED)
-    _allow(_t, f"{LEGACY}/{_t}/split.md", *_STEP_COMPLETED)
-    _allow(_t, f"{LEGACY}/{_t}/prompts/review-agent.md", *_DIMENSION_GENERIC_REVIEW)
-    _allow(_t, f"{LEGACY}/{_t}/review.md", *_DIMENSION_GENERIC_BODY)
-_allow("initiative", f"{LEGACY}/initiative/review.md", *_DIMENSION_GENERIC_BODY_INIT)
+_allow(MEMBER, f"{LEGACY}/initiative/prompts/revise-agent.md", *_REWRITTEN_REVISE_INIT)
+for _t, _dir in (("rfe", "rfe"), (MEMBER, "initiative")):
+    _allow(_t, f"{LEGACY}/{_dir}/review.md", *_STEP_COMPLETED)
+    _allow(_t, f"{LEGACY}/{_dir}/split.md", *_STEP_COMPLETED)
+    _allow(_t, f"{LEGACY}/{_dir}/prompts/review-agent.md", *_DIMENSION_GENERIC_REVIEW)
+    _allow(_t, f"{LEGACY}/{_dir}/review.md", *_DIMENSION_GENERIC_BODY)
+_allow(MEMBER, f"{LEGACY}/initiative/review.md", *_DIMENSION_GENERIC_BODY_INIT)
 # 2026-10-28 (AISDLC-461): Initiatives moved from RHOAIENG to RHAISTRAT; the generic speedrun
 # body renders the type's write prefix, so the legacy example key is not carried.
-_allow("initiative", f"{LEGACY}/initiative/speedrun.md", "argument is a jira key (rhoaieng-nnnn)")
+_allow(MEMBER, f"{LEGACY}/initiative/speedrun.md", "argument is a jira key (rhoaieng-nnnn)")
 _allow(
-    "initiative",
+    MEMBER,
     f"{LEGACY}/initiative/create.md",
     "initiatives are a separate entity type in rhoaieng, not rhairfe",
 )
@@ -187,7 +193,7 @@ _allow("rfe", f"{LEGACY}/rfe/prompts/review-agent.md", *_DIMENSION_GENERIC_REVIE
 # The revise skeleton's step list keeps the rfe wording ("Read the task file to see what needs
 # changing"); the initiative's "Read the initiative: <path>" is the same read, the path now the
 # skeleton's `Task file:` header line.
-_allow("initiative", f"{LEGACY}/initiative/prompts/revise-agent.md", "read the initiative")
+_allow(MEMBER, f"{LEGACY}/initiative/prompts/revise-agent.md", "read the initiative")
 # Overlay discovery moved from the Glob tool to scripts/list_overlays.py: the dedicated Glob
 # tool no longer exists on native Claude Code builds (2.1.117+), and shell globs/loops are not
 # on the headless Bash allowlist, so the four sentences that scripted a Glob-then-Read pass are
@@ -198,8 +204,8 @@ _OVERLAY_DISCOVERY = (
     "frontmatter can run to 40 lines",
     "use glob and read for this",
 )
-for _t in ("rfe", "initiative"):
-    _allow(_t, f"{LEGACY}/{_t}/dimensions/feasibility.md", *_OVERLAY_DISCOVERY)
+for _t, _dir in (("rfe", "rfe"), (MEMBER, "initiative")):
+    _allow(_t, f"{LEGACY}/{_dir}/dimensions/feasibility.md", *_OVERLAY_DISCOVERY)
 
 # (type, legacy file) -> substrings of normalised script invocations the collapse rewrote, why.
 ALLOWED_COMMANDS = {}
@@ -231,28 +237,66 @@ _allow_command(
     "python3 scripts/check_revised.py --batch --ids-file tmp/review-reassess-ids.txt",
 )
 _allow_command(
-    "initiative",
+    MEMBER,
     f"{LEGACY}/initiative/review.md",
     "python3 scripts/check_revised.py --batch --ids-file tmp/initiative-review-reassess-ids.txt",
 )
 # AISDLC-275: the revise agent's final frontmatter set records the pass it completed
 # (auto_revised_cycle={REVISE_CYCLE}) beside auto_revised=true; the rest of the legacy invocation
 # is unchanged.
-for _t, _reviews in (("rfe", "rfe-reviews"), ("initiative", "initiative-reviews")):
+for _t, _dir, _reviews in (
+    ("rfe", "rfe", "rfe-reviews"),
+    (MEMBER, "initiative", "initiative-reviews"),
+):
     _allow_command(
         _t,
-        f"{LEGACY}/{_t}/prompts/revise-agent.md",
+        f"{LEGACY}/{_dir}/prompts/revise-agent.md",
         f"python3 scripts/frontmatter.py set artifacts/{_reviews}/{{}}-review.md auto_revised=true"
         " needs_attention=<>",
     )
-_allow("initiative", f"{LEGACY}/initiative/split.md", *_RESPLIT_INIT)
+_allow(MEMBER, f"{LEGACY}/initiative/split.md", *_RESPLIT_INIT)
 # AISDLC-280: the fetch skeleton's MCP fallback requests Jira's parent for a type whose dimension
 # conditions read parent_key (PARENT_FIELD renders `,"parent"` for initiative), so the legacy
 # initiative field list is a strict prefix of the rendered one; the rfe rendering is unchanged.
 _PARENT_FIELD_INIT = (
     'fields=["summary","description","priority","labels","status","issuetype","project"]',
 )
-_allow("initiative", f"{LEGACY}/initiative/prompts/fetch-agent.md", *_PARENT_FIELD_INIT)
+_allow(MEMBER, f"{LEGACY}/initiative/prompts/fetch-agent.md", *_PARENT_FIELD_INIT)
+# AISDLC-851: project literals became {PROJECT} / {PARENT_KEY_PREFIX} / {TASKS_DIR} / {REVIEWS_DIR}
+# — the Initiative prose is a type family's and names no member's project. The directories
+# render back to the legacy paths (every script invocation survives, no command allowance);
+# the sentences that spelt RHAISTRAT render with the project in another place or with
+# "does not start with" for "does not match", so these three files each lose a few.
+_allow(
+    MEMBER,
+    f"{LEGACY}/initiative/dimensions/alignment.md",
+    "advances its parent rhaistrat outcome",
+    "if is absent, null, or does not match",
+    "comparing the initiative against the rhaistrat outcome",
+)
+_allow(
+    MEMBER,
+    f"{LEGACY}/initiative/prompts/review-agent.md",
+    "(no rhaistrat parent or agent did not complete)",
+    "not assessed (no rhaistrat parent)",
+)
+_allow(MEMBER, f"{LEGACY}/initiative/create.md", "roll up to an existing rhaistrat outcome")
+# AISDLC-851 (the flip): the launch block renders the MEMBER's name where the legacy Initiative
+# files spelt the family's — TYPE (the `type=` stamp of a new artifact), TASK_SCHEMA /
+# REVIEW_SCHEMA (`schema initiative-rhaistrat-task`), the registry `binding` lookup — and the
+# interactive poll files are name-derived (POLL_FILE_PREFIX = tmp/initiative-rhaistrat-poll-);
+# every invocation survives with the member's spelling, which the legacy corpus cannot carry.
+_allow(
+    MEMBER,
+    f"{LEGACY}/initiative/prompts/fetch-agent.md",
+    "differs from the initiative binding",
+    "run: python3 schema initiative-task",
+    "type=initiative trackerref=",
+)
+_allow_command(MEMBER, f"{LEGACY}/initiative/prompts/review-agent.md", "schema initiative-review")
+_allow_command(MEMBER, f"{LEGACY}/initiative/create.md", "schema initiative-task")
+for _rel in (f"{LEGACY}/initiative/review.md", f"{LEGACY}/initiative/split.md"):
+    _allow_command(MEMBER, _rel, "tmp/initiative-poll-")
 
 
 def sections(text, headings):
@@ -281,13 +325,21 @@ def _cases():
     rule lines (orchestrator bodies, whose mechanics the collapse restructures on purpose)."""
     # Only the types that existed before the collapse have frozen legacy prompts to cover; a type
     # registered after it (react-shopping-cart) was written against the generic bodies directly.
-    for t in (n for n in REG.names() if os.path.isdir(os.path.join(ROOT, LEGACY, n))):
+    # A family member's legacy corpus is its family's directory (see `legacy` below).
+    for t in (
+        n for n in REG.names() if os.path.isdir(os.path.join(ROOT, LEGACY, REG.get(n).extends or n))
+    ):
         desc = REG.get(t)
         pairs = type_registry.launch_vars(desc, "review")
         prompts = desc.get("pipeline.prompts")
         dims = {d["name"]: d["prompt"] for d in desc.get("pipeline.dimensions")}
-        legacy = f"{LEGACY}/{t}"
-        typed = {k: read(v) for k, v in prompts.items()}
+        # A member of a type family has no prose of its own: its legacy corpus is the family's
+        # directory (the shipped `initiative` files), compared under the member's name.
+        legacy = f"{LEGACY}/{desc.extends or t}"
+        # The typed files and the dimension prompts are read by agents that hold the launch
+        # block (rfe-review SKILL.md "Agent prompts", rfe-create Step 2, the dispatcher's
+        # _collect_vars), so they are compared rendered, like the skeletons (AISDLC-851).
+        typed = {k: render(read(v), pairs) for k, v in prompts.items()}
         generic = {
             stage: render(read(f".claude/skills/rfe-{stage}/SKILL.md"), pairs)
             for stage in ("create", "review", "split", "submit", "auto-fix", "speedrun")
@@ -304,10 +356,10 @@ def _cases():
             (f"{legacy}/prompts/revise-agent.md", skeleton["revise"] + typed["revise_rules"]),
             (f"{legacy}/prompts/fetch-agent.md", skeleton["fetch"]),
             (f"{legacy}/prompts/assess-agent.md", skeleton["assess"]),
-            (f"{legacy}/prompts/split-agent.md", render(typed["split_rules"], pairs)),
+            (f"{legacy}/prompts/split-agent.md", typed["split_rules"]),
         ]
         for name, prompt in dims.items():
-            full.append((f"{legacy}/dimensions/{name}.md", read(prompt)))
+            full.append((f"{legacy}/dimensions/{name}.md", render(read(prompt), pairs)))
         for rel, corpus in full:
             yield pytest.param(t, rel, read(rel), corpus, "full", id=f"{t}:{rel.split('/')[-1]}")
         create_rel = f"{legacy}/create.md"

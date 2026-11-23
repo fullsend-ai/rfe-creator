@@ -368,7 +368,12 @@ class TestPreScriptArchitectureFetch:
             )
             == 1
         )
-        types = sorted(path.parent.name for path in (tmp_path / "types").glob("*/type.yaml"))
+        # one bootstrap per REGISTERED type: a type family (abstract: true) is never run
+        types = sorted(
+            path.parent.name
+            for path in (tmp_path / "types").glob("*/type.yaml")
+            if not yaml.safe_load(path.read_text(encoding="utf-8")).get("abstract")
+        )
         assert sorted(c.split()[-1] for c in calls if c.startswith("bootstrap.sh ")) == types
 
 

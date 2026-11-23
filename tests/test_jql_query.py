@@ -14,6 +14,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 import jql_query  # noqa: E402
 import type_registry  # noqa: E402
 
+# The registered Initiative type: the sole member of the `initiative` family (AISDLC-851);
+# `--type initiative` is the family alias, kept below as a CLI input.
+MEMBER = "initiative-rhaistrat"
+
 SCRIPTS_DIR = os.path.join(os.path.dirname(__file__), "..", "scripts")
 SCRIPT = os.path.join(SCRIPTS_DIR, "jql_query.py")
 REG = type_registry.load(extra_roots=[], env={})
@@ -52,7 +56,7 @@ class TestDefaultExclusions:
             " AND (labels not in (rfe-creator-ignore,"
             " rfe-creator-autofix-rubric-pass) OR labels is EMPTY)"
         )
-        assert jql_query.wrap_jql(SAMPLE, "initiative") == (
+        assert jql_query.wrap_jql(SAMPLE, MEMBER) == (
             "(project = RHAIRFE AND status = New) AND statusCategory != Done"
             " AND (labels not in (initiative-ignore,"
             " initiative-autofix-rubric-pass) OR labels is EMPTY)"
@@ -96,14 +100,14 @@ class TestDefaultExclusions:
         result = subprocess.run(
             ["python3", SCRIPT, "--help"], capture_output=True, text=True, env=env, check=True
         )
-        assert "{rfe,docs,initiative,react-shopping-cart}" in result.stdout
+        assert f"{{rfe,docs,{MEMBER},react-shopping-cart}}" in result.stdout
 
 
 class TestCli:
     def test_project_choices_are_the_registry_choices(self):
         result = subprocess.run(["python3", SCRIPT, "--help"], capture_output=True, text=True)
         assert result.returncode == 0
-        assert "{rfe,initiative,react-shopping-cart}" in result.stdout
+        assert f"{{rfe,{MEMBER},react-shopping-cart}}" in result.stdout
 
     def test_unknown_project_is_an_argparse_error(self):
         result = subprocess.run(
@@ -146,7 +150,7 @@ class TestSearch:
         monkeypatch.setattr(sys, "argv", ["jql_query.py", "--project", "initiative", SAMPLE])
         jql_query.main()
         out = capsys.readouterr()
-        wrapped = jql_query.wrap_jql(SAMPLE, "initiative")
+        wrapped = jql_query.wrap_jql(SAMPLE, MEMBER)
         assert out.err == f"JQL={wrapped}\n"
         assert out.out == "TOTAL=2\nRHAISTRAT-1\nRHAISTRAT-2\n"
         sent = urllib.parse.parse_qs(urllib.parse.urlsplit(calls[0]).query)

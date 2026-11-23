@@ -46,8 +46,8 @@ All task and review files use YAML frontmatter for structured metadata. Skills m
 # Get schema for a file type
 python3 scripts/frontmatter.py schema rfe-task
 python3 scripts/frontmatter.py schema rfe-review
-python3 scripts/frontmatter.py schema initiative-task
-python3 scripts/frontmatter.py schema initiative-review
+python3 scripts/frontmatter.py schema initiative-rhaistrat-task
+python3 scripts/frontmatter.py schema initiative-rhaistrat-review   # `initiative-task` / `initiative-review` (the family's short names) are accepted too
 
 # Set/update frontmatter on a file
 python3 scripts/frontmatter.py set <path> field=value field=value ...
@@ -141,7 +141,7 @@ Skills that only work with local artifacts (`/rfe-create`) do not require Jira a
 - **Priority values** (use these exactly): Blocker, Critical, Major, Normal, Minor, Undefined
 - **Status on creation**: `New`
 - **Parent field**: Set to a RHAISTRAT Outcome key to link the Initiative to a strategic outcome, in the same project. `fetch_issue.py --fetch-all --type initiative` reads it back into the task's `parent_key` (what arms the alignment check for an Initiative fetched from Jira). The Outcome is in the Initiative's own key family, so the run report, the review report and `submit.py` tell such a hierarchy link from a split parent by the workspace (a split parent has a task here), never by key family — types/README.md "Parent field"
-- **Submission script**: `scripts/submit.py --type initiative`
+- **Submission script**: `scripts/submit.py --type initiative` (`initiative` is the type family's short name; `scripts/submit.py --type initiative-rhaistrat`, its sole member, is the same run and the type name new artifacts and run reports carry)
 
 ### TSTAPP Project (Shop RFEs, the [react-shopping-cart](https://github.com/fullsend-ai/react-shopping-cart) demo storefront)
 - **Project**: `TSTAPP`
@@ -154,7 +154,7 @@ Skills that only work with local artifacts (`/rfe-create`) do not require Jira a
 
 ## Work Item Types
 
-Each work item type (RFE, Initiative, Shop RFE) is described by a data-only descriptor at `types/<type>/type.yaml`, validated against `types/_schema/type.schema.json`. `types/README.md` is the field reference and `docs/type-provider-guide.md` the provider guide (adding a type, the gates, the drop-in seam). Scripts adopt the registry one PR at a time (the "Adoption status" table in `docs/work-item-types-development.md` lists which read it): an adopted script derives its per-type table from the descriptors at import, and a pending script's table is pinned by test to the descriptors so the two cannot drift. When a per-type value changes, update the descriptor — and, for a pending script, its table — in the same PR.
+Each work item type (RFE, Initiative, Shop RFE) is described by a data-only descriptor at `types/<type>/type.yaml`, validated against `types/_schema/type.schema.json`. The Initiative is a type family: `types/initiative/type.yaml` (`abstract: true`) holds the shared judgement and its one member, `types/initiative-rhaistrat/type.yaml` (`extends: initiative`), the RHAISTRAT binding; the registered type is `initiative-rhaistrat`, and `--type initiative` resolves to it while it is the only member. `types/README.md` is the field reference and `docs/type-provider-guide.md` the provider guide (adding a type, the gates, the drop-in seam). Scripts adopt the registry one PR at a time (the "Adoption status" table in `docs/work-item-types-development.md` lists which read it): an adopted script derives its per-type table from the descriptors at import, and a pending script's table is pinned by test to the descriptors so the two cannot drift. When a per-type value changes, update the descriptor — and, for a pending script, its table — in the same PR.
 
 ```bash
 python3 scripts/type_registry.py list              # Registered type names

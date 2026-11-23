@@ -31,6 +31,9 @@ import type_registry  # noqa: E402
 from artifact_utils import SCHEMAS  # noqa: E402
 from generate_review_pdf import REPORT_CONFIG  # noqa: E402
 from generate_run_report import TYPE_CONFIG  # noqa: E402
+
+# The registered Initiative type: the sole member of the `initiative` family (AISDLC-851).
+MEMBER = "initiative-rhaistrat"
 from pipeline_state import PIPELINE_TYPES  # noqa: E402
 
 # Hermetic: the developer's RFE_CREATOR_EXTRA_TYPES / RFE_CREATOR_BINDING_* never leak in.
@@ -41,7 +44,7 @@ REGISTRY = type_registry.load(extra_roots=[], env={})
 # the agreed names are also pinned literally here.
 EXPECTED_FIELDS = {
     "rfe": ["not_a_task", "open_to_how", "right_sized", "what", "why"],
-    "initiative": ["open_to_how", "right_sized", "scope", "what", "why"],
+    MEMBER: ["open_to_how", "right_sized", "scope", "what", "why"],
     "react-shopping-cart": ["not_a_task", "open_to_how", "right_sized", "what", "why"],
 }
 
@@ -109,4 +112,4 @@ class TestRegistryCoverage:
 
     def test_types_do_not_share_a_field_set(self):
         """Guards the parametrized tests from passing on a copy-pasted registry."""
-        assert EXPECTED_FIELDS["rfe"] != EXPECTED_FIELDS["initiative"]
+        assert EXPECTED_FIELDS["rfe"] != EXPECTED_FIELDS[MEMBER]

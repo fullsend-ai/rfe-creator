@@ -16,8 +16,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import yaml
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = "scripts/type_registry.py"
 TYPES_ROOT = REPO_ROOT / "types"
@@ -27,7 +25,8 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))
 import artifact_utils  # noqa: E402
 import type_registry  # noqa: E402
 
-SHIPPED = ("rfe", "initiative")
+SHIPPED = ("rfe", "initiative-rhaistrat")
+MEMBER = "initiative-rhaistrat"  # the Initiative family's sole member (AISDLC-851)
 
 
 def _cli(*args, **extra_env):
@@ -49,9 +48,12 @@ def _cli(*args, **extra_env):
 
 class TestOthersDigest:
     def test_lists_every_create_stage_type_but_the_given_one(self):
+        # the digest rows are FAMILY-named (--others <member> excludes the member's family row,
+        # and --others <family> is the alias)
         for mine, others, entity in (
             ("rfe", ["initiative", "react-shopping-cart"], "Initiative"),
             ("initiative", ["rfe", "react-shopping-cart"], "RFE"),
+            (MEMBER, ["rfe", "react-shopping-cart"], "RFE"),
             ("react-shopping-cart", ["rfe", "initiative"], "RFE"),
         ):
             first = others[0]
@@ -231,9 +233,9 @@ class TestContract:
         for name in SHIPPED:
             spec = artifact_utils.SCHEMAS[f"{name}-review"]["needs_attention_source"]
             assert "classification" in spec["enum"]
-            fields = yaml.safe_load((TYPES_ROOT / name / "type.yaml").read_text())["reporting"][
-                "run_report"
-            ]["extra_entry_fields"]
+            # merged data: a member inherits its reporting block from the family file
+            desc = type_registry.load(root=TYPES_ROOT, extra_roots=[], env={}).get(name)
+            fields = desc.get("reporting.run_report.extra_entry_fields")
             assert fields[-2:] == ["needs_attention_source", "needs_attention_reason"], name
 
     def test_the_recommendation_enum_names_reclassify(self):

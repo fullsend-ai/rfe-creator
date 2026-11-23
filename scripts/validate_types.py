@@ -126,7 +126,8 @@ Usage:
                                       [--verify --type T] [--json]
 
 Exit codes:
-    0  every descriptor passed — prints "OK: <n> type(s) valid: rfe, initiative"
+    0  every descriptor passed — prints "OK: <n> type(s) valid: rfe, initiative-rhaistrat;
+       1 family(ies) checked: initiative" (the families, when any, after the members)
     1  findings — one "ERROR <type-or-*>: <message>" line per finding
        ("*" marks a cross-type or registry-level finding)
     2  usage error, or jsonschema not installed (full lint only: --verify decides

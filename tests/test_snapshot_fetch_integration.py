@@ -23,6 +23,10 @@ CLONE_SCRIPT = os.path.join(os.path.dirname(__file__), "..", "scripts", "clone_r
 import snapshot_fetch  # noqa: E402
 from snapshot_fetch import cmd_fetch, compute_content_hash, update_snapshot_hashes  # noqa: E402
 
+# The registered Initiative type: the sole member of the `initiative` family (AISDLC-851);
+# `--type initiative` is the family alias, kept below as a CLI input.
+MEMBER = "initiative-rhaistrat"
+
 
 def _write(path, content):
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -145,7 +149,7 @@ class TestJqlBindingConflict:
         assert not os.path.exists(args.ids_file) and not os.path.exists(args.changed_file)
         # The corrected invocation runs as before.
         args = _fetch_args(tmp_path, jql="project = RHAISTRAT")
-        args.type = "initiative"
+        args.type = MEMBER  # the argparse converter's output: the registered name
         out = _run_fetch(args)
         assert out.startswith("TOTAL=1\n")
         assert len(pages) == 1
@@ -165,12 +169,12 @@ class TestJqlBindingConflict:
         pages = []
         monkeypatch.setattr(snapshot_fetch, "_fetch_paginated", lambda *a, **kw: pages.append(a))
         args = _fetch_args(tmp_path, jql="project = RHAISTRAT AND type = Epic")
-        args.type = "initiative"
+        args.type = MEMBER  # the argparse converter's output: the registered name
         with pytest.raises(SystemExit) as exc:
             cmd_fetch(args)
         assert exc.value.code == 1
         assert capsys.readouterr().err == (
-            "ERROR: --jql names issuetype Epic but the initiative binding is Initiative\n"
+            "ERROR: --jql names issuetype Epic but the initiative-rhaistrat binding is Initiative\n"
         )
         assert pages == []
         assert os.listdir(work_dirs.snapshot_dir) == []

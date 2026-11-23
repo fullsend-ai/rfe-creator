@@ -119,14 +119,13 @@ pin.
 - **Type families.** AISDLC-850 (#307) added `abstract:` / `extends:`, the relaxed family gate, the
   member rules, cross rules 8-10 (one owner per artifact directory, one member per project within
   a family, a family-scoped `RFE_CREATOR_BINDING_*` variable is a finding) and
-  `tests/fixtures/type-families/`; AISDLC-851 (#309) first widened the family-name alias through
-  `TypeRegistry.canonical()` from the `get` / `binding` / `launch-vars` CLI to every name boundary
-  (the argparse converter `type_arg`, `parse_type_arg`, `resolve`, the artifact / report / state
-  readers through `try_canonical`, `validate_all(only=)`, `generate_eval_config._select`,
+  `tests/fixtures/type-families/`; AISDLC-851 (#309) split `initiative` into the family
+  `types/initiative/` and its member `initiative-rhaistrat`, widened the family-name alias through
+  `TypeRegistry.canonical()` to every name boundary (the argparse converter `type_arg`,
+  `parse_type_arg`, `resolve`, the readers, `validate_all(only=)`, `generate_eval_config._select`,
   `bootstrap.sh`, the `canonical` CLI), derived the eval identity from the family (`eval_stem`) and
-  the last type-keyed tables from the registry — the identity on the shipped tree, where
-  `initiative` is still a concrete type — and next splits `initiative` into a family plus
-  `initiative-rhaistrat`; AISDLC-853 adds `--project` and member signals.
+  parameterised the Initiative prose through the `PROJECT` and `PARENT_KEY_PREFIX` launch vars;
+  AISDLC-852 repoints the autofixer to the member; AISDLC-853 adds `--project` and member signals.
 - **Reserved vocabulary.** The `schema.task.priority.enum` beside the reserved `map_to_tracker`
   feeds `artifact_utils.SCHEMAS` since PR-2b and `validate_batch_input.ALLOWED_PRIORITIES` per
   type since PR-3b.

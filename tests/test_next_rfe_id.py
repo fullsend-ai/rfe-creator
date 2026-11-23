@@ -19,6 +19,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 import next_rfe_id  # noqa: E402
 import type_registry  # noqa: E402
 
+# The registered Initiative type: the sole member of the `initiative` family (AISDLC-851);
+# `--type initiative` is the family alias, kept below as a CLI input.
+MEMBER = "initiative-rhaistrat"
+
 SCRIPT = os.path.join(os.path.dirname(__file__), "..", "scripts", "next_rfe_id.py")
 
 
@@ -63,7 +67,7 @@ class TestDefaultsDeriveFromTheRfeDescriptor:
         assert next_rfe_id.type_defaults(rfe) == ("RFE", "artifacts/rfe-tasks")
 
     def test_type_defaults_for_the_initiative_descriptor(self):
-        init = type_registry.load(extra_roots=[], env={}).get("initiative")
+        init = type_registry.load(extra_roots=[], env={}).get(MEMBER)
         assert next_rfe_id.type_defaults(init) == ("INIT", "artifacts/initiatives")
 
     def test_help_shows_the_defaults(self, tmp_path):
@@ -217,7 +221,7 @@ class TestLegacyListNeutrality:
         )
         assert result.returncode == 0, result.stderr
         assert result.stdout == "INIT-001\n"
-        assert result.stderr == "TYPE RESOLVED: initiative (batch type)\n"
+        assert result.stderr == "TYPE RESOLVED: initiative-rhaistrat (batch type)\n"
 
     @pytest.mark.parametrize(
         "env",
@@ -289,7 +293,7 @@ class TestFromBatchMappingForm:
         result = _run(tmp_path, "--from-batch", str(batch))
         assert result.returncode == 0, result.stderr
         assert result.stdout == "INIT-001\nINIT-002\n"
-        assert result.stderr == "TYPE RESOLVED: initiative (batch type)\n"
+        assert result.stderr == "TYPE RESOLVED: initiative-rhaistrat (batch type)\n"
         assert (tmp_path / "artifacts" / "initiatives" / "INIT-002.md").exists()
         assert not (tmp_path / "artifacts" / "rfe-tasks").exists()
 
@@ -329,10 +333,10 @@ class TestFromBatchMappingForm:
     @pytest.mark.parametrize(
         "flags, needle",
         [
-            (["--prefix", "RFE"], "--prefix RFE (the initiative prefix is INIT)"),
+            (["--prefix", "RFE"], f"--prefix RFE (the {MEMBER} prefix is INIT)"),
             (
                 ["--dir", "artifacts/rfe-tasks"],
-                "--dir artifacts/rfe-tasks (the initiative tasks dir is artifacts/initiatives)",
+                f"--dir artifacts/rfe-tasks (the {MEMBER} tasks dir is artifacts/initiatives)",
             ),
             (["--prefix", "INIT", "--dir", "artifacts/rfe-tasks"], "--dir artifacts/rfe-tasks"),
         ],
@@ -344,7 +348,8 @@ class TestFromBatchMappingForm:
         result = _run(tmp_path, *flags, "--from-batch", str(batch))
         assert result.returncode == 2
         assert result.stdout == ""
-        assert result.stderr.startswith(f"{batch}: type: initiative disagrees with ")
+        # the batch says `type: initiative` (the alias); the allocator names the RESOLVED type
+        assert result.stderr.startswith(f"{batch}: type: {MEMBER} disagrees with ")
         assert needle in result.stderr
         assert "D1" in result.stderr
         assert not (tmp_path / "artifacts").exists()
@@ -356,7 +361,7 @@ class TestFromBatchMappingForm:
         assert result.returncode == 2
         assert result.stdout == ""
         assert result.stderr == (
-            f"unknown type 'epic' ({batch} type:); registered types: rfe, initiative, "
+            f"unknown type 'epic' ({batch} type:); registered types: rfe, initiative-rhaistrat, "
             f"react-shopping-cart\n"
         )
         assert not (tmp_path / "artifacts").exists()

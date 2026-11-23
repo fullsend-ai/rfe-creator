@@ -22,6 +22,9 @@ from verify_phase import _PHASE_OUTPUT, _TYPES, verify, write_error_stubs  # noq
 # (AISDLC-851; the poll prefix below is inherited and stays `initiative-`).
 _RFE_PHASE_OUTPUT = _PHASE_OUTPUT["rfe"]
 _INITIATIVE_PHASE_OUTPUT = _PHASE_OUTPUT[_TYPES.canonical("initiative")]
+# The registered Initiative type (the family's sole member): the state type verify() runs under.
+MEMBER = _TYPES.canonical("initiative")
+assert MEMBER == "initiative-rhaistrat"
 
 SCRIPTS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
@@ -380,12 +383,12 @@ class TestReviewTypeStamp:
         )
         _write_ids("INIT-001")
         _write("artifacts/initiative-reviews/INIT-001-review.md", review)
-        verify("review", "ids.txt", "initiative")
+        verify("review", "ids.txt", MEMBER)
         captured = capsys.readouterr()
         assert captured.out == "FAILED=\n"
         assert captured.err == (
             "verify_phase: artifacts/initiative-reviews/INIT-001-review.md: review declares "
-            "type='rfe', expected initiative; not stamped\n"
+            "type='rfe', expected initiative-rhaistrat; not stamped\n"
         )
         with open("artifacts/initiative-reviews/INIT-001-review.md") as f:
             assert f.read() == review
@@ -418,13 +421,13 @@ class TestReviewTypeStamp:
         )
         _write_ids("INIT-001")
         _write("artifacts/initiative-reviews/INIT-001-review.md", review)
-        verify("review", "ids.txt", "initiative")
+        verify("review", "ids.txt", MEMBER)
         assert _failed(capsys) == []
         with open("artifacts/initiative-reviews/INIT-001-review.md") as f:
             text = f.read()
         # Appended after the agent's fields, and nothing else: the schema defaults this
         # review lacks (local_id, error, ..., alignment) are NOT materialized by the stamp.
-        assert text == review.replace("---\nBody\n", "type: initiative\n---\nBody\n")
+        assert text == review.replace("---\nBody\n", "type: initiative-rhaistrat\n---\nBody\n")
 
     @pytest.mark.parametrize(
         "bad, resolved, needs_dir",
@@ -530,20 +533,20 @@ class TestInitiativeType:
     def test_fetch_looks_in_the_initiatives_dir(self, workdir, capsys):
         _write_ids("INIT-001", "INIT-002")
         _write("artifacts/initiatives/INIT-002.md", "task\n")
-        verify("fetch", "ids.txt", "initiative")
+        verify("fetch", "ids.txt", MEMBER)
         assert _failed(capsys) == ["INIT-001"]
 
     def test_rfe_task_file_does_not_satisfy_an_initiative(self, workdir, capsys):
         _write_ids("INIT-001")
         _write("artifacts/rfe-tasks/INIT-001.md", "task\n")
-        verify("fetch", "ids.txt", "initiative")
+        verify("fetch", "ids.txt", MEMBER)
         assert _failed(capsys) == ["INIT-001"]
 
     def test_error_frontmatter_uses_the_initiative_schema(self, workdir, capsys):
         from artifact_utils import read_frontmatter
 
         _write_ids("INIT-001")
-        verify("review", "ids.txt", "initiative")
+        verify("review", "ids.txt", MEMBER)
         data, _ = read_frontmatter("artifacts/initiative-reviews/INIT-001-review.md")
         assert data["initiative_id"] == "INIT-001"
         assert data["error"] == "review_failed"
@@ -554,13 +557,13 @@ class TestInitiativeType:
     def test_alignment_is_verifiable(self, workdir, capsys):
         """Initiatives have a phase RFEs do not."""
         _write_ids("INIT-001")
-        verify("alignment", "ids.txt", "initiative")
+        verify("alignment", "ids.txt", MEMBER)
         assert _failed(capsys) == ["INIT-001"]
         assert _read_ids() == []
 
     def test_fetch_failure_writes_to_the_initiative_reviews_dir(self, workdir, capsys):
         _write_ids("INIT-001")
-        verify("fetch", "ids.txt", "initiative")
+        verify("fetch", "ids.txt", MEMBER)
         assert os.path.exists("artifacts/initiative-reviews/INIT-001-review.md")
         assert not os.path.exists("artifacts/rfe-reviews/INIT-001-review.md")
 
@@ -664,7 +667,7 @@ class TestDerivedFromRegistry:
             [sys.executable, "-c", probe], capture_output=True, text=True, env=env, check=True
         )
         got = json.loads(result.stdout)
-        assert got["types"] == ["rfe", "initiative", "react-shopping-cart", "widget"]
+        assert got["types"] == ["rfe", MEMBER, "react-shopping-cart", "widget"]
         assert got["id_field"] == "widget_id"
         assert got["score_fields"] == ["scores.what=0", "scores.risk=0"]
         assert got["reviews_dir"] == "artifacts/widget-reviews"
@@ -702,9 +705,9 @@ class TestWriteErrorStubs:
         file written through frontmatter.py has it right after the scores."""
         import verify_phase
 
-        record = verify_phase._stub_record("INIT-001", "assess_stalled", "initiative")
-        assert list(record)[-2:] == ["scores", "type"] and record["type"] == "initiative"
-        write_error_stubs("assess", ["INIT-001"], "initiative", outcome="stalled")
+        record = verify_phase._stub_record("INIT-001", "assess_stalled", MEMBER)
+        assert list(record)[-2:] == ["scores", "type"] and record["type"] == MEMBER
+        write_error_stubs("assess", ["INIT-001"], MEMBER, outcome="stalled")
         with open("artifacts/initiative-reviews/INIT-001-review.md") as f:
             text = f.read()
         assert text == (
@@ -712,7 +715,7 @@ class TestWriteErrorStubs:
             "recommendation: revise\nfeasibility: feasible\nauto_revised: false\n"
             "needs_attention: true\nneeds_attention_reason: 'Agent failed: assess_stalled'\n"
             "scores:\n  what: 0\n  why: 0\n  scope: 0\n  open_to_how: 0\n  right_sized: 0\n"
-            "type: initiative\nlocal_id: null\nbefore_score: null\nbefore_scores: null\n"
+            "type: initiative-rhaistrat\nlocal_id: null\nbefore_score: null\nbefore_scores: null\n"
             "alignment: not_assessed\n---\n"
         )
 
@@ -721,12 +724,10 @@ class TestWriteErrorStubs:
         from artifact_utils import apply_defaults, read_frontmatter
         from type_registry import load
 
-        write_error_stubs("feasibility", ["INIT-001", "INIT-002"], "initiative", outcome="stalled")
+        write_error_stubs("feasibility", ["INIT-001", "INIT-002"], MEMBER, outcome="stalled")
         for id_ in ("INIT-001", "INIT-002"):
             data, _ = read_frontmatter(f"artifacts/initiative-reviews/{id_}-review.md")
-            expected = validate_types.build_error_stub(
-                load().get("initiative"), phase="feasibility"
-            )
+            expected = validate_types.build_error_stub(load().get(MEMBER), phase="feasibility")
             expected.update(
                 {
                     "initiative_id": id_,
@@ -734,7 +735,7 @@ class TestWriteErrorStubs:
                     "needs_attention_reason": "Agent failed: feasibility_stalled",
                 }
             )
-            assert data == apply_defaults(expected, "initiative-review")
+            assert data == apply_defaults(expected, f"{MEMBER}-review")
 
     def test_error_override_replaces_the_derived_value(self, workdir):
         """The stall guard keeps the non-retryable split_not_attempted: class when a split

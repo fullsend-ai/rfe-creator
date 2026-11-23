@@ -10,6 +10,10 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 import type_registry  # noqa: E402
 
+# The registered Initiative type: the sole member of the `initiative` family (AISDLC-851);
+# `--type initiative` is the family alias, kept below as a CLI input.
+MEMBER = "initiative-rhaistrat"
+
 SCRIPT = os.path.join(os.path.dirname(__file__), "..", "scripts", "submit.py")
 
 
@@ -592,10 +596,10 @@ class TestTypeConfigProjection:
         "tasks_dir": "initiatives",
         "reviews_dir": "initiative-reviews",
         "originals_dir": "initiative-originals",
-        "task_schema": "initiative-task",
-        "review_schema": "initiative-review",
+        "task_schema": f"{MEMBER}-task",
+        "review_schema": f"{MEMBER}-review",
         "snapshot_prefix": "initiative-snapshot-",
-        "split_type_arg": "initiative",
+        "split_type_arg": MEMBER,  # the registered name (split_submit --type)
         "label_prefix": "initiative",
         "rubric_pass_label": "initiative-autofix-rubric-pass",
         "feasibility_labels": {
@@ -621,7 +625,7 @@ class TestTypeConfigProjection:
     def test_initiative_projection_is_the_literal_table(self):
         import submit as submit_mod
 
-        cfg = submit_mod.TYPE_CONFIGS["initiative"]
+        cfg = submit_mod.TYPE_CONFIGS[MEMBER]
         assert cfg == self.INITIATIVE
         assert list(cfg) == list(self.INITIATIVE)
         assert list(cfg["feasibility_labels"]) == list(self.INITIATIVE["feasibility_labels"])
@@ -633,8 +637,8 @@ class TestTypeConfigProjection:
     def test_projected_maps_do_not_alias_descriptor_data(self):
         import submit as submit_mod
 
-        desc = submit_mod._TYPES.get("initiative")
-        cfg = submit_mod.TYPE_CONFIGS["initiative"]
+        desc = submit_mod._TYPES.get(MEMBER)
+        cfg = submit_mod.TYPE_CONFIGS[MEMBER]
         assert cfg["alignment_labels"] == desc.get("conventions.labels.alignment")
         assert cfg["alignment_labels"] is not desc.get("conventions.labels.alignment")
         assert cfg["feasibility_labels"] is not desc.get("conventions.labels.feasibility")

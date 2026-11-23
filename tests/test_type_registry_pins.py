@@ -79,6 +79,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # effective value equals the descriptor value, which is the equality the pins below hold).
 REG = type_registry.load(extra_roots=[], env={})
 TYPES = REG.names()
+# The registered Initiative type: the sole member of the `initiative` family (AISDLC-851). Its
+# name keys every table; the family's name is the eval stem and the legacy row-order key.
+MEMBER = "initiative-rhaistrat"
 # `eval` is optional: a demo type (react-shopping-cart) has no eval harness.
 EVAL_TYPES = [t for t in TYPES if "eval" in REG.get(t).data]
 
@@ -91,12 +94,10 @@ GENERIC_SKILL = ".claude/skills/rfe-{stage}/SKILL.md"
 SKELETON_DIR = ".claude/skills/rfe-review/prompts"
 GENERIC_SPEEDRUN = "rfe-speedrun"
 GENERIC_CREATE = "rfe-create"
-# Interactive skills poll through a second, non-empty prefix the descriptor cannot express.
-POLL_FILE_PREFIX = {
-    "rfe": "tmp/rfe-poll-",
-    "initiative": "tmp/initiative-poll-",
-    "react-shopping-cart": "tmp/react-shopping-cart-poll-",
-}
+# Interactive skills poll through a second, non-empty prefix the descriptor cannot express:
+# derived from the registered NAME (type_registry._POLL_FILE_PREFIX), so a family member polls
+# under its own name (tmp/initiative-rhaistrat-poll-), not the inherited poll_prefix.
+POLL_FILE_PREFIX = {t: f"tmp/{t}-poll-" for t in TYPES}
 # PR-5a: the rfe review skill resolves the rubric path from the descriptor at launch time.
 RUBRIC_PATH_GET = "python3 scripts/type_registry.py get rfe pipeline.rubric.path"
 RUBRIC_PATH_TOKEN = "{PROMPT_PATH}=.context/assess-rfe/<pipeline.rubric.path>"
@@ -602,7 +603,7 @@ class TestRegistryShape:
     # 106, 124, 147, 148, 153-156, 159-162 MIGRATED)
 
     def test_shipped_types_in_argparse_order(self):
-        assert TYPES == ["rfe", "initiative", "react-shopping-cart"]
+        assert TYPES == ["rfe", MEMBER, "react-shopping-cart"]
 
     @pytest.mark.parametrize(
         "name, live",
@@ -1913,7 +1914,7 @@ class TestPipelineTypes:
         monkeypatch.chdir(tmp_path)
         if "alignment" not in ctx.dims:
             assert (
-                ctx.t != "initiative"
+                ctx.t != MEMBER
                 and pipeline_state._has_rhaistrat_parent("X", {"type": ctx.t}) is False
             )
             return
@@ -2170,7 +2171,7 @@ class TestArtifactHelpers:
         # descriptor field and stays literal
         rfe = _ctx("rfe")
         source = inspect.getsource(artifact_utils.rebuild_index)
-        assert rfe.d["index"]["enabled"] and not _ctx("initiative").d["index"]["enabled"]
+        assert rfe.d["index"]["enabled"] and not _ctx(MEMBER).d["index"]["enabled"]
         for literal in (
             '"rfes.md"',
             '"# RFE Summary"',
@@ -2231,7 +2232,7 @@ class TestArtifactHelpers:
         # slug-tolerant review lookup and parse_child's rfe markdown fallbacks. PR-3's
         # resolution ladder generalises or retires them, so lifting one is a visible pin change
         # here, not a silent edit; tests/test_artifact_utils.py holds their behaviour
-        rfe, init = REG.get("rfe"), REG.get("initiative")
+        rfe, init = REG.get("rfe"), REG.get(MEMBER)
         assert artifact_utils._rename_error_label(rfe) == "rename_to_jira_key"
         assert artifact_utils._rename_error_label(init) == "rename_initiative_to_jira_key"
         # The rename label is keyed by the FAMILY's name for a type-family member (AISDLC-851:
@@ -2277,11 +2278,11 @@ class TestSkillLayer:
             assert frontmatter(shim)["allowed-tools"] == generic_fm["allowed-tools"], stage
             assert "Compatibility alias" in frontmatter(shim)["description"], stage
         for key, path in ctx.pipe["prompts"].items():
-            assert path.startswith(f"types/{ctx.t}/"), key
+            assert path.startswith(f"types/{ctx.desc.extends or ctx.t}/"), key
             assert (REPO_ROOT / path).is_file(), f"pipeline.prompts.{key}"
-        assert ctx.pipe["prompts"]["template"] == f"types/{ctx.t}/template.md"
+        assert ctx.pipe["prompts"]["template"] == f"types/{ctx.desc.extends or ctx.t}/template.md"
         for d in ctx.pipe["dimensions"]:
-            assert d["prompt"] == f"types/{ctx.t}/dimensions/{d['name']}.md"
+            assert d["prompt"] == f"types/{ctx.desc.extends or ctx.t}/dimensions/{d['name']}.md"
             assert (REPO_ROOT / d["prompt"]).is_file()
         for name in ("fetch", "assess", "review", "revise"):
             assert (REPO_ROOT / f"{SKELETON_DIR}/{name}-agent.md").is_file()
@@ -2393,7 +2394,8 @@ class TestSkillLayer:
         # the generic bodies never hand-write a typed path: every typed-file read is a token
         for stage in ctx.pipe["stages"]:
             raw = read(GENERIC_SKILL.format(stage=stage)).split("---", 2)[2]
-            assert f"types/{ctx.t}/" not in raw.split("### Example `launch_wave` output", 1)[0]
+            head = raw.split("### Example `launch_wave` output", 1)[0]
+            assert f"types/{ctx.desc.extends or ctx.t}/" not in head
 
     def test_launch_block_typed_paths_fall_back_to_absolute_off_the_checkout(
         self, ctx, tmp_path, monkeypatch
@@ -2690,7 +2692,7 @@ class TestSkillLayer:
         commands = [
             ln for ln in texts.splitlines() if ln.lstrip().startswith(("python3 ", "bash "))
         ]
-        flags = [f for ln in commands for f in re.findall(r"--type ([a-z][a-z-]*)", ln)]
+        flags = [f for ln in commands for f in re.findall(r"--type ([a-z][a-z0-9-]*)", ln)]
         assert flags and set(flags) == {ctx.d["type"]}
         handoffs = re.findall(r'Skill\(skill: "(rfe-[a-z-]+)", args: "([^"]*)"\)', texts)
         assert {name for name, _ in handoffs} == {"rfe-auto-fix", "rfe-submit"}
@@ -2746,6 +2748,21 @@ class TestSkillLayer:
             set(ctx.labels["alignment"]),
             set(re.findall(r"^- \*\*(\w+)\*\*:", prompt, re.M)),
         )
+
+    def test_project_and_parent_key_prefix_launch_vars(self, ctx):
+        # AISDLC-851: the typed prose names the tracker project and the parent-key prefix
+        # through the launch block (so a type family's files serve every member); both are
+        # descriptor projections — never the binding overlay, like KEY_PREFIX — and the
+        # second is empty, like PARENT_FIELD, for a type whose dimensions do not read parent_key.
+        block = dict(launch(ctx.t))
+        pin("identity.jira.project", "launch block PROJECT", ctx.jira["project"], block["PROJECT"])
+        pin(
+            "pipeline.dimensions[].condition.prefix (frontmatter_field: parent_key)",
+            "launch block PARENT_KEY_PREFIX",
+            " or ".join(ctx.desc.condition_prefixes("parent_key")),
+            block["PARENT_KEY_PREFIX"],
+        )
+        assert (block["PARENT_KEY_PREFIX"] == "") is ("alignment" not in ctx.dims)
 
     def test_fetch_agent_companions(self, ctx):
         # rows: 226 — one Tier-1 fetch skeleton: step 1 is `fetch_issue.py {KEY} --fetch-all
@@ -2958,8 +2975,10 @@ class TestSkillLayer:
             assert not missing, (rel, missing)
 
     def test_feasibility_dimension_io(self, ctx):
-        # rows: 231 — types/<t>/dimensions/feasibility.md (the body of the former dimension skill)
-        text = read(ctx.dims["feasibility"]["prompt"])
+        # rows: 231 — types/<t>/dimensions/feasibility.md (the body of the former dimension skill),
+        # rendered with the launch block: a typed file names its directories literally or, for a
+        # type family's shared prose, as {TASKS_DIR} / {REVIEWS_DIR} (AISDLC-851)
+        text = render(read(ctx.dims["feasibility"]["prompt"]), ctx.t)
         assert f"`{ctx.dirs['reviews']}/{{ID}}-feasibility.md`" in text
         assert f"`{ctx.dirs['tasks']}/{{ID}}.md`" in text
         assert ("-comments.md" in text) is ctx.d["companions"]["comments"]
@@ -3219,16 +3238,17 @@ class TestEvalConfigs:
         check = judges(ctx)["architecture_context_used"]["check"]
         assert "declared_irrelevant = bool(not_relevant_pattern and" in check
         assert "elif transcripts:" in check  # PR-4b: prose fallback only without capture
-        assert ("not_relevant_pattern = None" in check) is (ctx.t != "initiative")
-        assert ("not_relevant_pattern = re.compile(" in check) is (ctx.t == "initiative")
+        assert ("not_relevant_pattern = None" in check) is (ctx.t != MEMBER)
+        assert ("not_relevant_pattern = re.compile(" in check) is (ctx.t == MEMBER)
         assert ctx.ev["thresholds"]["architecture_context_used"]["min_pass_rate"] == (
-            0.85 if ctx.t == "initiative" else 1.0
+            0.85 if ctx.t == MEMBER else 1.0
         )
 
     def test_quality_judges(self, ctx):
         # rows: 208 — eval.yaml:754-837; eval-initiative.yaml:760-864
         js = judges(ctx)
-        name = f"{ctx.t}_quality"
+        # a member's judge key is the FAMILY stem (generate_eval_config.eval_stem)
+        name = f"{ctx.desc.extends or ctx.t}_quality"
         assert name in js and "revision_quality" in js
         assert ctx.ev["thresholds"][name] == {"min_mean": 3.5} and ctx.ev["thresholds"][
             "revision_quality"
@@ -3239,7 +3259,10 @@ class TestEvalConfigs:
 
     def test_pairwise_prompt_file_exists(self, ctx):
         # rows: 209 — types/<t>/eval/pairwise-judge.md by convention (generate_eval_config)
-        assert judges(ctx)["pairwise"]["prompt_file"] == f"types/{ctx.t}/eval/pairwise-judge.md"
+        assert (
+            judges(ctx)["pairwise"]["prompt_file"]
+            == f"types/{ctx.desc.extends or ctx.t}/eval/pairwise-judge.md"
+        )
         assert (REPO_ROOT / judges(ctx)["pairwise"]["prompt_file"]).is_file()
 
     def test_thresholds_verbatim(self, ctx):
@@ -3284,8 +3307,11 @@ class TestManifestsAndDocs:
             + ", ".join(ctx.schema["task"]["priority"]["enum"])
             in text
         )
-        if ctx.t == "initiative":
+        if ctx.t != "rfe":
+            # the member's spelling (the registered name new artifacts and run reports carry)
+            # and, beside it, the family alias the doc keeps as the pinned literal
             assert f"`scripts/submit.py --type {ctx.t}`" in text
+            assert f"`scripts/submit.py --type {ctx.desc.extends or ctx.t}`" in text
 
     def test_update_deps_and_gitignore_cover_the_vendored_set(self):
         # rows: 230 — rfe-creator.update-deps/SKILL.md; .gitignore vendored list (PR1-22)
@@ -3322,7 +3348,7 @@ PUBLISHED_CONTRACTS = {
             "preserved here for reference:"
         ),
     },
-    "initiative": {
+    MEMBER: {
         "rubric_pass": "initiative-autofix-rubric-pass",
         "comment_prefix": "[Initiative Creator]",
         "removed_context_preamble": (
@@ -3377,7 +3403,7 @@ class TestGrandfathered:
     # rows: 9, 49, 50, 54, 74, 94, 116, 158
 
     def test_rfe_empty_prefixes_and_initiative_non_empty(self):
-        rfe, init = _ctx("rfe"), _ctx("initiative")
+        rfe, init = _ctx("rfe"), _ctx(MEMBER)
         assert (rfe.pp, rfe.sp, rfe.snap["report_prefix"]) == ("", "", "")
         assert (init.pp, init.sp, init.snap["report_prefix"]) == (
             "initiative-",
@@ -3389,13 +3415,14 @@ class TestGrandfathered:
             and init.snap["prefix"] == "initiative-snapshot-"
         )
         assert submit.TYPE_CONFIGS["rfe"]["snapshot_prefix"] == "" != rfe.snap["prefix"]
-        assert submit.TYPE_CONFIGS["initiative"]["snapshot_prefix"] == init.snap["prefix"]
+        assert submit.TYPE_CONFIGS[MEMBER]["snapshot_prefix"] == init.snap["prefix"]
 
 
 # ── the acceptance test of the contract: rfe <-> initiative diff == extension points (PR1-32) ─
 
 EXTENSION_POINTS = [
     r"^type$",
+    r"^extends$",  # merged data keeps the leaf: a member names its family (AISDLC-851)
     r"^display\.",
     r"^classification\.",
     r"^identity\.jira\.(project|issue_type|key_prefixes)",
@@ -3449,7 +3476,7 @@ class TestExtensionPointDiff:
     # PR1-32 / design §3.4: every leaf that differs or exists on one side only is an extension point
 
     def test_every_difference_is_an_extension_point(self):
-        rfe, init = _flatten(_ctx("rfe").d), _flatten(_ctx("initiative").d)
+        rfe, init = _flatten(_ctx("rfe").d), _flatten(_ctx(MEMBER).d)
         differing = {k for k in rfe.keys() & init.keys() if rfe[k] != init[k]} | (
             rfe.keys() ^ init.keys()
         )
@@ -3459,13 +3486,13 @@ class TestExtensionPointDiff:
         )
 
     def test_shared_machinery_is_identical(self):
-        rfe, init = _ctx("rfe").d, _ctx("initiative").d
+        rfe, init = _ctx("rfe").d, _ctx(MEMBER).d
         for dotted in SHARED_MACHINERY:
             pin(
                 dotted,
                 "types/README.md 'shared machinery'",
                 _ctx("rfe").desc.get(dotted),
-                _ctx("initiative").desc.get(dotted),
+                _ctx(MEMBER).desc.get(dotted),
             )
         for i, cs in enumerate(rfe["pipeline"]["context_sources"]):
             twin = init["pipeline"]["context_sources"][i]

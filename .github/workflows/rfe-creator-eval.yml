@@ -35,11 +35,11 @@ on:
         required: true
         type: number
       # Free text, not a choice list: GitHub cannot fill a choice list from
-      # types/, and rfe-creator-eval reads the eval config from the PR's own
-      # descriptor (types/<type>/type.yaml eval.config), so a new type needs no
-      # edit here.
+      # types/, and rfe-creator-eval reads the eval config through the PR's own
+      # registry (type_registry.py get <type> eval.config; a type family name is
+      # answered by its sole member), so a new type needs no edit here.
       type:
-        description: "Work item type to evaluate (rfe, initiative, or any types/<name> in the PR)"
+        description: "Work item type to evaluate (rfe, initiative — a type family name resolves to its sole member — or any types/<name> in the PR)"
         required: true
         type: string
         default: rfe

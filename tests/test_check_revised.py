@@ -14,7 +14,10 @@ import type_registry  # noqa: E402
 REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
 SCRIPT = os.path.join(os.path.dirname(__file__), "..", "scripts", "check_revised.py")
 GENERIC_REVIEW_SKELETON = ".claude/skills/rfe-review/prompts/review-agent.md"
-REVIEW_PROMPT_SURFACES = ["rfe:generic", "initiative:generic"]  # the legacy twins went in PR-5c
+# The registered Initiative type: the sole member of the `initiative` family (AISDLC-851);
+# `--type initiative` is the family alias (kept below as a CLI input).
+MEMBER = "initiative-rhaistrat"
+REVIEW_PROMPT_SURFACES = ["rfe:generic", f"{MEMBER}:generic"]  # the legacy twins went in PR-5c
 
 
 def _set_commands(text):
@@ -373,15 +376,17 @@ class TestTypeArg:
     unregistered name exits 2 with the registered list instead of a KeyError traceback."""
 
     UNKNOWN = (
-        "ERROR: unknown --type 'bogus'; registered types: rfe, initiative, react-shopping-cart\n"
+        "ERROR: unknown --type 'bogus'; registered types: rfe, initiative-rhaistrat, "
+        "react-shopping-cart\n"
     )
     TRAILING = (
-        "ERROR: --type requires a value; registered types: rfe, initiative, react-shopping-cart\n"
+        "ERROR: --type requires a value; registered types: rfe, initiative-rhaistrat, "
+        "react-shopping-cart\n"
     )
 
     def test_usage_choices_follow_the_registry(self):
         assert check_revised._TYPE_CHOICES == "|".join(check_revised._TYPES.choices())
-        assert check_revised._TYPE_CHOICES == "rfe|initiative|react-shopping-cart"
+        assert check_revised._TYPE_CHOICES == f"rfe|{MEMBER}|react-shopping-cart"
 
     def test_cli_unknown_type_in_batch_mode(self, tmp_path):
         result = subprocess.run(
@@ -416,9 +421,9 @@ class TestTypeArg:
         result = subprocess.run(["python3", SCRIPT, "only-one"], capture_output=True, text=True)
         assert result.returncode == 2
         assert result.stderr == (
-            "Usage: check_revised.py [--type rfe|initiative|react-shopping-cart] "
+            f"Usage: check_revised.py [--type rfe|{MEMBER}|react-shopping-cart] "
             "<original> <task>\n"
-            "       check_revised.py [--type rfe|initiative|react-shopping-cart] --batch [ID ...]\n"
+            f"       check_revised.py [--type rfe|{MEMBER}|react-shopping-cart] --batch [ID ...]\n"
         )
 
     def test_cli_registered_type_still_works_in_pair_mode(self, tmp_dir):
@@ -790,7 +795,7 @@ class TestPerIdIsolation:
 
 _CLEAR_IDS = {
     "rfe": "RHAIRFE-4400",
-    "initiative": "RHAISTRAT-4400",
+    MEMBER: "RHAISTRAT-4400",
     "react-shopping-cart": "TSTAPP-4400",
 }
 _FEASIBILITY_REASON = (
@@ -863,7 +868,7 @@ def _clear_run(tmp_path, t, item_id, *flags):
     )
 
 
-@pytest.mark.parametrize("t", ["rfe", "initiative", "react-shopping-cart"])
+@pytest.mark.parametrize("t", ["rfe", MEMBER, "react-shopping-cart"])
 class TestClearAddressedAttention:
     """REASSESS_FIXUP's --clear-addressed-attention: a needs_attention flag the review agent
     sourced to feasibility is cleared once the revision passes with that dimension at its
@@ -1000,7 +1005,7 @@ class TestClearAddressedAttention:
     def test_keeps_a_feasibility_flag_when_alignment_is_weak(self, tmp_path, t):
         # A feasibility-sourced flag may hide a simultaneous weak alignment (the producer
         # records one source only); weak alignment always needs a human, so it is kept.
-        if t != "initiative":
+        if t != MEMBER:
             pytest.skip("alignment is an Initiative review field")
         item_id, review = _setup_flagged(tmp_path, t, alignment="weak")
         result = _clear_run(tmp_path, t, item_id, "--clear-addressed-attention")

@@ -31,6 +31,11 @@ from snapshot_fetch import (
     write_id_file,
 )
 
+# The registered Initiative type: the sole member of the `initiative` family (AISDLC-851). The
+# tables (SNAPSHOT_CONFIG) and the resolved type name are the member's; `--type initiative` is
+# the family alias and is kept below as an input that must resolve to the member.
+MEMBER = "initiative-rhaistrat"
+
 
 @pytest.fixture(autouse=True)
 def _credentials_pass_the_preflight(monkeypatch):
@@ -443,7 +448,7 @@ def _make_results_dir(tmp_path, runs):
     return repo
 
 
-_INIT_DESC = type_registry.load().get("initiative")
+_INIT_DESC = type_registry.load().get(MEMBER)
 _INIT_SUBDIR = _INIT_DESC.get("snapshot.results_subdir")
 _INIT_PREFIX = _INIT_DESC.get("snapshot.prefix")
 
@@ -934,8 +939,8 @@ class TestSnapshotConfig:
         assert SNAPSHOT_CONFIG["rfe"]["snapshot_prefix"] == "issue-snapshot-"
 
     def test_initiative_config(self):
-        assert SNAPSHOT_CONFIG["initiative"]["ignore_label"] == "initiative-ignore"
-        assert SNAPSHOT_CONFIG["initiative"]["snapshot_prefix"] == "initiative-snapshot-"
+        assert SNAPSHOT_CONFIG[MEMBER]["ignore_label"] == "initiative-ignore"
+        assert SNAPSHOT_CONFIG[MEMBER]["snapshot_prefix"] == "initiative-snapshot-"
 
 
 class TestFindPreviousSnapshotPrefix:
@@ -1033,7 +1038,8 @@ class TestUpdateSnapshotHashesPrefix:
 class TestCmdFetchInitiativeType:
     """Verify --type initiative uses the right config."""
 
-    def _run_fetch(self, tmp_path, current, monkeypatch, issue_type="initiative"):
+    # args.type is the argparse converter's output (the registered name): hand-built args pass it
+    def _run_fetch(self, tmp_path, current, monkeypatch, issue_type=MEMBER):
         import argparse
 
         snap_dir = str(tmp_path / "auto-fix-runs")
@@ -1145,7 +1151,7 @@ class TestSnapshotConfigDerivesFromTheRegistry:
                 "quarantine_label": "rfe-creator-split-quarantine",
                 "snapshot_prefix": "issue-snapshot-",
             },
-            "initiative": {
+            MEMBER: {
                 "ignore_label": "initiative-ignore",
                 "quarantine_label": "initiative-split-quarantine",
                 "snapshot_prefix": "initiative-snapshot-",
@@ -1156,7 +1162,7 @@ class TestSnapshotConfigDerivesFromTheRegistry:
                 "snapshot_prefix": "rsc-snapshot-",
             },
         }
-        assert list(SNAPSHOT_CONFIG) == ["rfe", "initiative", "react-shopping-cart"]
+        assert list(SNAPSHOT_CONFIG) == ["rfe", MEMBER, "react-shopping-cart"]
         for config in SNAPSHOT_CONFIG.values():
             assert list(config) == ["ignore_label", "quarantine_label", "snapshot_prefix"]
 
@@ -1185,7 +1191,7 @@ class TestSnapshotConfigDerivesFromTheRegistry:
             env=_clean_env(),
         )
         assert result.returncode == 0
-        assert "--type {rfe,initiative,react-shopping-cart}" in result.stdout
+        assert f"--type {{rfe,{MEMBER},react-shopping-cart}}" in result.stdout
 
     def test_a_drop_in_type_is_offered_and_configured(self, tmp_path):
         root = _dropin_root(tmp_path)
@@ -1193,7 +1199,7 @@ class TestSnapshotConfigDerivesFromTheRegistry:
         result = subprocess.run(
             [sys.executable, SCRIPT, "fetch", "--help"], capture_output=True, text=True, env=env
         )
-        assert "--type {rfe,docs,initiative,react-shopping-cart}" in result.stdout
+        assert f"--type {{rfe,docs,{MEMBER},react-shopping-cart}}" in result.stdout
         # The one fetch path that needs no Jira — --reprocess without a JQL reuses the prior
         # IDs — still indexes SNAPSHOT_CONFIG by type, so it proves the drop-in is configured.
         ids_file = tmp_path / "ids.txt"
@@ -1228,7 +1234,7 @@ class TestJqlBindingCheck:
     fetched or written; a JQL that names neither is not checked."""
 
     RFE = REG.get("rfe").binding(env={})
-    INITIATIVE = REG.get("initiative").binding(env={})
+    INITIATIVE = REG.get(MEMBER).binding(env={})
 
     @pytest.mark.parametrize(
         "jql, expected",
@@ -1325,7 +1331,7 @@ class TestJqlBindingCheck:
             is None
         )
         assert jql_binding_conflict("project = RHAIRFE", self.RFE, "rfe") is None
-        assert jql_binding_conflict("project = RHAISTRAT", self.INITIATIVE, "initiative") is None
+        assert jql_binding_conflict("project = RHAISTRAT", self.INITIATIVE, MEMBER) is None
 
     @pytest.mark.parametrize(
         "jql, message",
@@ -1409,24 +1415,24 @@ class TestJqlBindingCheck:
         assert jql_binding_conflict(jql, self.RFE, "rfe") is None
 
     def test_conflicts_under_initiative(self):
-        assert jql_binding_conflict("project = RHAIRFE", self.INITIATIVE, "initiative") == (
-            "ERROR: --jql names project RHAIRFE but the initiative binding is RHAISTRAT"
+        assert jql_binding_conflict("project = RHAIRFE", self.INITIATIVE, MEMBER) == (
+            "ERROR: --jql names project RHAIRFE but the initiative-rhaistrat binding is RHAISTRAT"
         )
         assert jql_binding_conflict(
-            "project = RHAISTRAT AND issuetype = 'Feature Request'", self.INITIATIVE, "initiative"
+            "project = RHAISTRAT AND issuetype = 'Feature Request'", self.INITIATIVE, MEMBER
         ) == (
-            "ERROR: --jql names issuetype Feature Request but the initiative binding is Initiative"
+            "ERROR: --jql names issuetype Feature Request but the initiative-rhaistrat binding is "
+            "Initiative"
         )
         # The `type` alias is the same clause, reported as issuetype.
         assert (
-            jql_binding_conflict(
-                "project = RHAISTRAT AND type = Epic", self.INITIATIVE, "initiative"
-            )
-            == "ERROR: --jql names issuetype Epic but the initiative binding is Initiative"
+            jql_binding_conflict("project = RHAISTRAT AND type = Epic", self.INITIATIVE, MEMBER)
+            == "ERROR: --jql names issuetype Epic but the initiative-rhaistrat binding is "
+            "Initiative"
         )
         assert (
             jql_binding_conflict(
-                "project = RHAISTRAT AND type = Initiative", self.INITIATIVE, "initiative"
+                "project = RHAISTRAT AND type = Initiative", self.INITIATIVE, MEMBER
             )
             is None
         )
@@ -1466,8 +1472,10 @@ class TestJqlBindingCheck:
             "project in (RHAISTRAT) AND issuetype in (Initiative, Epic)", self.RFE, "rfe"
         ) == ("ERROR: --jql names project RHAISTRAT but the rfe binding is RHAIRFE")
         assert jql_binding_conflict(
-            "project in (RHAISTRAT) AND issuetype in (Epic)", self.INITIATIVE, "initiative"
-        ) == ("ERROR: --jql names issuetype Epic but the initiative binding is Initiative")
+            "project in (RHAISTRAT) AND issuetype in (Epic)", self.INITIATIVE, MEMBER
+        ) == (
+            "ERROR: --jql names issuetype Epic but the initiative-rhaistrat binding is Initiative"
+        )
         assert jql_binding_conflict("project != RHAIRFE AND issuetype ~ x", self.RFE, "rfe") is None
         assert (
             jql_binding_conflict(
@@ -1525,10 +1533,12 @@ class TestJqlBindingCheck:
                 "ERROR: --jql names project RHAISTRAT but the rfe binding is RHAIRFE",
             ),
             (
-                "initiative",
+                # a hand-built Namespace carries the argparse converter's output: the member
+                # (the `--type initiative` alias is a CLI case, test_cli_family_alias_* below)
+                MEMBER,
                 'project = RHAISTRAT AND issuetype = "Feature Request"',
-                "ERROR: --jql names issuetype Feature Request but the initiative binding is "
-                "Initiative",
+                "ERROR: --jql names issuetype Feature Request but the initiative-rhaistrat binding "
+                "is Initiative",
             ),
         ],
     )
@@ -1611,6 +1621,35 @@ class TestJqlBindingCheck:
         )
         assert sorted(os.listdir(tmp_path)) == []
 
+    def test_cli_family_alias_resolves_to_the_member_before_the_check(self, tmp_path):
+        # `--type initiative` is the family alias (AISDLC-851): the converter hands cmd_fetch the
+        # member, whose binding the JQL is compared with — and whose name the ERROR line carries.
+        env = _clean_env()
+        for var in ("JIRA_SERVER", "JIRA_USER", "JIRA_TOKEN"):
+            env.pop(var, None)
+        result = subprocess.run(
+            [
+                sys.executable,
+                SCRIPT,
+                "fetch",
+                "project = RHAIRFE",
+                "--type",
+                "initiative",
+                "--ids-file",
+                str(tmp_path / "ids.txt"),
+                "--changed-file",
+                str(tmp_path / "changed.txt"),
+            ],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        assert result.returncode == 1
+        assert result.stderr == (
+            f"ERROR: --jql names project RHAIRFE but the {MEMBER} binding is RHAISTRAT\n"
+        )
+        assert sorted(os.listdir(tmp_path)) == []
+
     def test_reprocess_without_jql_is_not_checked(self, tmp_path):
         # No JQL, nothing to compare: the prior-ids shortcut is untouched.
         import argparse
@@ -1669,7 +1708,7 @@ class TestHardFilterJqlWrapperIsByteStable:
         )
 
     def test_initiative(self, tmp_path, monkeypatch):
-        assert self._captured_jql(tmp_path, monkeypatch, "initiative", "project = RHAISTRAT") == (
+        assert self._captured_jql(tmp_path, monkeypatch, MEMBER, "project = RHAISTRAT") == (
             "(project = RHAISTRAT) AND statusCategory != Done "
             "AND (labels not in (initiative-ignore, initiative-split-quarantine) "
             "OR labels is EMPTY)"

@@ -62,7 +62,7 @@ If the rubric is still not available after the bootstrap attempt, proceed with t
 
 ## Step 2: Read the Guidance, then Ask Clarifying Questions
 
-Read the type's creation guidance at `{CREATE_GUIDANCE_PATH}` — always, headless too. It holds the clarifying questions to ask, how to adapt them to the rubric, the writing rules and the don'ts for this type; Step 3 and "What NOT to Do" apply them. Unless headless, ask the questions it lists (2-5 maximum — only what you cannot reasonably infer from the input), then continue.
+Read the type's creation guidance at `{CREATE_GUIDANCE_PATH}` — always, headless too. Every `{VAR}` in it is the value of that `VAR=` line of the launch block, as in this skill. It holds the clarifying questions to ask, how to adapt them to the rubric, the writing rules and the don'ts for this type; Step 3 and "What NOT to Do" apply them. Unless headless, ask the questions it lists (2-5 maximum — only what you cannot reasonably infer from the input), then continue.
 
 ## Step 3: Generate Items
 
