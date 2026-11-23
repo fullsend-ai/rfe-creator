@@ -22,6 +22,7 @@ def main():
     )
     parser.add_argument(
         "--type",
+        type=type_registry.type_arg(_TYPES),
         choices=_TYPES.choices(),
         default="rfe",
         help="Artifact type to scan (default: rfe)",

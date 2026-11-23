@@ -705,6 +705,7 @@ def main():
     fetch_p.add_argument("jql", nargs="?", default=None, help="JQL query string")
     fetch_p.add_argument(
         "--type",
+        type=type_registry.type_arg(_TYPES),
         choices=_TYPES.choices(),
         default="rfe",
         help="Issue type (default: rfe)",

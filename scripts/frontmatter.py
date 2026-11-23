@@ -170,19 +170,23 @@ def _schema_for(path, schema_type=None):
     if fm_type is None or by_dir is None:
         return by_dir
     registered = ", ".join(_TYPES.names())
-    if fm_type not in _TYPES:
+    # A stored type name is compared through the family alias (design §3.2.2): a restored
+    # artifact that declares a single-member family's name reads under its member's schema. The
+    # stored line is never rewritten.
+    fm_canon = _TYPES.try_canonical(fm_type)
+    if fm_canon is None:
         raise SchemaTypeError(
             f"{path}: frontmatter type: {fm_type} is not a registered type (registered "
             f"types: {registered})"
         )
     dir_type, kind = by_dir.rsplit("-", 1)
-    if dir_type != fm_type:
+    if dir_type != fm_canon:
         raise SchemaTypeError(
             f"{path}: frontmatter type: {fm_type} but the path is under the {dir_type} "
             f"{kind} directory ({by_dir} by path); a self-describing artifact and its "
             f"directory must agree — move the file or fix the type field"
         )
-    return f"{fm_type}-{kind}"
+    return f"{fm_canon}-{kind}"
 
 
 def _directory_disagreement(path, schema_type, new_type):
@@ -214,7 +218,7 @@ def _directory_disagreement(path, schema_type, new_type):
         if effective is None:
             effective = schema_type.rsplit("-", 1)[0]
             source = f"--schema-type {schema_type}"
-    if effective == dir_type:
+    if (_TYPES.try_canonical(effective) or effective) == dir_type:
         return None
     return (
         f"{path} is under the {dir_type} {kind} directory ({by_dir} by path) but {source} "
@@ -261,6 +265,22 @@ def cmd_read(args):
     # Output as JSON for easy parsing by callers
     json.dump(data, sys.stdout, indent=2, default=str)
     print()
+
+
+def _schema_type_arg(value):
+    """``<name>-<kind>`` with the name canonicalised (a single-member family name answers
+    through its member, design §3.2.2), so ``--schema-type <family>-task`` keeps naming the
+    member's schema; anything else is argparse's own invalid-choice error listing the keys."""
+    name, sep, kind = value.rpartition("-")
+    candidate = value
+    if sep:
+        concrete = _TYPES.try_canonical(name)
+        if concrete is not None:
+            candidate = f"{concrete}-{kind}"
+    if candidate not in SCHEMAS:
+        choices = ", ".join(repr(k) for k in SCHEMAS)
+        raise argparse.ArgumentTypeError(f"invalid choice: {value!r} (choose from {choices})")
+    return candidate
 
 
 def cmd_set(args):
@@ -317,7 +337,10 @@ def cmd_set(args):
     # into a file the rfe schema validates would create exactly the self-contradicting
     # artifact the rung above refuses to read.
     schema_owner = schema_type.rsplit("-", 1)[0]
-    if data.get("type") is not None and data["type"] != schema_owner:
+    declared = data.get("type")
+    # Compared through the family alias (design §3.2.2): `type=<family>` under the member's
+    # schema is accepted and written AS GIVEN (every pipeline writer stamps the member).
+    if declared is not None and (_TYPES.try_canonical(declared) or declared) != schema_owner:
         print(
             f"Error: type={data['type']} disagrees with the {schema_type} schema that "
             f"validates {args.file} (its type is {schema_owner})",
@@ -398,7 +421,10 @@ def main():
     # schema
     p_schema = subparsers.add_parser("schema", help="Show schema for a file type")
     p_schema.add_argument(
-        "schema_type", choices=list(SCHEMAS.keys()), help="Schema type to display"
+        "schema_type",
+        type=_schema_type_arg,
+        choices=list(SCHEMAS.keys()),
+        help="Schema type to display",
     )
     p_schema.set_defaults(func=cmd_schema)
 
@@ -408,6 +434,7 @@ def main():
     p_read.add_argument(
         "--schema-type",
         dest="schema_type",
+        type=_schema_type_arg,
         choices=list(SCHEMAS.keys()),
         help="Schema type (auto-detected from path if omitted)",
     )
@@ -425,6 +452,7 @@ def main():
     p_set.add_argument(
         "--schema-type",
         dest="schema_type",
+        type=_schema_type_arg,
         choices=list(SCHEMAS.keys()),
         help="Schema type (auto-detected from path if omitted)",
     )

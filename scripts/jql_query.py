@@ -87,6 +87,7 @@ def main():
     parser.add_argument("--limit", type=int, default=None, help="Maximum number of keys to return")
     parser.add_argument(
         "--project",
+        type=type_registry.type_arg(_TYPES),
         choices=_TYPES.choices(),
         default="rfe",
         help="Project type for label filtering (default: rfe)",

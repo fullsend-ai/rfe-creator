@@ -142,7 +142,13 @@ def reconcile(ids, type_name, cycles=0, keep_state=False, artifacts_dir=None):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--type", choices=_TYPES.choices(), default="rfe", help="Work item type")
+    parser.add_argument(
+        "--type",
+        type=type_registry.type_arg(_TYPES),
+        choices=_TYPES.choices(),
+        default="rfe",
+        help="Work item type",
+    )
     parser.add_argument("--cycles", type=int, default=0, help="Reassess cycles the batch ran")
     parser.add_argument(
         "--keep-state",

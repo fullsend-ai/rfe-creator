@@ -1049,6 +1049,7 @@ def main():
     # prints the D3 line. The rendered default is unchanged.
     parser.add_argument(
         "--type",
+        type=type_registry.type_arg(_TYPES),
         choices=_TYPES.choices(),
         default=None,
         help="Entry type (default: rfe)",

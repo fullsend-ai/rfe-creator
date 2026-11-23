@@ -521,13 +521,15 @@ class TestMerge:
 
     def test_thresholds_deep_merge(self, fixture_registry):
         family = fixture_registry.family(FAMILY).data["eval"]["thresholds"]
-        assert len(family) == 11
-        for name in MEMBERS:
-            thresholds = fixture_registry.get(name).data["eval"]["thresholds"]
-            assert len(thresholds) == 12
-            assert thresholds[f"{name}_quality"] == {"min_mean": 3.5}
-            for key, value in family.items():
-                assert thresholds[key] == value, key
+        assert len(family) == 12
+        assert family["brief_quality"] == {"min_mean": 3.5}  # the family's judge key
+        acme = fixture_registry.get("brief-acme").data["eval"]["thresholds"]
+        assert acme == family  # inherited whole: a member names no judge of its own
+        globex = fixture_registry.get("brief-globex").data["eval"]["thresholds"]
+        assert globex["classification_signal"] == {"min_pass_rate": 0.95}  # the member's own
+        assert {k: v for k, v in globex.items() if k != "classification_signal"} == {
+            k: v for k, v in family.items() if k != "classification_signal"
+        }
 
     def test_marker_and_identity_keys(self, fixture_registry):
         family = fixture_registry.family(FAMILY).data
@@ -984,11 +986,16 @@ class TestGate1:
     def test_render_type_succeeds_for_both_members(self, fixture_registry, name):
         text = generate_eval_config.render_type(fixture_registry.get(name), repo_root=REPO_ROOT)
         rendered = yaml.safe_load(text)
-        assert rendered["name"] == f"{name}-speedrun"
-        assert f"{name}_quality" in text
+        # The eval identity is the FAMILY's (generate_eval_config.eval_stem): run name, the
+        # --type the harness passes and the judge key; the member's name appears nowhere.
+        assert rendered["name"] == "brief-speedrun"
+        assert rendered["execution"]["arguments"].endswith(f"--type {name}")  # always resolves
         judges = {j["name"] for j in rendered["judges"]}
-        assert f"{name}_quality" in judges
-        assert "brief_quality" not in text
+        assert "brief_quality" in judges
+        assert f"{name}_quality" not in text
+        assert f"name: {name}-speedrun" not in text
+        # The member's own eval facts still render where the skeleton reads merged data.
+        assert rendered["mlflow"]["experiment"] == f"{name}-speedrun-eval"
 
 
 # ── gate 1: findings on mutated copies ──────────────────────────────────────────
@@ -1522,7 +1529,7 @@ class TestRegistryCli:
         assert result.returncode == 0, result.stderr
         assert expect(result.stdout), result.stdout
         assert result.stderr == "# brief: a type family; answered by its sole member brief-acme\n"
-        # The alias is the diagnostic CLI's only: show stays strict about which file it prints.
+        # The alias never applies to show: it stays strict about which file it prints.
         shown = _registry("show", FAMILY, root=families_copy)
         assert shown.stdout.startswith("# brief (family; members: brief-acme)")
 
@@ -1538,12 +1545,24 @@ class TestRegistryCli:
         assert by_id.returncode == 0
         assert by_id.stdout.startswith("TYPE RESOLVED: brief-globex")
 
-    def test_resolve_the_family_is_unknown(self):
+    def test_resolve_a_two_member_family_names_the_members(self):
+        # A family name resolves only while the family has one member; with two, rung 1 says
+        # which members there are (canonical's text), never "unknown type".
         result = _registry("resolve", "--type", FAMILY)
         assert result.returncode == 1
-        assert result.stderr == (
-            "ERROR: unknown type 'brief' (--type); registered types: brief-acme, brief-globex\n"
+        assert result.stderr == f"ERROR: {TWO_MEMBER_TEXT}\n"
+
+    def test_resolve_a_single_member_family_answers_through_its_member(self, families_copy):
+        shutil.rmtree(families_copy / "brief-globex")
+        result = _registry("resolve", "--type", FAMILY, root=families_copy)
+        assert (result.returncode, result.stdout, result.stderr) == (
+            0,
+            "TYPE RESOLVED: brief-acme (--type)\n",
+            "",
         )
+        # The family name beside one of the member's ids is not a conflict.
+        by_id = _registry("resolve", "--type", FAMILY, "ACME-1", root=families_copy)
+        assert (by_id.returncode, by_id.stdout) == (0, "TYPE RESOLVED: brief-acme (--type)\n")
 
     @staticmethod
     def _pairs(stdout):
@@ -1641,7 +1660,9 @@ class TestGenerateEvalConfig:
         assert (repo_copy / "eval.yaml").is_file()
         assert (repo_copy / "eval-initiative.yaml").is_file()
         acme = yaml.safe_load((repo_copy / "eval.yaml").read_text(encoding="utf-8"))
-        assert acme["name"] == "brief-acme-speedrun"
+        assert acme["name"] == "brief-speedrun"  # the family's run name (eval_stem)
+        header = (repo_copy / "eval.yaml").read_text(encoding="utf-8").splitlines()[2]
+        assert "brief-acme/type.yaml (extends " in header and "brief/type.yaml)" in header
         assert generate_eval_config.main(["--check", *args]) == 0
         out = capsys.readouterr()
         assert out.out == (
@@ -1661,7 +1682,7 @@ class TestGenerateEvalConfig:
         )
         assert generate_eval_config.main(["--type", "brief-globex", "--stdout", *args]) == 0
         rendered = yaml.safe_load(capsys.readouterr().out)
-        assert rendered["name"] == "brief-globex-speedrun"
+        assert rendered["name"] == "brief-speedrun"
 
 
 # ── the prefix grammar ──────────────────────────────────────────────────────────

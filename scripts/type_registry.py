@@ -1190,8 +1190,11 @@ class TypeRegistry:
     def canonical(self, name):
         """The concrete type name behind ``name``: ``name`` itself when it is a type; the sole
         member when it is a family with exactly one; ``KeyError`` otherwise. The one seam the
-        family-name alias goes through (the diagnostic CLI today; the Initiative split widens
-        it)."""
+        family-name alias goes through: every boundary a type NAME crosses — the argparse
+        converter ``type_arg``, ``parse_type_arg``, ``resolve``, the artifact and state readers
+        (``try_canonical``), ``validate_all(only=)``, ``generate_eval_config --type``, a
+        workspace ``bindings:`` key, the CLI — canonicalises through it; the tables stay keyed by
+        concrete name (AISDLC-851)."""
         if name in self._types:
             return name
         if name in self._families:
@@ -1208,6 +1211,16 @@ class TypeRegistry:
                 "name one of them"
             )
         return self.get(name).name
+
+    def try_canonical(self, name):
+        """``canonical(name)``, or None when ``name`` is neither a type nor a single-member
+        family — the readers' tolerant compare: an unknown stored name is compared as written."""
+        if not isinstance(name, str):
+            return None  # a corrupted stored value (a list, a mapping) is never a type name
+        try:
+            return self.canonical(name)
+        except KeyError:
+            return None
 
     # -- effective bindings (design §3.2.1) -------------------------------------------------
 
@@ -1231,14 +1244,26 @@ class TypeRegistry:
             return {}
         mapping = load_workspace_bindings(self.workspace_root)
         # A block keyed by an unregistered name is a typo, not a no-op: it fails like a typo in
-        # a field name does, in both modes (the file is malformed for this registry).
-        unknown = [name for name in mapping if name not in self._types]
-        if unknown:
-            raise RegistryError(
-                f"{self.workspace_root / WORKSPACE_FILENAME}: {WORKSPACE_BINDINGS_KEY}."
-                f"{unknown[0]}: unknown type; registered types: "
-                f"{', '.join(self.names()) or '(none)'}"
-            )
+        # a field name does, in both modes (the file is malformed for this registry). A
+        # single-member family's name binds its member (design §3.2.2); two spellings of one
+        # type are a conflict, not a merge.
+        rekeyed, spelled = {}, {}
+        for name, block in mapping.items():
+            concrete = self.try_canonical(name)
+            if concrete is None:
+                raise RegistryError(
+                    f"{self.workspace_root / WORKSPACE_FILENAME}: {WORKSPACE_BINDINGS_KEY}."
+                    f"{name}: unknown type; registered types: "
+                    f"{', '.join(self.names()) or '(none)'}"
+                )
+            if concrete in rekeyed:
+                raise RegistryError(
+                    f"{self.workspace_root / WORKSPACE_FILENAME}: {WORKSPACE_BINDINGS_KEY}."
+                    f"{spelled[concrete]} and {WORKSPACE_BINDINGS_KEY}.{name} both bind type "
+                    f"{concrete}; keep one block"
+                )
+            rekeyed[concrete], spelled[concrete] = block, name
+        mapping = rekeyed
         if not is_headless(self.env, self.headless or bool(headless)):
             return mapping
         if mapping:
@@ -1544,10 +1569,17 @@ def resolve(
     registered_text = ", ".join(registered) or "(none)"
 
     def known(name, where):
-        if name not in registry:
+        """The concrete name behind ``name``: a single-member family answers through its sole
+        member (design §3.2.2); unknown -> ``ResolveError`` with the registered list; a family
+        with no or several members -> ``canonical()``'s own text."""
+        try:
+            return registry.canonical(name)
+        except KeyError as exc:
+            if name in registry.families():
+                raise ResolveError(exc.args[0]) from None
             raise ResolveError(
                 f"unknown type {name!r} ({where}); registered types: {registered_text}"
-            )
+            ) from None
 
     def resolved(name, rung, provisional):
         desc = registry.get(name)
@@ -1562,9 +1594,10 @@ def resolve(
             )
         return Resolution(name, desc, rung, provisional, effective, [])
 
-    # rung 1
+    # rung 1 — the spelling as given is kept for the messages; the concrete name decides
+    explicit_given = explicit_type
     if explicit_type is not None:
-        known(explicit_type, "--type")
+        explicit_type = known(explicit_type, "--type")
 
     # rung 2 — (item_id, strict): strict ids are the caller's and the batch's; a derived
     # artifact stem is not (D5 applies to strict ids only).
@@ -1578,10 +1611,11 @@ def resolve(
     elif batch is not None:
         batch_type, batch_ids = _batch_signal(batch)
     if batch_type is not None:
-        known(batch_type, f"{batch} type:")
+        batch_given = batch_type
+        batch_type = known(batch_type, f"{batch} type:")
         if explicit_type is not None and explicit_type != batch_type:
             raise ResolveError(
-                f"--type {explicit_type} disagrees with {batch} type: {batch_type}; both are "
+                f"--type {explicit_given} disagrees with {batch} type: {batch_given}; both are "
                 f"explicit, so neither is guessed — pass one or make them agree (PR-3 D1)"
             )
     if items_are_ids:
@@ -1594,8 +1628,10 @@ def resolve(
     if artifact is not None:
         fm_type, dir_name, stem = _artifact_signal(artifact)
         if fm_type is not None:
-            known(fm_type, f"{artifact} frontmatter type:")
-            deterministic.append(("frontmatter type", f"{artifact} (type: {fm_type})", [fm_type]))
+            # The file's spelling stays in the label (a restored artifact may carry a family
+            # name); the candidate is the concrete type.
+            fm_canon = known(fm_type, f"{artifact} frontmatter type:")
+            deterministic.append(("frontmatter type", f"{artifact} (type: {fm_type})", [fm_canon]))
         else:
             owners = [d.name for d in registry if dir_name and dir_name in _artifact_dirs(d)]
             if owners:
@@ -2142,9 +2178,15 @@ def parse_type_arg(registry, argv, default=LEGACY_DEFAULT_TYPE, flag="--type"):
             raise ResolveError(f"{flag} requires a value; registered types: {registered}", 2)
         name = argv[idx + 1]
         del argv[idx : idx + 2]
-        if name not in registry:
-            raise ResolveError(f"unknown {flag} {name!r}; registered types: {registered}", 2)
-        return name, argv
+        # A single-member family's name answers through its sole member (design §3.2.2).
+        try:
+            return registry.canonical(name), argv
+        except KeyError as exc:
+            if name in registry.families():
+                raise ResolveError(exc.args[0], 2) from None
+            raise ResolveError(
+                f"unknown {flag} {name!r}; registered types: {registered}", 2
+            ) from None
     if default not in registry:
         raise ResolveError(
             f"no {flag} given and the default type {default!r} is not registered; registered "
@@ -2152,6 +2194,27 @@ def parse_type_arg(registry, argv, default=LEGACY_DEFAULT_TYPE, flag="--type"):
             2,
         )
     return default, argv
+
+
+def type_arg(registry):
+    """The argparse ``type=`` converter of every ``--type`` option, used BESIDE
+    ``choices=registry.choices()``: argparse converts first, then checks membership, so a
+    single-member family name is converted to its member and passes the concrete choices list
+    (design §3.2.2, AISDLC-851). An unknown name — or a family with no or several members — is
+    argparse's own invalid-choice error, so the exit code (2) and the message shape callers pin
+    are unchanged; only the list names the concrete types."""
+
+    def convert(value):
+        try:
+            return registry.canonical(value)
+        except KeyError:
+            names = ", ".join(repr(n) for n in registry.names())
+            raise argparse.ArgumentTypeError(
+                f"invalid choice: {value!r} (choose from {names})"
+            ) from None
+
+    convert.__name__ = "type"  # argparse names the converter in some of its messages
+    return convert
 
 
 # -- CLI -----------------------------------------------------------------------------------
@@ -2174,6 +2237,11 @@ def _cmd_list(reg, args):
     else:
         for name in reg.names():
             print(name)
+    return 0
+
+
+def _cmd_canonical(reg, args):
+    print(reg.canonical(args.type))  # KeyError -> main prints ERROR: <text>, exit 1
     return 0
 
 
@@ -2227,6 +2295,15 @@ def _cmd_launch_vars(reg, args):
     return 0
 
 
+def digest_label(reg, desc):
+    """The name a type renders under in the classification digest: its family's name when it
+    is the family's sole member (the alias resolves it), else its own."""
+    family = desc.extends
+    if family is not None and len(reg.members(family)) == 1:
+        return family
+    return desc.name
+
+
 def classification_digest(reg):
     """Design §6 stage 1 (AISDLC-190): one entry per registered type that lists the ``create``
     stage and declares a ``classification`` block, in registry order — what the generic create
@@ -2240,7 +2317,12 @@ def classification_digest(reg):
             continue
         rows.append(
             {
-                "type": desc.name,
+                # The sole member of a family renders under the FAMILY's name: the digest is
+                # the create step's and the review agent's vocabulary (`consider /rfe-create
+                # --type <family>`) and the alias resolves it. With two or more members each
+                # renders under its own name — the family name would not resolve (the
+                # second-member story decides the digest's shape).
+                "type": digest_label(reg, desc),
                 "entity": desc.get("display.entity", desc.name),
                 "summary": block.get("summary", ""),
                 "driver": block.get("driver", ""),
@@ -2285,8 +2367,9 @@ def _cmd_classification(reg, args):
     headless gate does not apply to it."""
     others = getattr(args, "others", None)
     if others is not None:
-        reg.get(others)  # unknown type: the registry's own error, exit 2
-        rows = [r for r in classification_digest(reg) if r["type"] != others]
+        mine = reg.get(reg.canonical(others))  # unknown: the registry's own KeyError text, exit 1
+        label = digest_label(reg, mine)  # the row the type renders under (its family's, if sole)
+        rows = [r for r in classification_digest(reg) if r["type"] != label]
         if args.json:
             _emit(rows, True)
         else:
@@ -2403,6 +2486,16 @@ def _build_parser():
         "never bound or run; design §3.2.2)",
     )
     p_families.set_defaults(func=_cmd_families)
+
+    p_canonical = sub.add_parser(
+        "canonical",
+        parents=[common],
+        help="print the concrete type name behind NAME: the name itself for a type, the sole "
+        "member for a single-member type family; exit 1 with the reason otherwise (what "
+        "scripts/bootstrap.sh and the operator scripts call; design §3.2.2)",
+    )
+    p_canonical.add_argument("type", metavar="NAME")
+    p_canonical.set_defaults(func=_cmd_canonical)
 
     p_show = sub.add_parser("show", parents=[common], help="print a descriptor")
     p_show.add_argument("type")
