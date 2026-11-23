@@ -298,7 +298,9 @@ MIGRATED = [
         (87, 102, 106, 147, 148, 153, 154, 155, 156),
         "argparse choices of the migrated scripts (+ rows 62, 66, 70)",
         "PR-2a: registry.choices(); the source form is pinned by "
-        "test_migrated_argparse_choices_read_the_registry",
+        "test_migrated_argparse_choices_read_the_registry; the type_arg converter beside every "
+        "registry choices= site (AISDLC-851 PR-1) by "
+        "test_every_registry_choices_site_carries_the_type_arg_converter",
     ),
     (
         tuple(range(89, 101)),
@@ -317,14 +319,15 @@ MIGRATED = [
         "list) with no argparse choices to pin",
     ),
     (
-        tuple(range(125, 141)),
-        "check_review_progress.PHASE_CHECKS / check_id modes",
+        tuple(range(125, 142)),
+        "check_review_progress.PHASE_CHECKS / check_id modes / _detect_fast allowlist",
         "PR-2b: dirs x poll_prefix x {fetch, assess (shared staging), review, revise, split} + "
         "pipeline.dimensions[].name (+ the rfe-only create row), identity.id_field in the create "
-        "mode, modes by phase base; still literal and pinned: the create grandfather "
-        "_CREATE_BARRIER_TYPES (row 125 residue here), the initiative row order "
-        "(_LEGACY_ROW_ORDER — CLI choices text; tests/test_check_review_progress.py), the "
-        "_detect_fast allowlist (141) and the choices source form (142)",
+        "mode, modes by phase base; PR-1 (AISDLC-851): _FAST_POLL_CONFIGS = state_prefix x "
+        "{review, split, speedrun} over names() (141); still literal and pinned: the create "
+        "grandfather _CREATE_BARRIER_TYPES (row 125 residue here), the initiative row order "
+        "(_LEGACY_ROW_ORDER — CLI choices text, keyed by the family name and looked up through "
+        "desc.extends; tests/test_check_review_progress.py) and the choices source form (142)",
     ),
     (
         (143, 144, 145, 146),
@@ -360,6 +363,37 @@ MIGRATED = [
         (157,),
         "check_right_sized._TYPE_CONFIG / resplit threshold",
         "PR-2a: dirs.reviews + pipeline.resplit; below == 2 stays a descriptor guard (Q3)",
+    ),
+    (
+        (158,),
+        "check_autofix_complete._TYPE_CONFIG",
+        "PR-1 (AISDLC-851): tmp/{pipeline.state_prefix}speedrun-all-ids.txt + dirs.reviews over "
+        "every type declaring both (the 'registered but no entry' branch stays for a partial "
+        "drop-in; tests/test_check_autofix_complete.py)",
+    ),
+    (
+        (159,),
+        "compare_review_outputs._TYPE_CONFIG / --type choices",
+        "PR-1 (AISDLC-851): dirs(bare) + schema.review.score_fields over names(); --type is "
+        "registry.choices() with the type_arg converter (source forms pinned by "
+        "test_migrated_argparse_choices_read_the_registry and "
+        "test_every_registry_choices_site_carries_the_type_arg_converter)",
+    ),
+    (
+        (160,),
+        "cleanup_partial_split dirs / scan / id_field / parent lookup / --type choices",
+        "PR-1 (AISDLC-851): desc = _TYPES.get(args.type) — dirs(bare), artifact_utils.scan_tasks"
+        "(desc), identity.id_field, find_task_file_including_archived(desc=desc), "
+        "f'{type}-task'; --type is registry.choices() with the converter (source forms pinned in "
+        "TestSmallRegistries and by the converter sweep in TestRegistryShape); still literal: "
+        "the parent_id help text (a lint_prefix_predicates baseline hit)",
+    ),
+    (
+        (161,),
+        "check_content_preservation batch dirs / --type choices",
+        "PR-1 (AISDLC-851): desc.dirs() originals / tasks; --type is registry.choices() with the "
+        "converter (source forms pinned in TestSmallRegistries and by the converter sweep in "
+        "TestRegistryShape)",
     ),
     (
         (162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 174, 175),
@@ -564,8 +598,8 @@ def fm(fields, body="Body\n"):
 
 
 class TestRegistryShape:
-    # rows: 142, 159, 160, 161 + the source form of 162 (25, 46, 47-50, 53-56, 60, 62, 65, 66,
-    # 70, 87, 102, 106, 124, 147, 148, 153-156, 162 MIGRATED)
+    # rows: 142 + the source form of 162 (25, 46, 47-50, 53-56, 60, 62, 65, 66, 70, 87, 102,
+    # 106, 124, 147, 148, 153-156, 159-162 MIGRATED)
 
     def test_shipped_types_in_argparse_order(self):
         assert TYPES == ["rfe", "initiative", "react-shopping-cart"]
@@ -593,6 +627,12 @@ class TestRegistryShape:
     @pytest.mark.parametrize(
         "rel, flag",
         [
+            # (check_revised.py / check_right_sized.py / check_autofix_complete.py hand-parse
+            # --type and validate it against the registry since PR-3a — no choices= to pin; the
+            # error path is covered by their own tests)
+            ("scripts/compare_review_outputs.py", "--type"),  # PR-1 (AISDLC-851), row 159
+            ("scripts/cleanup_partial_split.py", "--type"),  # PR-1 (AISDLC-851), row 160
+            ("scripts/check_content_preservation.py", "--type"),  # PR-1 (AISDLC-851), row 161
             ("scripts/jql_query.py", "--project"),
             ("scripts/check_conflicts.py", "--type"),
             ("scripts/validate_batch_input.py", "--type"),
@@ -616,8 +656,8 @@ class TestRegistryShape:
         ],
     )
     def test_migrated_argparse_choices_read_the_registry(self, rel, flag):
-        # MIGRATED rows 25, 46, 53, 60, 62, 65, 66, 70, 87, 102, 106, 147, 148, 153-156 — the
-        # literal list is gone; the source form is pinned (as
+        # MIGRATED rows 25, 46, 53, 60, 62, 65, 66, 70, 87, 102, 106, 147, 148, 153-156, 159-161
+        # — the literal list is gone; the source form is pinned (as
         # test_frontmatter_schema_choices_are_the_schema_keys pins "list(SCHEMAS.keys())") so a
         # re-introduced literal list is a visible change.
         assert choices(rel, flag) == ["_TYPES.choices()"], rel
@@ -629,6 +669,64 @@ class TestRegistryShape:
         assert choices("scripts/pipeline_state.py", "--type") == [
             "[n for n in _TYPES.choices() if n in PIPELINE_TYPES]"
         ]
+
+    # Every argparse site whose choices= is the registry's, in scripts/*.py glob order — the
+    # 20 parametrised above plus pipeline_state's filtered comprehension and reconcile_reviews.
+    # check_revised / check_right_sized hand-parse --type (parse_type_arg): no site to carry it.
+    REGISTRY_CHOICES_SITES = [
+        ("scripts/batch_summary.py", "--type"),
+        ("scripts/bootstrap_snapshot.py", "--type"),
+        ("scripts/check_conflicts.py", "--type"),
+        ("scripts/check_content_preservation.py", "--type"),
+        ("scripts/cleanup_partial_split.py", "--type"),
+        ("scripts/collect_children.py", "--type"),
+        ("scripts/collect_recommendations.py", "--type"),
+        ("scripts/compare_review_outputs.py", "--type"),
+        ("scripts/error_collect.py", "--type"),
+        ("scripts/fetch_issue.py", "--type"),
+        ("scripts/generate_review_pdf.py", "--type"),
+        ("scripts/generate_run_report.py", "--type"),
+        ("scripts/jql_query.py", "--project"),
+        ("scripts/pipeline_state.py", "--type"),
+        ("scripts/reassess_save.py", "--type"),
+        ("scripts/reconcile_reviews.py", "--type"),
+        ("scripts/snapshot_fetch.py", "--type"),
+        ("scripts/split_collect.py", "--type"),
+        ("scripts/split_submit.py", "--type"),
+        ("scripts/submit.py", "--type"),
+        ("scripts/validate_batch_input.py", "--type"),
+        ("scripts/verify_phase.py", "--type"),
+    ]
+    REGISTRY_CHOICES_FORMS = {
+        "_TYPES.choices()",
+        "[n for n in _TYPES.choices() if n in PIPELINE_TYPES]",
+    }
+    TYPE_ARG_CONVERTER = "type_registry.type_arg(_TYPES)"
+
+    def test_every_registry_choices_site_carries_the_type_arg_converter(self):
+        # AISDLC-851 PR-1 (design §3.2.2): argparse converts BEFORE it checks membership, so a
+        # choices=_TYPES.choices() site without type=type_registry.type_arg(_TYPES) beside it
+        # refuses a single-member family's name as an invalid choice. Swept over scripts/*.py by
+        # AST rather than read off the parametrised list above (a new site could be left off
+        # it); the sites found are pinned as a list so the count stays visible.
+        found = []
+        for path in sorted((REPO_ROOT / "scripts").glob("*.py")):
+            rel = f"scripts/{path.name}"
+            for node in ast.walk(ast.parse(read(rel))):
+                if not (
+                    isinstance(node, ast.Call)
+                    and getattr(node.func, "attr", None) == "add_argument"
+                ):
+                    continue
+                kws = {kw.arg: ast.unparse(kw.value) for kw in node.keywords}
+                if kws.get("choices") not in self.REGISTRY_CHOICES_FORMS:
+                    continue
+                first = node.args[0] if node.args else None
+                flag = first.value if isinstance(first, ast.Constant) else None
+                found.append((rel, flag, kws.get("type")))
+        assert [(rel, flag) for rel, flag, _ in found] == self.REGISTRY_CHOICES_SITES
+        bare = [(rel, flag) for rel, flag, conv in found if conv != self.TYPE_ARG_CONVERTER]
+        assert bare == [], f"registry choices= without the type_arg converter: {bare}"
 
     def test_pipeline_types_and_state_validation_share_the_choices(self):
         # scripts/pipeline_state.py:507-509 — type binds at init (design §5)
@@ -1180,8 +1278,8 @@ class TestJqlAndJiraUtils:
 
 
 class TestSmallRegistries:
-    # rows: 66 (residue), 68 (reconciliation invariant), 107, 154, 155, 157-161 (residues) —
-    # 65, 66, 67, 68, 69, 70, 105, 148-157, 170 MIGRATED as listed above
+    # rows: 66 (residue), 68 (reconciliation invariant), 107, 154, 155, 157 (residues) —
+    # 65, 66, 67, 68, 69, 70, 105, 148-161, 170 MIGRATED as listed above
 
     def test_fetch_issue_fetch_all_is_type_aware(self):
         # rows: 65 (MIGRATED) — fetch_issue.py:59-60,:98,:122 carried the rfe literals and :224
@@ -1363,20 +1461,23 @@ class TestSmallRegistries:
         assert resplit["score_field"] in ctx.score_fields
 
     def test_check_autofix_complete_encodes_state_prefix(self, ctx):
-        # rows: 158 — check_autofix_complete.py:16-25 (the only dict encoding state_prefix)
+        # rows: 158 (MIGRATED, PR-1 of AISDLC-851) — check_autofix_complete._TYPE_CONFIG derives
+        # from pipeline.state_prefix + dirs.reviews; the derived constant renders today's bytes
         expected = {
             "ids_file": f"tmp/{ctx.sp}speedrun-all-ids.txt",
             "reviews_dir": ctx.dirs["reviews"],
         }
         pin(
             "pipeline.state_prefix + dirs.reviews",
-            "check_autofix_complete.py:16-25",
+            "check_autofix_complete._TYPE_CONFIG",
             expected,
             check_autofix_complete._TYPE_CONFIG[ctx.t],
         )
+        assert list(check_autofix_complete._TYPE_CONFIG) == TYPES
 
     def test_compare_review_outputs(self, ctx):
-        # rows: 159 — compare_review_outputs.py:16-29
+        # rows: 159 (MIGRATED, PR-1 of AISDLC-851) — compare_review_outputs._TYPE_CONFIG derives
+        # from dirs(bare) + schema.review.score_fields; the derived constant renders today's bytes
         expected = {
             "reviews_dir": ctx.bare["reviews"],
             "originals_dir": ctx.bare["originals"],
@@ -1385,25 +1486,41 @@ class TestSmallRegistries:
         }
         pin(
             "dirs (bare) + schema.review.score_fields",
-            "compare_review_outputs.py:16-29",
+            "compare_review_outputs._TYPE_CONFIG",
             expected,
             compare_review_outputs._TYPE_CONFIG[ctx.t],
         )
+        assert list(compare_review_outputs._TYPE_CONFIG) == TYPES
 
     def test_cleanup_partial_split_reads_the_descriptor(self, ctx):
-        # rows: 160 MIGRATED (react-shopping-cart) — cleanup_partial_split.py reads dirs,
-        # id_field and the task schema from the descriptor; the source form is pinned
+        # rows: 160 (MIGRATED, PR-1 of AISDLC-851) — the inline per-type branches are gone; the
+        # source form is pinned so a re-introduced literal dir, id field or schema name is a
+        # visible change (the parent_id help text keeps its project-key examples: a
+        # lint_prefix_predicates baseline hit, not a predicate)
         source = read("scripts/cleanup_partial_split.py")
-        assert 'dirs = desc.dirs("bare")' in source
+        assert "desc = _TYPES.get(args.type)" in source
+        assert 'bare = desc.dirs("bare")' in source
+        assert 'tasks_dir = os.path.join(ARTIFACTS_DIR, bare["tasks"])' in source
+        assert 'reviews_dir = os.path.join(ARTIFACTS_DIR, bare["reviews"])' in source
+        assert "all_tasks = scan_tasks(ARTIFACTS_DIR, desc)" in source
         assert "id_field = desc.id_field" in source
+        assert (
+            "parent_path = find_task_file_including_archived(ARTIFACTS_DIR, parent_id, desc=desc)"
+            in source
+        )
         assert 'schema_type = f"{desc.name}-task"' in source
-        assert "find_task_file_including_archived(ARTIFACTS_DIR, parent_id, desc=desc)" in source
+        for literal in (ctx.bare["tasks"], ctx.bare["reviews"], ctx.id_field, ctx.task_schema):
+            assert f'"{literal}"' not in source, literal
 
     def test_check_content_preservation_reads_the_descriptor(self, ctx):
-        # rows: 161 MIGRATED (react-shopping-cart) — the batch dirs come from the descriptor
+        # rows: 161 (MIGRATED, PR-1 of AISDLC-851) — the batch branch reads dirs from the
+        # descriptor; the source form is pinned like the other migrated sites
         source = read("scripts/check_content_preservation.py")
-        assert "dirs = _TYPES.get(args.type).dirs()" in source
-        assert 'originals_dir = dirs["originals"]' in source
+        assert "desc = _TYPES.get(args.type)" in source
+        assert 'originals_dir = desc.dirs()["originals"]' in source
+        assert 'tasks_dir = desc.dirs()["tasks"]' in source
+        for literal in (ctx.bare["originals"], ctx.bare["tasks"]):
+            assert f'"{literal}"' not in source, literal
 
 
 # ── generate_run_report.TYPE_CONFIG ───────────────────────────────────────────────────────────
@@ -1882,8 +1999,9 @@ def _expected_phase_rows(ctx):
 
 
 class TestPhaseChecks:
-    # rows: 125 (residue), 141, 142 (125-140 MIGRATED: PHASE_CHECKS and the check_id modes derive
-    # from dirs x poll_prefix x pipeline.dimensions[].name since PR-2b;
+    # rows: 125 (residue), 142 (125-141 MIGRATED: PHASE_CHECKS and the check_id modes derive
+    # from dirs x poll_prefix x pipeline.dimensions[].name since PR-2b, the _detect_fast
+    # allowlist from pipeline.state_prefix since PR-1 of AISDLC-851;
     # tests/test_check_review_progress.py::TestDerivedFromRegistry holds the projection, today's
     # 14-key order and the four modes)
 
@@ -1896,18 +2014,23 @@ class TestPhaseChecks:
         assert len(check_review_progress.PHASE_CHECKS) == 22
 
     def test_detect_fast_config_allowlist(self):
-        # rows: 141 — check_review_progress.py _detect_fast reads _interactive_configs(), each ==
-        # f"tmp/{state_prefix}{stage}-config.yaml" over the interactive stages (PR-5a dropped
-        # the never-written *-autofix-config.yaml entries; PR-5b added the speedrun's, whose
-        # generic body polls the Phase-1 barrier); derived from the registry since the
-        # react-shopping-cart PR
-        import check_review_progress
-
-        assert check_review_progress.INTERACTIVE_STAGES == STATE_STAGES
+        # rows: 141 (MIGRATED, PR-1 of AISDLC-851) — check_review_progress._FAST_POLL_CONFIGS ==
+        # f"tmp/{state_prefix}{stage}-config.yaml" over names() x the interactive stages, in
+        # registry order (PR-5a dropped the never-written *-autofix-config.yaml entries; PR-5b
+        # added the initiative speedrun's, whose generic body polls the Phase-1 barrier); the
+        # derived tuple renders today's six strings and _detect_fast iterates it
         expected = tuple(
             f"tmp/{_ctx(t).sp}{stage}-config.yaml" for t in TYPES for stage in STATE_STAGES
         )
-        assert check_review_progress._interactive_configs() == expected
+        assert check_review_progress._FAST_POLL_STAGES == STATE_STAGES
+        assert check_review_progress._FAST_POLL_CONFIGS == expected
+        fn = next(
+            n
+            for n in ast.walk(ast.parse(read("scripts/check_review_progress.py")))
+            if isinstance(n, ast.FunctionDef) and n.name == "_detect_fast"
+        )
+        loop = next(n for n in ast.walk(fn) if isinstance(n, ast.For))
+        assert ast.unparse(loop.iter) == "_FAST_POLL_CONFIGS"
 
     def test_phase_flag_choices_are_the_table_keys(self):
         # rows: 142 — check_review_progress.py:157,:163
@@ -2111,11 +2234,12 @@ class TestArtifactHelpers:
         rfe, init = REG.get("rfe"), REG.get("initiative")
         assert artifact_utils._rename_error_label(rfe) == "rename_to_jira_key"
         assert artifact_utils._rename_error_label(init) == "rename_initiative_to_jira_key"
-        for fn in (
-            artifact_utils._rename_error_label,
-            artifact_utils._review_to_rename,
-            artifact_utils.parse_child,
-        ):
+        # The rename label is keyed by the FAMILY's name for a type-family member (AISDLC-851:
+        # desc.extends or desc.name), so the pinned texts survive the initiative split.
+        label_source = inspect.getsource(artifact_utils._rename_error_label)
+        assert "stem = desc.extends or desc.name" in label_source
+        assert 'stem == "rfe"' in label_source
+        for fn in (artifact_utils._review_to_rename, artifact_utils.parse_child):
             assert 'desc.name == "rfe"' in inspect.getsource(fn), fn.__name__
 
 
@@ -2386,11 +2510,21 @@ class TestSkillLayer:
         rubric = ctx.pipe["rubric"]
         assert 'get "$PIPELINE_TYPE" pipeline.rubric.repo' in sh
         assert f'ASSESS_REPO="{rubric["repo"]}"' in sh
-        var = "INITIATIVE_RUBRIC" if ctx.t == "initiative" else "RUBRIC_FILE"
-        assert f'{var}="$CONTEXT_DIR/{rubric["path"]}"' in sh
+        # the requested type's rubric and scorer agent are read from the registry for every
+        # type (PR-1 of AISDLC-851): no per-type literal beyond the rfe RUBRIC_FILE, which a type
+        # reusing the rfe rubric and scorer unchanged (react-shopping-cart) shares
+        assert 'get "$PIPELINE_TYPE" pipeline.rubric.path' in sh
+        assert 'get "$PIPELINE_TYPE" pipeline.scorer_agent' in sh
+        rfe_pipe = _ctx("rfe").pipe
+        if (rubric["path"], ctx.pipe["scorer_agent"]) == (
+            rfe_pipe["rubric"]["path"],
+            rfe_pipe["scorer_agent"],
+        ):
+            assert f'RUBRIC_FILE="$CONTEXT_DIR/{rubric["path"]}"' in sh
+        else:
+            assert rubric["path"] not in sh
+            assert f"{ctx.pipe['scorer_agent']}.md" not in sh
         assert f'CONTEXT_DIR="{CONTEXT_DIR}"' in sh
-        if ctx.t == "initiative":
-            assert f'INITIATIVE_AGENT="{ctx.pipe["scorer_agent"]}.md"' in sh
         assert rubric["ref"] not in sh, "the bootstrap must read rubric.ref from the registry"
         assert 'get "$PIPELINE_TYPE" pipeline.rubric.ref' in sh
         assert re.fullmatch(r"[0-9a-f]{7,40}", rubric["ref"])

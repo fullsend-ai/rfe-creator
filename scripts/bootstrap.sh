@@ -18,10 +18,12 @@
 #   --layout   step 2 only, then exit 0 — a skill calls this through its own
 #              plugin-relative path before it can run anything relative.
 #
-# The caller declares which pipeline's assets it needs. Validating only the
-# RFE rubric lets a checkout that lacks the initiative rubric or the
-# initiative-scorer agent exit 0, after which the ASSESS phase can never
-# complete and wait-for-wave spins on exit 3 with nothing to diagnose.
+# The caller declares which pipeline's assets it needs: the requested type's
+# rubric (pipeline.rubric.path) and scorer agent (pipeline.scorer_agent) are
+# checked after the clone and the agent install. Validating only the RFE rubric
+# let a checkout that lacks the initiative rubric or the initiative-scorer agent
+# exit 0, after which the ASSESS phase can never complete and wait-for-wave
+# spins on exit 3 with nothing to diagnose.
 
 PIPELINE_TYPE="rfe"
 LAYOUT_ONLY=""
@@ -73,6 +75,7 @@ registered_types_from_root() {
   local descriptor name rest="" have_rfe=0
   for descriptor in "$TYPES_ROOT"/*/type.yaml; do
     [ -f "$descriptor" ] || continue
+    grep -qE '^abstract:[[:space:]]*true[[:space:]]*(#.*)?$' "$descriptor" && continue  # a type family is never a type
     name="$(basename "$(dirname "$descriptor")")"
     case "$name" in _*) continue ;; esac
     if [ "$name" = "rfe" ]; then
@@ -87,8 +90,27 @@ registered_types_from_root() {
   printf '%s' "$rest"
 }
 
+sole_member_from_root() {
+  # The member of type family "$1" when the shipped root holds exactly one (the no-Python twin
+  # of type_registry.canonical): empty when "$1" is not an abstract family or has 0 or 2+ members.
+  local family="$1" descriptor member="" count=0
+  [ -f "$TYPES_ROOT/$family/type.yaml" ] || return 0
+  grep -qE '^abstract:[[:space:]]*true[[:space:]]*(#.*)?$' "$TYPES_ROOT/$family/type.yaml" || return 0
+  for descriptor in "$TYPES_ROOT"/*/type.yaml; do
+    [ -f "$descriptor" ] || continue
+    if grep -qE "^extends:[[:space:]]*[\"']?${family}[\"']?[[:space:]]*(#.*)?$" "$descriptor"; then
+      member="$(basename "$(dirname "$descriptor")")"
+      count=$((count + 1))
+    fi
+  done
+  [ "$count" -eq 1 ] && printf '%s' "$member"
+  return 0
+}
+
 REGISTERED="$(python3 "$SCRIPT_DIR/type_registry.py" list 2>/dev/null)" || REGISTERED=""
+REGISTRY_READ=1
 if [ -z "$REGISTERED" ]; then
+  REGISTRY_READ=0
   REGISTERED="$(registered_types_from_root)"
   if [ -z "$REGISTERED" ]; then
     echo "ERROR: could not read the type registry (python3 $SCRIPT_DIR/type_registry.py list failed and $TYPES_ROOT holds no <name>/type.yaml)" >&2
@@ -106,6 +128,33 @@ while IFS= read -r registered_type; do
 done <<EOF
 $REGISTERED
 EOF
+if [ "$KNOWN" -ne 1 ]; then
+  # A type family with exactly one member answers through that member (design §3.2.2,
+  # AISDLC-851): the registry's `canonical`, or the shipped root when the registry cannot be
+  # read. Silent on purpose: the BOOTSTRAP launch var and the pipeline already name the member.
+  # The root fallback runs only when the registry could not be read at all: a registry that
+  # answered and refused the name (a family with two members) is the final word. `--` keeps an
+  # option-shaped value (`-h`) out of argparse, and the answer is accepted only when it is one of
+  # the registered names, never help text or other stdout noise.
+  CANONICAL=""
+  if [ "$REGISTRY_READ" -eq 1 ]; then
+    CANONICAL="$(python3 "$SCRIPT_DIR/type_registry.py" canonical -- "$PIPELINE_TYPE" 2>/dev/null)" || CANONICAL=""
+  else
+    CANONICAL="$(sole_member_from_root "$PIPELINE_TYPE")"
+  fi
+  if [ -n "$CANONICAL" ]; then
+    CANONICAL_KNOWN=0
+    while IFS= read -r registered_type; do
+      [ "$registered_type" = "$CANONICAL" ] && CANONICAL_KNOWN=1
+    done <<EOF
+$REGISTERED
+EOF
+    if [ "$CANONICAL_KNOWN" -eq 1 ]; then
+      PIPELINE_TYPE="$CANONICAL"
+      KNOWN=1
+    fi
+  fi
+fi
 if [ "$KNOWN" -ne 1 ]; then
   echo "ERROR: unknown --type '$PIPELINE_TYPE' (registered types: $REGISTERED_LIST)" >&2
   exit 2
@@ -218,12 +267,62 @@ lay_out_working_directory
 
 CONTEXT_DIR=".context/assess-rfe"
 
-# One field of the descriptor's `rubric:` block, without the registry (no PyYAML
-# yet, no python3): the `<key>:` line under `  rubric:`, quotes stripped.
+# The no-Python readers of the descriptor (no PyYAML yet, no python3) follow a type family one
+# level, field by field, like the registry's merge: a member's own line wins, a line it does not
+# carry is read from the family its `extends:` line names.
+family_dir_from_root() {
+  local file="$TYPES_ROOT/$PIPELINE_TYPE/type.yaml" family
+  [ -f "$file" ] || return 0
+  family="$(awk '$1 == "extends:" { gsub(/["'"'"']/, "", $2); print $2; exit }' "$file" 2>/dev/null)"
+  if [ -n "$family" ] && [ -f "$TYPES_ROOT/$family/type.yaml" ]; then
+    printf '%s' "$family"
+  fi
+  return 0
+}
+
+# The types/<dir>/type.yaml the `rubric:` block is read from FIRST: the type's own when it
+# carries one, else its family's (a member with no rubric lines of its own).
+rubric_descriptor_dir() {
+  local file="$TYPES_ROOT/$PIPELINE_TYPE/type.yaml" family
+  if [ -f "$file" ] && ! grep -qE '^  rubric:' "$file"; then
+    family="$(family_dir_from_root)"
+    if [ -n "$family" ]; then
+      printf '%s' "$family"
+      return
+    fi
+  fi
+  printf '%s' "$PIPELINE_TYPE"
+}
+
+# One field of the `rubric:` block: the `<key>:` line under `  rubric:` of the type's own
+# descriptor, quotes stripped; then the family's when the own file does not carry that key.
 rubric_field_from_root() {
-  awk -v key="$1" '/^  rubric:/ { f = 1; next }
+  local value family
+  value="$(awk -v key="$1" '/^  rubric:/ { f = 1; next }
        f && $1 == key ":" { gsub(/"/, "", $2); print $2; exit }
-       f && /^  [a-z]/ { exit }' "$TYPES_ROOT/$PIPELINE_TYPE/type.yaml" 2>/dev/null
+       f && /^  [a-z]/ { exit }' "$TYPES_ROOT/$PIPELINE_TYPE/type.yaml" 2>/dev/null)"
+  if [ -z "$value" ]; then
+    family="$(family_dir_from_root)"
+    if [ -n "$family" ]; then
+      value="$(awk -v key="$1" '/^  rubric:/ { f = 1; next }
+       f && $1 == key ":" { gsub(/"/, "", $2); print $2; exit }
+       f && /^  [a-z]/ { exit }' "$TYPES_ROOT/$family/type.yaml" 2>/dev/null)"
+    fi
+  fi
+  printf '%s\n' "$value"
+}
+
+# The descriptor's `scorer_agent:` line (own first, then the family's; same fallback).
+scorer_agent_from_root() {
+  local value family
+  value="$(awk '$1 == "scorer_agent:" { print $2; exit }' "$TYPES_ROOT/$PIPELINE_TYPE/type.yaml" 2>/dev/null)"
+  if [ -z "$value" ]; then
+    family="$(family_dir_from_root)"
+    if [ -n "$family" ]; then
+      value="$(awk '$1 == "scorer_agent:" { print $2; exit }' "$TYPES_ROOT/$family/type.yaml" 2>/dev/null)"
+    fi
+  fi
+  printf '%s\n' "$value"
 }
 
 # The repository this checkout is cloned from. The descriptor owns it
@@ -254,10 +353,15 @@ esac
 # Scripts now live under each skill dir (assess-rfe moved them out of the repo
 # root in fullsend-ai/assess-rfe#5 "move-scripts-to-skill-dirs").
 RUBRIC_FILE="$CONTEXT_DIR/skills/assess-rfe/scripts/agent_prompt.md"
-# Mirrors PIPELINE_TYPES["initiative"] rubric_path/scorer_type in
-# scripts/pipeline_state.py; tests/test_bootstrap_assess.py pins them together.
-INITIATIVE_RUBRIC="$CONTEXT_DIR/skills/assess-initiative/scripts/agent_prompt.md"
-INITIATIVE_AGENT="initiative-scorer.md"
+# The requested type's own rubric and scorer agent (pipeline.rubric.path, pipeline.scorer_agent;
+# PIPELINE_TYPES rubric_path/scorer_type in scripts/pipeline_state.py read the same fields):
+# the registry first, the descriptor line (a member's family file) when it cannot be read. Both
+# are checked for EVERY type after the clone and the agent install: a checkout that lacks them
+# fails here, not in an ASSESS wave that never completes.
+TYPE_RUBRIC_PATH="$(python3 "$SCRIPT_DIR/type_registry.py" get "$PIPELINE_TYPE" pipeline.rubric.path 2>/dev/null)" || TYPE_RUBRIC_PATH=""
+[ -n "$TYPE_RUBRIC_PATH" ] && [ "$TYPE_RUBRIC_PATH" != null ] || TYPE_RUBRIC_PATH="$(rubric_field_from_root path)"
+TYPE_SCORER_AGENT="$(python3 "$SCRIPT_DIR/type_registry.py" get "$PIPELINE_TYPE" pipeline.scorer_agent 2>/dev/null)" || TYPE_SCORER_AGENT=""
+[ -n "$TYPE_SCORER_AGENT" ] && [ "$TYPE_SCORER_AGENT" != null ] || TYPE_SCORER_AGENT="$(scorer_agent_from_root)"
 
 # The commit this checkout must sit at. The descriptor owns the pin
 # (pipeline.rubric.ref); ASSESS_RFE_REF overrides it for an ad-hoc run. Read
@@ -363,9 +467,9 @@ if [ ! -f "$RUBRIC_FILE" ]; then
   exit 1
 fi
 
-if [ "$PIPELINE_TYPE" = "initiative" ] && [ ! -f "$INITIATIVE_RUBRIC" ]; then
-  echo "ERROR: Initiative rubric not found at $INITIATIVE_RUBRIC after bootstrap" >&2
-  echo "       $ASSESS_REPO${ASSESS_RFE_REF:+ @ $ASSESS_RFE_REF} provides no assess-initiative skill." >&2
+if [ -n "$TYPE_RUBRIC_PATH" ] && [ ! -f "$CONTEXT_DIR/$TYPE_RUBRIC_PATH" ]; then
+  echo "ERROR: Rubric for type '$PIPELINE_TYPE' not found at $CONTEXT_DIR/$TYPE_RUBRIC_PATH after bootstrap" >&2
+  echo "       $ASSESS_REPO${ASSESS_RFE_REF:+ @ $ASSESS_RFE_REF} provides no such skill." >&2
   echo "       Set ASSESS_RFE_REPO/ASSESS_RFE_REF to a checkout that has it." >&2
   exit 1
 fi
@@ -391,9 +495,9 @@ if [ -d "$CONTEXT_DIR/agents" ]; then
   done
 fi
 
-if [ "$PIPELINE_TYPE" = "initiative" ] && [ ! -f ".claude/agents/$INITIATIVE_AGENT" ]; then
-  echo "ERROR: Agent definition .claude/agents/$INITIATIVE_AGENT not installed by bootstrap" >&2
-  echo "       The initiative assess agent launches with subagent_type: initiative-scorer;" >&2
+if [ -n "$TYPE_SCORER_AGENT" ] && [ ! -f ".claude/agents/$TYPE_SCORER_AGENT.md" ]; then
+  echo "ERROR: Agent definition .claude/agents/$TYPE_SCORER_AGENT.md not installed by bootstrap" >&2
+  echo "       The $PIPELINE_TYPE assess agent launches with subagent_type: $TYPE_SCORER_AGENT;" >&2
   echo "       without it the ASSESS phase never completes." >&2
   exit 1
 fi

@@ -141,7 +141,7 @@ under its own name. The merge (`type_registry.merge_descriptor`):
 | Value | Merge |
 |---|---|
 | mappings | deep-merge, the member's keys over the family's |
-| lists | replace whole (`examples`, `counter_signals`, `parent_key_patterns`, `pipeline.context_sources` — an inherited `--type` argument names the family; the Initiative split story decides between an alias and a restated `--type <member>`) |
+| lists | replace whole (`examples`, `counter_signals`, `parent_key_patterns`, `pipeline.context_sources` — an inherited `--type` argument names the family, which the single-member alias resolves; a member restates the list with `--type <member>` so SETUP's bootstrap command, rendered from the resolved concrete type, and the `BOOTSTRAP` launch var agree) |
 | `classification.signals` | concatenate: the family's first, then the member's, verbatim (a repeated phrase is a finding, never deduped) |
 | `pipeline.dimensions` | merge by `name`: a same-name member entry overrides `condition.prefix`, `skip_stub` or `blocking` and keeps the rest; a new name appends; nothing is removed, and a condition KIND cannot be switched (a `context_exists` overlay on a `frontmatter_field` entry is a shape the schema rejects — restate it under a new name) |
 | `null` | a value that replaces; nothing inherited can be deleted |
@@ -156,8 +156,11 @@ generator writes one render per type to it); a family that carries one of those 
 finding of its own. Everything else may be inherited:
 `pipeline.{poll_prefix,state_prefix}` (hyphens are allowed inside — the grammar of `report_prefix` —
 so `<family>-<project>-` is a valid own value when a member wants one), `snapshot.{prefix,report_prefix}`,
-the labels, the rest of the eval block (`eval.{dataset,mlflow_experiment,thresholds}`; a member's
-`<member>_quality` threshold deep-merges into the family's) and the `eval/` directory: a member with
+the labels, the rest of the eval block (`eval.{dataset,mlflow_experiment,thresholds}`; the quality
+judge and the run name of the generated config are named after the FAMILY (its `--type` stays the
+member's own name, which always resolves) —
+`generate_eval_config.eval_stem`, `extends` read off the merged data — so a member's thresholds name
+`<family>_quality` and the family carries it) and the `eval/` directory: a member with
 no `eval/` directory of its own renders from the family's (`generate_eval_config.eval_dir`; a member
 `eval/` carries both `fragment.yaml` and `pairwise-judge.md` or neither — a half-populated one is a
 finding, never a mix). The cross-type rules decide what a second member must own: every `dirs.*`
@@ -177,26 +180,47 @@ Enumeration and the CLI. `TypeRegistry.families()` lists the family names, `memb
 member names in `names()` order, `family(name)` the raw family `Descriptor` (`abstract` true,
 `binding()` raises) and `canonical(name)` the concrete name behind a name — the name itself for a
 type, the sole member for a single-member family, a `KeyError` for a family with two or more
-members or none. On a member `Descriptor.family` is the family `Descriptor`, `own` the raw file
+members or none (`try_canonical(name)` is the same answer or `None`, the readers' tolerant
+compare). On a member `Descriptor.family` is the family `Descriptor`, `own` the raw file
 mapping and `extends` the family name (`None`, `data` and `None` on any other descriptor); `names()`,
 `get()`, iteration, `len`, `in`, `bindings()`, `detect()` and `candidates()` see concrete types only.
 `python3 scripts/type_registry.py families` prints `<family>: <member> <member>` (`--json` a
-mapping), `show <family>` the family file as written, `show <member>` the merged data. The
-family-name alias is CLI-only and single-member-only in this version, on purpose: `get`, `binding`
-and `launch-vars <family> ...` answer through the sole member (one
-`# <family>: a type family; answered by its sole member <member>` line on stderr) and exit 1 naming
-the members when there are two or more; the Python `get()`, `resolve --type <family>`,
-`validate_types.py --verify --type <family>`, `generate_eval_config.py --type <family>` and a
-workspace `bindings.<family>` key are refused (`unknown type ...`, or the "is a type family ...
-verify one of its members" finding) until the Initiative split story widens the alias through
-`canonical()`. Every import-time table (the artifact schemas, the poll phases, the snapshot and Jira
-write tables) is keyed by concrete name, which is why a family is kept out of `names()` rather than
-aliased there.
+mapping), `show <family>` the family file as written, `show <member>` the merged data, `canonical
+<name>` the concrete name (exit 1 with the reason otherwise). The family-name alias is
+single-member-only, on purpose, and goes through one seam, `canonical()`: a family with exactly one
+member is answered by that member everywhere a type NAME crosses a boundary — the `get`, `binding`,
+`launch-vars` (one `# <family>: a type family; answered by its sole member <member>` line on
+stderr), `canonical` and `classification --others` CLI commands; every script's `--type` (the
+argparse converter `type_registry.type_arg`, used beside the registered `choices`, and
+`parse_type_arg` for the gates that parse by hand); `resolve` (rungs 1, 2 and 3 — the printed
+`TYPE RESOLVED:` line names the member, nothing else is printed); `validate_types.py --verify
+--type <family>`; `generate_eval_config.py --type <family>`; a workspace `bindings.<family>` key
+(two spellings of one type in that block are a conflict, not a merge); `bootstrap.sh --type
+<family>` (through the registry, and through the shipped root when there is no Python yet); and the
+readers of a stored type name — an artifact's `type:` (`frontmatter.py`, the `artifact_utils`
+routers and the rename's declared-type check, `--schema-type <family>-<kind>` too), a run report's
+`type:` (`bootstrap_snapshot.py`) and `tmp/pipeline-state.yaml` — which compare canonical names and
+never rewrite the artifact or the report (the state file is canonicalised in memory and carries the
+concrete name from its next save). A family with two or more members is refused by all of them: `canonical()`'s text names the
+members on the `--type`, `resolve`, `--verify`, eval-generator, bindings and CLI paths, while the
+tolerant readers (`try_canonical`) and the argparse converter answer with the registered list or
+the expected member instead; the Python `get()`,
+`names()`, `in`, iteration, `bindings()`, `detect()` and `candidates()` see concrete types only, and
+every import-time table (the artifact schemas, the poll phases, the snapshot and Jira write tables)
+is keyed by concrete name, which is why a family is kept out of `names()` rather than aliased there.
+New artifacts and run reports are stamped with the concrete name (the `TYPE` launch var, the
+resolved type in the writers and the report), never a family's. The shipped tree has no family yet
+— `initiative` is a concrete type, so every one of these is the identity today; the Initiative
+split, the next step, turns it into a family with the one member `initiative-rhaistrat`, and this
+alias is what keeps every `--type initiative` spelling working through that split.
 
-The classification digest (`type_registry.py classification`) lists each member's merged block, so
-two members of one family repeat the family's signals under two names; cross rule 7 compares a
-member's own signals, with the family a participant under its own name, so siblings are not
-reported for what they inherit. The member-signals story refines the digest.
+The classification digest (`type_registry.py classification`) renders a member's merged block
+under its FAMILY's name while it is the family's sole member (with two or more members each
+renders under its own name, since the family name would not resolve), so the create step's `Type:`
+line and the review agent's misfiled-item sentence name `--type <family>`; `--others <member>`
+excludes the member's family row (two members would repeat the family's signals under one name,
+which the member-signals story refines). Cross rule 7 compares a member's own signals, with the
+family a participant under its own name, so siblings are not reported for what they inherit.
 
 `tests/fixtures/type-families/` is the two-member reference family (`brief` with `brief-acme` and
 `brief-globex`): the family carries every typed file and the eval prose, the members only
@@ -338,7 +362,7 @@ below), and so do the writers ("Effective binding in the writers" below). `--jso
 
 | Rung | Signal | Notes |
 |---|---|---|
-| `--type` | explicit type | unknown → exit 1 with the registered list |
+| `--type` | explicit type | unknown → exit 1 with the registered list; a single-member family's name resolves to its member ("Type families" above) |
 | `batch type` | `{type: <t>, items: [...]}` batch root | a legacy bare list gives no signal (its string items join the ids for the `resolve` CLI's batch of ids; an entry-grammar caller passes `items_are_ids=False`); `--type` disagreeing with `type:` is an error (D1); an item carrying its own `type` key is an error (D2); any other root shape is an error |
 | `frontmatter type` | artifact frontmatter `type:` | `--artifact PATH`; the block between the first two `---` lines |
 | `artifact dir` | the artifact's parent directory is one of a type's `dirs` | when there is no frontmatter `type:`; the file stem always joins the ids too, so a stem owned by another type is a conflict, not a silent directory win |
@@ -694,7 +718,8 @@ are skeleton-only. Generation fails — and writes nothing — on an unresolved 
 unused fragment key, invalid YAML, a `check:` that does not compile, or a threshold naming a judge
 the config does not define (so a copied `rfe_quality` threshold under a new type is caught).
 Derived values (`${gen.*}`) are projections of the descriptor: `<type>-speedrun`,
-`<local_prefix>{n:03d}`, the score-field list, `<type>_quality`, the extra-field enum checks and
+`<local_prefix>{n:03d}`, the score-field list, `<type>_quality` (for a member of a type family the run name and the judge key take the FAMILY's name (the `--type` argument stays the member's own name, which always resolves) —
+`generate_eval_config.eval_stem` — and the header names both files), the extra-field enum checks and
 the `extra_rules` consistency check, the `annotations_extra` lines, the run-report entry fields,
 `types/<t>/eval/pairwise-judge.md`, and the thresholds block with the fragment's notes as comments.
 
@@ -734,7 +759,8 @@ the `extra_rules` consistency check, the `annotations_extra` lines, the run-repo
    `eval.config`, names `snapshot.results_subdir` after itself and shares no effective project with
    another member of its family; every `dirs.*` value has one owner across types; cross rule 7
    reads a member's own signals, with the families as participants; a family with no member,
-   `--verify --type <family>` and an `RFE_CREATOR_BINDING_<FAMILY>_*` variable are findings;
+   `--verify --type <family>` for a family with none or several members (one member: the alias
+   verifies it), and an `RFE_CREATOR_BINDING_<FAMILY>_*` variable are findings;
    `extends` naming an unknown type, a concrete type, itself or a family in another drop-in root,
    a family carrying `extends`, or `abstract` with any value but `true` fail at load
    (`cannot load type registry: ...`); the `classification` block, when present, has the known keys only, `summary`, `signals` and

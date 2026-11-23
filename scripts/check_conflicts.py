@@ -140,7 +140,9 @@ def main():
     # default=None: an absent flag reaches type_registry.resolve as "no signal" and lands on
     # the grandfathered legacy default rung (rfe) silently; an explicit --type is rung 1 and
     # prints the D3 line.
-    parser.add_argument("--type", choices=_TYPES.choices(), default=None)
+    parser.add_argument(
+        "--type", type=type_registry.type_arg(_TYPES), choices=_TYPES.choices(), default=None
+    )
     args = parser.parse_args()
 
     # Design §5 ladder: --type (rung 1) else the legacy default (rfe); no id is a signal here.

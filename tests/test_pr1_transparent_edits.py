@@ -466,7 +466,9 @@ class TestSelfDescribingWriters:
         assert 'declared = data.get("type")' in source
         assert "if declared is None:" in source
         assert "stamp_review_type(path, pipeline_type)" in source
-        assert "elif declared != pipeline_type:" in source
+        # The declared name is compared through the family alias (AISDLC-851): a restored review
+        # declaring a single-member family's name is the member's, anything else is reported.
+        assert "elif (_TYPES.try_canonical(declared) or declared) != pipeline_type:" in source
 
 
 # Pre-migration artifacts on disk: the GOLDEN bytes above, exactly as an existing results

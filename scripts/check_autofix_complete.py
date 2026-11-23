@@ -5,7 +5,7 @@ Reads the pipeline state and verifies every item has a review file.
 Exits 0 if all complete, exits 1 with the list of missing IDs if not.
 
 Usage:
-    python3 scripts/check_autofix_complete.py [--type <registered type>]
+    python3 scripts/check_autofix_complete.py [--type <type>]
 
 An unregistered --type exits 2 with the registered type list.
 """
@@ -16,16 +16,18 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import type_registry
 
-# Derived from the registry: the ids file carries the type's pipeline.state_prefix (the speedrun
-# state prefix of the generic bodies), the reviews dir its dirs.reviews.
 _TYPES = type_registry.load()
 
+# ids_file is the generic speedrun body's own file (tmp/{STATE_PREFIX}speedrun-all-ids.txt,
+# .claude/skills/rfe-speedrun/SKILL.md): a projection of pipeline.state_prefix and dirs.reviews,
+# derived for every registered type that declares both (a partial drop-in has no entry).
 _TYPE_CONFIG = {
-    name: {
-        "ids_file": f"tmp/{_TYPES.get(name).get('pipeline.state_prefix', '')}speedrun-all-ids.txt",
-        "reviews_dir": _TYPES.get(name).dirs()["reviews"],
+    d.name: {
+        "ids_file": f"tmp/{d.get('pipeline.state_prefix')}speedrun-all-ids.txt",
+        "reviews_dir": d.dirs()["reviews"],
     }
-    for name in _TYPES.names()
+    for d in _TYPES
+    if d.get("pipeline.state_prefix", None) is not None and d.get("dirs.reviews", None) is not None
 }
 
 
@@ -38,6 +40,15 @@ def main():
         print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(exc.exit_code)
 
+    if pipeline_type not in _TYPE_CONFIG:
+        # Registered (a drop-in via RFE_CREATOR_EXTRA_TYPES) without pipeline.state_prefix or
+        # dirs.reviews: refuse through the same usage-error path rather than an uncaught KeyError.
+        print(
+            f"ERROR: --type {pipeline_type!r} is registered but has no entry in this script's "
+            f"table yet; supported: {', '.join(_TYPE_CONFIG)}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
     tc = _TYPE_CONFIG[pipeline_type]
 
     ids_file = tc["ids_file"]

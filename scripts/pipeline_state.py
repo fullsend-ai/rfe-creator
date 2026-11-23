@@ -810,6 +810,14 @@ def _load_state():
         sys.exit(1)
     with open(STATE_FILE) as f:
         state = yaml.safe_load(f)
+    # A state file written by a pre-split plugin may name a type family (`type: initiative`);
+    # the tables are keyed by concrete name, so canonicalise in memory (never rewritten here;
+    # the next _save_state persists it). An unknown name is left for the validators to report.
+    ptype = state.get("type") if isinstance(state, dict) else None
+    if isinstance(ptype, str) and ptype not in PIPELINE_TYPES:
+        concrete = _TYPES.try_canonical(ptype)
+        if concrete is not None:
+            state["type"] = concrete
     _export_headless_marker(state)
     return state
 
@@ -1532,7 +1540,10 @@ def cmd_init(args):
     # pipeline.stages omits a stage the table launches, is refused HERE, before any state is
     # written, rather than by _validate_state_values or _launch_block later.
     parser.add_argument(
-        "--type", choices=[n for n in _TYPES.choices() if n in PIPELINE_TYPES], default="rfe"
+        "--type",
+        type=type_registry.type_arg(_TYPES),
+        choices=[n for n in _TYPES.choices() if n in PIPELINE_TYPES],
+        default="rfe",
     )
     parser.add_argument("--batch-size", type=int, default=50)
     parser.add_argument("--headless", action="store_true")

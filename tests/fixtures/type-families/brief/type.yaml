@@ -108,3 +108,4 @@ eval:
     architecture_context_used: { min_pass_rate: 1.0 }
     revision_quality: { min_mean: 3.5 }
     classification_signal: { min_pass_rate: 0.92 }
+    brief_quality: { min_mean: 3.5 }            # the FAMILY's judge: a member's render keeps the family's run name, --type and judge key (generate_eval_config.eval_stem)

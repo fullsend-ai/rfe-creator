@@ -208,7 +208,11 @@ def main():
         "--batch", action="store_true", help="Scan all originals in the originals directory"
     )
     parser.add_argument(
-        "--type", choices=_TYPES.choices(), default="rfe", help="Entry type (default: rfe)"
+        "--type",
+        type=type_registry.type_arg(_TYPES),
+        choices=_TYPES.choices(),
+        default="rfe",
+        help="Entry type (default: rfe)",
     )
     parser.add_argument("--verbose", action="store_true", help="Show missing lines")
     parser.add_argument("--json", action="store_true", help="Output as JSON")
@@ -219,9 +223,10 @@ def main():
     args = parser.parse_args()
 
     if args.batch:
-        dirs = _TYPES.get(args.type).dirs()
-        originals_dir = dirs["originals"]
-        tasks_dir = dirs["tasks"]
+        # The type's originals and tasks directories come from its descriptor (dirs).
+        desc = _TYPES.get(args.type)
+        originals_dir = desc.dirs()["originals"]
+        tasks_dir = desc.dirs()["tasks"]
 
         if not os.path.isdir(originals_dir):
             print(f"No {originals_dir}/ directory found", file=sys.stderr)

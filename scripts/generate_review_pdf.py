@@ -356,6 +356,7 @@ def main():
     )
     parser.add_argument(
         "--type",
+        type=type_registry.type_arg(_TYPES),
         choices=_TYPES.choices(),
         default="rfe",
         help="Issue type (default: rfe)",

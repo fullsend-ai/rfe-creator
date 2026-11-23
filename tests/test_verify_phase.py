@@ -15,12 +15,13 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
 from check_review_progress import PHASE_CHECKS  # noqa: E402
-from verify_phase import (  # noqa: E402
-    _INITIATIVE_PHASE_OUTPUT,
-    _RFE_PHASE_OUTPUT,
-    verify,
-    write_error_stubs,
-)
+from verify_phase import _PHASE_OUTPUT, _TYPES, verify, write_error_stubs  # noqa: E402
+
+# The per-type phase tables: the rfe one and the initiative one — the latter through the
+# registry's canonical name, so the alias keeps naming the member once the type is a family
+# (AISDLC-851; the poll prefix below is inherited and stays `initiative-`).
+_RFE_PHASE_OUTPUT = _PHASE_OUTPUT["rfe"]
+_INITIATIVE_PHASE_OUTPUT = _PHASE_OUTPUT[_TYPES.canonical("initiative")]
 
 SCRIPTS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "scripts"))
 

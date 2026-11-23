@@ -302,3 +302,53 @@ class TestInitiativeCleanup:
         lines = out.splitlines()
         assert lines[0].startswith("DELETED=")
         assert lines[1].startswith("RESTORED=")
+
+    def test_slug_suffixed_local_draft_parent_is_restored(self, init_workspace):
+        """The registry-form parent lookup (find_task_file_including_archived(desc=desc)): a
+        local id's draft may sit under its slug-suffixed filename, INIT-7-some-slug.md, which
+        the exact-name join the initiative branch used before (artifacts/initiatives/INIT-7.md)
+        never found — the ownership ladder matches a local id exactly or slug-suffixed."""
+        write_frontmatter(
+            str(init_workspace / "artifacts/initiatives/INIT-7-some-slug.md"),
+            {
+                "initiative_id": "INIT-7",
+                "title": "Parent draft",
+                "priority": "Normal",
+                "status": "Archived",
+            },
+            "initiative-task",
+        )
+        write_frontmatter(
+            str(init_workspace / "artifacts/initiatives/INIT-8.md"),
+            {
+                "initiative_id": "INIT-8",
+                "title": "Child",
+                "priority": "Normal",
+                "status": "Ready",
+                "parent_key": "INIT-7",
+            },
+            "initiative-task",
+        )
+        out, _, rc = _run(["--type", "initiative", "INIT-7"], cwd=str(init_workspace))
+        assert rc == 0
+        assert not os.path.exists(init_workspace / "artifacts/initiatives/INIT-8.md")
+        assert out.splitlines() == ["DELETED=INIT-8.md", "RESTORED=INIT-7 status=Ready"]
+        fm, _ = read_frontmatter(str(init_workspace / "artifacts/initiatives/INIT-7-some-slug.md"))
+        assert fm["status"] == "Ready"
+
+    def test_an_id_no_descriptor_owns_restores_nothing(self, init_workspace):
+        """ZZZ-1 is outside the initiative ownership ladder: the lookup answers None, nothing is
+        restored and the exit is 0. A child that declares ``parent_key: ZZZ-1`` is not a valid
+        initiative task (the schema's parent_key pattern), so the scan skips it with the schema
+        warning and leaves it on disk: nothing is deleted either."""
+        _write_raw(
+            str(init_workspace / "artifacts/initiatives/INIT-9.md"),
+            "---\ninitiative_id: INIT-9\ntitle: Child\npriority: Normal\nstatus: Ready\n"
+            "parent_key: ZZZ-1\n---\nBody\n",
+        )
+        out, err, rc = _run(["--type", "initiative", "ZZZ-1"], cwd=str(init_workspace))
+        assert rc == 0
+        assert out.splitlines() == ["DELETED=", "RESTORED="]
+        assert "Warning: skipping INIT-9.md" in err
+        assert "parent_key: 'ZZZ-1' does not match" in err
+        assert os.path.exists(init_workspace / "artifacts/initiatives/INIT-9.md")

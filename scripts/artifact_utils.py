@@ -894,7 +894,8 @@ def _type_for(identifier, artifacts_dir="artifacts"):
             if not isinstance(tasks_subdir, str):
                 continue
             task_path = os.path.join(artifacts_dir, desc.dirs("bare")["tasks"], f"{identifier}.md")
-            if _declared_type(task_path) == desc.name:
+            declared = _declared_type(task_path)
+            if declared is not None and _TYPES.try_canonical(declared) == desc.name:
                 return desc
     return _TYPES.detect(identifier) or _TYPES.get("rfe")
 
@@ -1080,7 +1081,7 @@ def scan_task_files(artifacts_dir):
 def scan_initiative_task_files(artifacts_dir):
     """Scan all Initiative task files — ``scan_tasks`` for the initiative type (sorted by
     initiative_id)."""
-    return scan_tasks(artifacts_dir, _TYPES.get("initiative"))
+    return scan_tasks(artifacts_dir, _TYPES.get(_TYPES.canonical("initiative")))
 
 
 def scan_reviews(artifacts_dir, desc):
@@ -1108,9 +1109,12 @@ def _rename_error_label(desc):
     """The prefix of the rename ValueError text: the per-type function name the message has
     always carried — "rename_to_jira_key" for rfe, "rename_initiative_to_jira_key" for
     initiative. A grandfathered, name-keyed projection (like pipeline.poll_prefix being ''
-    for rfe): the rfe name has no type infix, every other type gets rename_<type>_to_jira_key.
+    for rfe): the rfe name has no type infix, every other type gets rename_<type>_to_jira_key —
+    keyed by the FAMILY's name for a member of a type family, so the label a pipeline has
+    always carried survives the split (AISDLC-851).
     """
-    return "rename_to_jira_key" if desc.name == "rfe" else f"rename_{desc.name}_to_jira_key"
+    stem = desc.extends or desc.name
+    return "rename_to_jira_key" if stem == "rfe" else f"rename_{stem}_to_jira_key"
 
 
 def _review_to_rename(reviews_dir, item_id, desc):
@@ -1144,7 +1148,9 @@ def _reject_declared_type_conflict(path, desc, label):
     stamp then applies).
     """
     declared = _declared_type(path)
-    if declared is not None and declared != desc.name:
+    # Compared through the family alias (design §3.2.2): a restored draft that declares the
+    # single-member family's name is the member's.
+    if declared is not None and (_TYPES.try_canonical(declared) or declared) != desc.name:
         raise ValueError(
             f"{label}: {path} declares type={declared!r}, expected {desc.name}; nothing renamed"
         )
@@ -1294,7 +1300,9 @@ def rename_to_jira_key(artifacts_dir, rfe_id, jira_key):
 def rename_initiative_to_jira_key(artifacts_dir, initiative_id, jira_key):
     """Rename INIT-NNN.md files to RHAISTRAT-NNNN.md after submission —
     ``rename_to_tracker_key`` for the initiative type."""
-    rename_to_tracker_key(artifacts_dir, initiative_id, jira_key, _TYPES.get("initiative"))
+    rename_to_tracker_key(
+        artifacts_dir, initiative_id, jira_key, _TYPES.get(_TYPES.canonical("initiative"))
+    )
 
 
 # ─── Index Rebuilding ───────────────────────────────────────────────────────────
@@ -1423,7 +1431,7 @@ def parse_child_initiative(path):
 
     Returns: (title, priority, full_markdown, cleaned_markdown)
     """
-    return parse_child(path, _TYPES.get("initiative"))
+    return parse_child(path, _TYPES.get(_TYPES.canonical("initiative")))
 
 
 def auto_approve_qualifies(review_data):

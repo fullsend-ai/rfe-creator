@@ -11,20 +11,32 @@ import type_registry
 import yaml
 from artifact_utils import read_frontmatter
 
-_TYPES = type_registry.load()
-
 EXACT_FIELDS = ["pass", "recommendation", "auto_revised", "feasibility", "needs_attention"]
 TOLERANCE_FIELDS = ["score"]
 
-# Derived from the registry: the bare dirs and the rubric score fields of every type.
+_TYPES = type_registry.load()
+
+
+# Per-type layout and sub-scores: the descriptor's dirs (bare form, the directories are joined
+# under golden_dir / new_dir) and schema.review.score_fields, derived for every registered type.
+def _has_compare_facts(desc):
+    """A partial drop-in descriptor without the three directories or the score fields takes
+    no row (and is not a --type choice here) rather than breaking the import."""
+    return all(
+        desc.get(dotted, None) is not None
+        for dotted in ("dirs.reviews", "dirs.originals", "dirs.tasks", "schema.review.score_fields")
+    )
+
+
 _TYPE_CONFIG = {
-    name: {
-        "reviews_dir": _TYPES.get(name).dirs("bare")["reviews"],
-        "originals_dir": _TYPES.get(name).dirs("bare")["originals"],
-        "tasks_dir": _TYPES.get(name).dirs("bare")["tasks"],
-        "score_sub_fields": list(_TYPES.get(name).get("schema.review.score_fields")),
+    d.name: {
+        "reviews_dir": d.dirs("bare")["reviews"],
+        "originals_dir": d.dirs("bare")["originals"],
+        "tasks_dir": d.dirs("bare")["tasks"],
+        "score_sub_fields": list(d.score_fields),
     }
-    for name in _TYPES.names()
+    for d in _TYPES
+    if _has_compare_facts(d)
 }
 
 
@@ -141,8 +153,17 @@ def main():
     )
     parser.add_argument("golden_dir", help="Golden reference artifacts directory")
     parser.add_argument("new_dir", help="New output artifacts directory")
-    parser.add_argument("--type", choices=_TYPES.choices(), default="rfe")
+    parser.add_argument(
+        "--type", type=type_registry.type_arg(_TYPES), choices=_TYPES.choices(), default="rfe"
+    )
     args = parser.parse_args()
+    if args.type not in _TYPE_CONFIG:
+        # Registered (argparse accepted it) but without the review directories or the score
+        # fields a comparison needs (a partial drop-in): a usage error, not a KeyError.
+        parser.error(
+            f"--type {args.type!r} is registered but declares no review directories or score "
+            f"fields to compare; supported: {', '.join(_TYPE_CONFIG)}"
+        )
 
     tc = _TYPE_CONFIG[args.type]
     golden_reviews = sorted(

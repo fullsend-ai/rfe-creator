@@ -39,10 +39,6 @@ def _descriptor(item_id):
     return _TYPES.detect(item_id) or _TYPES.get("rfe")
 
 
-def _is_initiative(item_id):
-    return _descriptor(item_id).name == "initiative"
-
-
 # Artifacts root for callers that do not run from the workspace (submit.py --artifacts-dir);
 # None keeps the workspace-relative "artifacts/<reviews>" paths every pipeline step uses.
 ARTIFACTS_ROOT = None

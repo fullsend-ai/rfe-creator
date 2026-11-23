@@ -17,8 +17,8 @@ from artifact_utils import (
     update_frontmatter,
 )
 
-ARTIFACTS_DIR = os.path.join(os.getcwd(), "artifacts")
 _TYPES = type_registry.load()
+ARTIFACTS_DIR = os.path.join(os.getcwd(), "artifacts")
 
 
 def main():
@@ -26,6 +26,7 @@ def main():
     parser.add_argument("parent_id", help="Parent ID (e.g. RHAIRFE-100 or RHAISTRAT-100)")
     parser.add_argument(
         "--type",
+        type=type_registry.type_arg(_TYPES),
         choices=_TYPES.choices(),
         default="rfe",
         help="Artifact type (default: rfe)",
@@ -33,10 +34,13 @@ def main():
     args = parser.parse_args()
 
     parent_id = args.parent_id
+
+    # The type's own layout, scan and id field come from its descriptor (dirs, identity.id_field);
+    # the schema name is the registry's <type>-task.
     desc = _TYPES.get(args.type)
-    dirs = desc.dirs("bare")
-    tasks_dir = os.path.join(ARTIFACTS_DIR, dirs["tasks"])
-    reviews_dir = os.path.join(ARTIFACTS_DIR, dirs["reviews"])
+    bare = desc.dirs("bare")
+    tasks_dir = os.path.join(ARTIFACTS_DIR, bare["tasks"])
+    reviews_dir = os.path.join(ARTIFACTS_DIR, bare["reviews"])
 
     # 1. Find and delete orphan children
     deleted = []
@@ -81,7 +85,8 @@ def main():
     if os.path.exists(split_status):
         os.remove(split_status)
 
-    # 3. Un-archive the parent
+    # 3. Un-archive the parent (the descriptor-form lookup: a tracker key matches <id>.md exactly,
+    # a local id also its slug-suffixed file)
     restored = ""
     parent_path = find_task_file_including_archived(ARTIFACTS_DIR, parent_id, desc=desc)
     schema_type = f"{desc.name}-task"

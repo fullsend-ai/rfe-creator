@@ -29,7 +29,9 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--type", choices=_TYPES.choices(), default="rfe")
+    parser.add_argument(
+        "--type", type=type_registry.type_arg(_TYPES), choices=_TYPES.choices(), default="rfe"
+    )
     args = parser.parse_args()
 
     reviews_dir = _TYPE_CONFIG[args.type]["reviews_dir"]
