@@ -107,7 +107,7 @@ asserts that every differing or one-sided leaf falls under one of these keys:
 |---|---|
 | Identity | `type`, `display.entity`, `display.entity_plural`, `identity.jira.{project,issue_type,key_prefixes}`, `identity.{local_prefix,local_id_pattern,id_field}` |
 | Classification | `classification.{summary,driver,signals,counter_signals,examples}` (§6; "Classification block" below) |
-| Layout | `dirs.{tasks,originals,reviews}`, `index.enabled`, `companions.comments`, `batch.extra_fields`, `snapshot.{prefix,report_prefix,results_subdir}` (`results_subdir` = the type's subtree of the shared results repository: `''` the root for `rfe`, grandfathered; every other type `<type>-<project lowercased>`, `initiative-rhaistrat/` for initiative, so a second deployment of the type against another Jira project gets its own subtree; a member of a type family names its subtree after itself) |
+| Layout | `dirs.{tasks,originals,reviews}`, `index.enabled`, `companions.comments`, `batch.extra_fields`, `snapshot.{prefix,report_prefix,results_subdir}` (`results_subdir` = the type's subtree of the shared results repository: `''` the root for `rfe`, grandfathered; every other type `<type>-<project lowercased>`, `initiative-rhaistrat/` for the Initiative member `initiative-rhaistrat`, so a second deployment of the type against another Jira project gets its own subtree; a member of a type family names its subtree after itself) |
 | Conventions | `conventions.{type_label,label_prefix,comment_prefix,removed_context_preamble,query_default,parent_key_patterns}`, `conventions.labels.*` (every reserved key; `alignment.*` only when an alignment dimension exists; `type_confirmed` the human exit of the review's misfiled-item check — set by a human, read by the review prompt as the `TYPE_CONFIRMED_LABEL` launch var, composed by no script; `opt_in` only for a type production selects by label — Initiative `initiative-autofix-opt-in` — the value rfe-autofixer's selection JQL and strat-creator's intake should read through `type_registry.py get <type> conventions.labels.opt_in` rather than copy; read by no rfe-creator script) |
 | Schema | `schema.task.extra_fields` (rfe adds `size`), `schema.review.{score_fields,extra_fields,extra_rules}` |
 | Pipeline | `pipeline.{poll_prefix,state_prefix,scorer_agent}`, `pipeline.prompts.*`, `pipeline.dimensions[]` (name/prompt/blocking/condition/skip_stub), `pipeline.rubric.{ref,path,export}`, `pipeline.context_sources[].args` (the `--type` argument) |
@@ -138,7 +138,7 @@ under its own name. The merge (`type_registry.merge_descriptor`):
 | Value | Merge |
 |---|---|
 | mappings | deep-merge, the member's keys over the family's |
-| lists | replace whole (`examples`, `counter_signals`, `parent_key_patterns`, `pipeline.context_sources` — an inherited `--type` argument names the family, which the single-member alias resolves; a member restates the list with `--type <member>` so SETUP's bootstrap command, rendered from the resolved concrete type, and the `BOOTSTRAP` launch var agree) |
+| lists | replace whole (`examples`, `counter_signals`, `parent_key_patterns`, `pipeline.context_sources` — an inherited `--type` argument names the family, which the single-member alias resolves; a member restates the list with `--type <member>` so SETUP's bootstrap command, rendered from the resolved concrete type, and the `BOOTSTRAP` launch var agree; the shipped member restates `--type initiative-rhaistrat`) |
 | `classification.signals` | concatenate: the family's first, then the member's, verbatim (a repeated phrase is a finding, never deduped) |
 | `pipeline.dimensions` | merge by `name`: a same-name member entry overrides `condition.prefix`, `skip_stub` or `blocking` and keeps the rest; a new name appends; nothing is removed, and a condition KIND cannot be switched (a `context_exists` overlay on a `frontmatter_field` entry is a shape the schema rejects — restate it under a new name) |
 | `null` | a value that replaces; nothing inherited can be deleted |
@@ -206,10 +206,12 @@ the expected member instead; the Python `get()`,
 every import-time table (the artifact schemas, the poll phases, the snapshot and Jira write tables)
 is keyed by concrete name, which is why a family is kept out of `names()` rather than aliased there.
 New artifacts and run reports are stamped with the concrete name (the `TYPE` launch var, the
-resolved type in the writers and the report), never a family's. The shipped tree has no family yet
-— `initiative` is a concrete type, so every one of these is the identity today; the Initiative
-split, the next step, turns it into a family with the one member `initiative-rhaistrat`, and this
-alias is what keeps every `--type initiative` spelling working through that split.
+resolved type in the writers and the report), never a family's. The shipped tree has one family,
+`initiative` (`types/initiative/type.yaml`, `abstract: true`), with the one member
+`initiative-rhaistrat` (`types/initiative-rhaistrat/type.yaml`, the RHAISTRAT binding): `--type
+initiative` resolves to `initiative-rhaistrat` through this alias, so every `--type initiative`
+spelling keeps working, and the member is the name `list`, the `TYPE RESOLVED:` line, new artifacts
+and run reports carry.
 
 The classification digest (`type_registry.py classification`) renders a member's merged block
 under its FAMILY's name while it is the family's sole member (with two or more members each
@@ -219,6 +221,23 @@ excludes the member's family row (two members would repeat the family's signals 
 which the member-signals story refines). Cross rule 7 compares a member's own signals, with the
 family a participant under its own name, so siblings are not reported for what they inherit.
 
+**Second-member checklist.** Three decisions in this registry assume the Initiative family has one
+member; a second member revisits them rather than inheriting them. The eval identity is the
+family's (`generate_eval_config.eval_stem`): two members would share the run name
+`<family>-speedrun`, the judge key `<family>_quality` and the MLflow experiment, so the generator
+needs a per-member identity decision first. The classification digest renders the sole member under
+the family's name: with two members each renders under its own, and the create step's `Type:` line
+and the review's misfiled-item sentence name a member. The four prefixes the shipped member inherits
+— `pipeline.{poll_prefix,state_prefix}` and `snapshot.{prefix,report_prefix}`, all `initiative-` —
+must be owned by a second member (the cross-type rules keep them unique), while the shipped member
+keeps its inherited `initiative-run-` / `initiative-snapshot-` values: changing them orphans every
+run report and snapshot already under `initiative-rhaistrat/` in the results repository. Two more
+facts change with a second member: the interactive poll files are `tmp/<member>-poll-*`
+(`POLL_FILE_PREFIX` is derived from the member's name, never inherited), and the family name stops
+resolving (`canonical()` refuses it, naming the members), so `TYPE RESOLVED:` no longer answers
+`--type <family>` and every caller that passes it — the autofixer until AISDLC-852 — must name a
+member.
+
 `tests/fixtures/type-families/` is the two-member reference family (`brief` with `brief-acme` and
 `brief-globex`): the family carries every typed file and the eval prose, the members only
 `type.yaml`, and its README lists the commands to run against it.
@@ -227,7 +246,8 @@ family a participant under its own name, so siblings are not reported for what t
 
 `classification` describes the type for a reader, human or model, deciding between the registered
 types. Optional in the schema; required for any type that lists the `create` stage while any
-registered type declares one, which is always, since `rfe` and `initiative` both do (an out-of-tree
+registered type declares one, which is always, since `rfe` and the `initiative` family (hence its
+member) both do (an out-of-tree
 create-stage descriptor without a block fails gate 1 from this version on). Fields: `summary` (one
 sentence: what belongs here; required), `driver` (who originates it; optional), `signals` (cues in
 a free-text idea that point at this type; required, at least one), `counter_signals` (cues that
@@ -368,19 +388,19 @@ below), and so do the writers ("Effective binding in the writers" below). `--jso
 | `legacy default` | nothing | `rfe`, when registered |
 
 Two or more deterministic signals naming different types are a hard error (`conflicting type
-signals: RFE-1 -> rfe, INIT-2 -> initiative`, exit 1), never a question, also under an explicit
+signals: RFE-1 -> rfe, INIT-2 -> initiative-rhaistrat`, exit 1), never a question, also under an explicit
 `--type`. An id no registered type owns (`foo`, a lower-case key) is no signal in an interactive run
 (the ladder falls through to the legacy default); in a headless run with neither `--type` nor a
 batch `type:` it is a hard error, exit 1 (D5: headless never guesses) — an `--artifact` stem is never
 held to that rule. Provisional-only candidates (a key from a project no type is bound to, `KONFLUX-12`)
 resolve when they single out one type; otherwise the run is **ambiguous**: headless → `ERROR:
-ambiguous type ... pass --type` on stderr, exit 3; interactive → `TYPE AMBIGUOUS: rfe, initiative -
+ambiguous type ... pass --type` on stderr, exit 3; interactive → `TYPE AMBIGUOUS: rfe, initiative-rhaistrat -
 pass --type` on stdout, exit 3 (the hook for the interactive picker; for a free-text idea the
 create body fills it through the `classification` digest, "Classification block" above).
 Headless means `is_headless(env, flag)`: `RFE_CREATOR_HEADLESS` (exported by the headless pipeline),
 `CI` or `GITHUB_ACTIONS` set, or `--headless` passed (`load(headless=True)` in code) — one
 predicate for the extra-roots seam, the workspace file and resolve (D4). `python3 scripts/type_registry.py candidates <ID>` prints the rung
-and the candidate types of one id (`tracker_grammar (provisional): rfe initiative`). `detect()` is
+and the candidate types of one id (`tracker_grammar (provisional): rfe initiative-rhaistrat`). `detect()` is
 unchanged (one Descriptor or `None`, descriptor values only) for the per-id routers.
 
 ### Effective binding in the writers
@@ -627,7 +647,8 @@ results directory or any snapshot are read); it also cross-checks each run repor
 `fetch_issue.py --fetch-all` requests Jira's `parent` for a type whose pipeline reads `parent_key`
 off the task frontmatter — a `pipeline.dimensions[].condition` of the
 `{ frontmatter_field: parent_key, prefix }` form, `Descriptor.condition_prefixes("parent_key")`; the
-initiative alignment dimension (`prefix: "RHAISTRAT-"`) is the one such reader — and writes the
+Initiative alignment dimension (the family declares the `parent_key` condition, the member
+`initiative-rhaistrat` its `prefix: "RHAISTRAT-"`) is the one such reader — and writes the
 parent's key as the task's `parent_key` when it carries one of those prefixes AND matches the type's
 `parent_key` grammar (`Descriptor.parent_key_pattern_effective`, the task schema's own join). The
 field is appended to the `frontmatter.py set` argv after `type` / `tracker_ref` (D7) and only when
