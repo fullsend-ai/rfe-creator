@@ -232,8 +232,9 @@ and the review's misfiled-item sentence name a member. The four prefixes the shi
 must be owned by a second member (the cross-type rules keep them unique), while the shipped member
 keeps its inherited `initiative-run-` / `initiative-snapshot-` values: changing them orphans every
 run report and snapshot already under `initiative-rhaistrat/` in the results repository. Two more
-facts change with a second member: the interactive poll files are `tmp/<member>-poll-*`
-(`POLL_FILE_PREFIX` is derived from the member's name, never inherited), and the family name stops
+facts to know: the interactive poll files are already per member, `tmp/<member>-poll-*`
+(`POLL_FILE_PREFIX` is derived from the member's name, never inherited, so the sole member uses
+`tmp/initiative-rhaistrat-poll-*` today), and with a second member the family name stops
 resolving (`canonical()` refuses it, naming the members), so `TYPE RESOLVED:` no longer answers
 `--type <family>` and every caller that passes it — the autofixer until AISDLC-852 — must name a
 member.

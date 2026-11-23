@@ -401,7 +401,8 @@ The evaluation runs the `rfe-speedrun` skill with `--type initiative` headlessly
 
 - **`eval-initiative.yaml`** — defines the skill, dataset, outputs, judges, and thresholds.
   **Generated** from the same `eval/config/skeleton.yaml` as `eval.yaml`, with
-  `types/initiative/eval/fragment.yaml` and `types/initiative/type.yaml`; the two configs can
+  `types/initiative/eval/fragment.yaml` and `types/initiative-rhaistrat/type.yaml` (which extends
+  `types/initiative/type.yaml`); the two configs can
   no longer drift apart silently (see the RFE section above for how to change and regenerate).
 - **`types/initiative/eval/pairwise-judge.md`** — prompt for blind A/B comparison across runs.
 

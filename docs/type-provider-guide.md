@@ -198,7 +198,8 @@ Rules that are easy to trip:
 The one block written for a reader rather than a script: `summary`, `driver`, `signals`,
 `counter_signals`, `examples` ("Classification block" in [`types/README.md`](../types/README.md)).
 Optional in the schema, required in practice for a type that lists the `create` stage: once any
-registered type declares the block, and `rfe` and `initiative` do, every create-stage type needs
+registered type declares the block, and `rfe` and the `initiative` family (hence its member
+`initiative-rhaistrat`) do, every create-stage type needs
 one. Within the block `summary`, `signals` (at least one) and `examples` (one to five) are required,
 `driver` and `counter_signals` optional. The generic create body classifies a free-text idea
 against every installed type's block (stage 1, AISDLC-190): it reads
