@@ -23,14 +23,14 @@ outputs:
   task_fields: |
     initiative_id, title, priority (Blocker/Critical/Major/Normal/Minor),
     status (Draft/Ready/Submitted/Archived),
-    parent_key (for RHAISTRAT linkage or split children), original_labels.
+    parent_key (the parent Outcome key, or the split parent), original_labels.
   task_sections: |
     Body sections: Objective, Problem Statement, Scope.
   review_files: |
     {ID}-feasibility.md: Technical feasibility assessment with
       architecture context analysis, blockers, scope assessment.
     {ID}-alignment.md: Strategic alignment assessment against
-      RHAISTRAT parent Outcome (if applicable).
+      the parent Outcome (if applicable).
   review_body: |
     Body of review: Assessor Feedback, Technical Feasibility,
     Strategic Alignment, Execution Considerations, Revision History.

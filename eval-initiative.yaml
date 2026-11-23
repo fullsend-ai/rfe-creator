@@ -174,7 +174,7 @@ outputs:
       Frontmatter fields (validated by scripts/frontmatter.py):
         initiative_id, title, priority (Blocker/Critical/Major/Normal/Minor),
         status (Draft/Ready/Submitted/Archived),
-        parent_key (for RHAISTRAT linkage or split children), original_labels.
+        parent_key (the parent Outcome key, or the split parent), original_labels.
       Body sections: Objective, Problem Statement, Scope.
 
   - path: artifacts/initiative-reviews
@@ -195,7 +195,7 @@ outputs:
         {ID}-feasibility.md: Technical feasibility assessment with
           architecture context analysis, blockers, scope assessment.
         {ID}-alignment.md: Strategic alignment assessment against
-          RHAISTRAT parent Outcome (if applicable).
+          the parent Outcome (if applicable).
         {ID}-split-status.yaml: Written only for splits; contains
           action (split/no-split), children list, reason.
       Body of review: Assessor Feedback, Technical Feasibility,
