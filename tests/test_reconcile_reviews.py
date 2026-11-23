@@ -17,7 +17,8 @@ import reconcile_reviews as rr  # noqa: E402
 from artifact_utils import read_frontmatter  # noqa: E402
 
 RFE = ("rfe", "RHAIRFE-1", "rfe_id", "artifacts/rfe-reviews")
-INIT = ("initiative", "INIT-1", "initiative_id", "artifacts/initiative-reviews")
+# the registered Initiative type is the `initiative` family's sole member (AISDLC-851)
+INIT = ("initiative-rhaistrat", "INIT-1", "initiative_id", "artifacts/initiative-reviews")
 RFE_ZERO_WHY = {"what": 2, "why": 0, "open_to_how": 2, "not_a_task": 2, "right_sized": 2}
 INIT_ZERO_SCOPE = {"what": 2, "why": 2, "scope": 0, "open_to_how": 2, "right_sized": 2}
 

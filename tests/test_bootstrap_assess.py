@@ -28,6 +28,9 @@ SKILLS_DIR = os.path.join(REPO_ROOT, ".claude", "skills")
 
 RFE_RUBRIC = "skills/assess-rfe/scripts/agent_prompt.md"
 INITIATIVE_RUBRIC = "skills/assess-initiative/scripts/agent_prompt.md"
+# The registered Initiative type: the sole member of the `initiative` family (AISDLC-851);
+# `bash scripts/bootstrap.sh --type initiative` is the family alias (the autofixer's spelling).
+MEMBER = "initiative-rhaistrat"
 # The reference type family (tests/fixtures/type-families): brief/ is the family, brief-acme/
 # and brief-globex/ its members; the family file holds the rubric block and scorer_agent line.
 FAMILIES_ROOT = os.path.join(REPO_ROOT, "tests", "fixtures", "type-families")
@@ -113,11 +116,13 @@ class TestTypeValidation:
         assert "The rfe assess agent launches with subagent_type: rfe-scorer;" in stderr
         assert "ASSESS phase never completes" in stderr
 
-    def test_initiative_fails_when_rubric_missing(self, fake_checkout):
-        """The exact upstream state today: RFE rubric present, initiative absent."""
+    @pytest.mark.parametrize("spelling", ["initiative", MEMBER])
+    def test_initiative_fails_when_rubric_missing(self, fake_checkout, spelling):
+        """The exact upstream state today: RFE rubric present, initiative absent — under the
+        family alias (the autofixer's spelling) and the member's own name alike."""
         _add_rfe_assets(fake_checkout)
 
-        _, stderr, rc = _run("--type", "initiative")
+        _, stderr, rc = _run("--type", spelling)
         assert rc == 1
         assert "assess-initiative" in stderr
         assert "ASSESS_RFE_REPO" in stderr
@@ -131,11 +136,12 @@ class TestTypeValidation:
         assert rc == 1
         assert "initiative-scorer" in stderr
 
-    def test_initiative_passes_with_full_checkout(self, fake_checkout):
+    @pytest.mark.parametrize("spelling", ["initiative", MEMBER])
+    def test_initiative_passes_with_full_checkout(self, fake_checkout, spelling):
         _add_rfe_assets(fake_checkout)
         _add_initiative_assets(fake_checkout)
 
-        _, stderr, rc = _run("--type", "initiative")
+        _, stderr, rc = _run("--type", spelling)
         assert rc == 0, stderr
 
     def test_equals_form_accepted(self, fake_checkout):
@@ -152,7 +158,9 @@ class TestTypeValidation:
 
         _, stderr, rc = _run("--type", "epic")
         assert rc == 2
-        assert stderr == "ERROR: unknown --type 'epic' (registered types: rfe, initiative)\n"
+        assert stderr == (
+            "ERROR: unknown --type 'epic' (registered types: rfe, initiative-rhaistrat)\n"
+        )
 
     def test_unknown_type_rejected_before_skip_bootstrap(self, fake_checkout):
         """Validation stays ahead of the RFE_SKIP_BOOTSTRAP short-circuit."""
@@ -161,7 +169,7 @@ class TestTypeValidation:
             ["bash", SCRIPT, "--type", "bogus"], capture_output=True, text=True, env=env
         )
         assert result.returncode == 2
-        assert "registered types: rfe, initiative" in result.stderr
+        assert f"registered types: rfe, {MEMBER}" in result.stderr
         assert result.stdout == ""
 
     @pytest.mark.parametrize("value", ["-h", "--help"])
@@ -176,7 +184,7 @@ class TestTypeValidation:
         assert result.returncode == 2
         assert result.stdout == ""
         assert result.stderr == (
-            f"ERROR: unknown --type '{value}' (registered types: rfe, initiative)\n"
+            f"ERROR: unknown --type '{value}' (registered types: rfe, initiative-rhaistrat)\n"
         )
 
     def test_drop_in_type_is_accepted(self, fake_checkout, drop_in_root):
@@ -198,7 +206,7 @@ class TestTypeValidation:
             ["bash", SCRIPT, "--type", "bogus"], capture_output=True, text=True, env=env
         )
         assert result.returncode == 2
-        assert "(registered types: rfe, initiative, memo)" in result.stderr
+        assert "(registered types: rfe, initiative-rhaistrat, memo)" in result.stderr
 
     @staticmethod
     def _env_with_python3(shim_dir):
@@ -229,7 +237,7 @@ class TestTypeValidation:
         )
         assert result.returncode == 2
         assert result.stderr == (
-            "ERROR: unknown --type 'bogus' (registered types: rfe, initiative)\n"
+            "ERROR: unknown --type 'bogus' (registered types: rfe, initiative-rhaistrat)\n"
         )
 
     def test_python_without_yaml_still_validates_the_type(self, fake_checkout, tmp_path):
@@ -256,7 +264,9 @@ class TestTypeValidation:
             ["bash", SCRIPT, "--type", "epic"], capture_output=True, text=True, env=env
         )
         assert result.returncode == 2
-        assert result.stderr == "ERROR: unknown --type 'epic' (registered types: rfe, initiative)\n"
+        assert result.stderr == (
+            "ERROR: unknown --type 'epic' (registered types: rfe, initiative-rhaistrat)\n"
+        )
 
     def test_unreadable_registry_without_a_types_root_exits_2(self, fake_checkout, tmp_path):
         """Both sources gone — the script copied away from the repo, so neither
@@ -592,7 +602,7 @@ class TestPathsMatchPipelineRegistry:
                 cfg["rubric_path"]
                 == f"{type_registry.CONTEXT_DIR}/{desc.get('pipeline.rubric.path')}"
             )
-        assert PIPELINE_TYPES["initiative"]["rubric_path"].endswith(INITIATIVE_RUBRIC)
+        assert PIPELINE_TYPES[MEMBER]["rubric_path"].endswith(INITIATIVE_RUBRIC)
 
     def test_every_type_scorer_agent_is_read_from_the_registry(self):
         text = self._script_text()
@@ -601,7 +611,7 @@ class TestPathsMatchPipelineRegistry:
         for name, cfg in PIPELINE_TYPES.items():
             desc = type_registry.load().get(name)
             assert cfg["scorer_type"] == desc.get("pipeline.scorer_agent")
-        assert PIPELINE_TYPES["initiative"]["scorer_type"] == "initiative-scorer"
+        assert PIPELINE_TYPES[MEMBER]["scorer_type"] == "initiative-scorer"
 
 
 class TestCallersDeclareType:

@@ -13,6 +13,10 @@ import yaml
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 import type_registry  # noqa: E402
 
+# The registered Initiative type: the sole member of the `initiative` family (AISDLC-851);
+# `--type initiative` is the family alias, kept below as a CLI input.
+MEMBER = "initiative-rhaistrat"
+
 SCRIPT = os.path.join(os.path.dirname(__file__), "..", "scripts", "submit.py")
 
 
@@ -2201,7 +2205,7 @@ class TestTypeConfigsProjection:
         import submit as submit_mod
 
         assert list(submit_mod.TYPE_CONFIGS) == submit_mod._TYPES.names()
-        assert list(submit_mod.TYPE_CONFIGS) == ["rfe", "initiative"]
+        assert list(submit_mod.TYPE_CONFIGS) == ["rfe", MEMBER]
         for cfg in submit_mod.TYPE_CONFIGS.values():
             assert list(cfg) == list(self.RFE)
 
@@ -2231,12 +2235,12 @@ class TestTypeConfigsProjection:
         assert submit_mod.TYPE_CONFIGS["rfe"]["split_type_arg"] is None
 
     def test_type_choices_are_the_registry_choices(self):
-        """--help still offers exactly {rfe,initiative}; an unregistered type is refused."""
+        """--help still offers exactly the registered names; an unregistered type is refused."""
         result = subprocess.run(
             [sys.executable, SCRIPT, "--help"], capture_output=True, text=True, env=_clean_env()
         )
         assert result.returncode == 0, result.stderr
-        assert "--type {rfe,initiative}" in result.stdout
+        assert f"--type {{rfe,{MEMBER}}}" in result.stdout
 
         result = subprocess.run(
             [sys.executable, SCRIPT, "--type", "epic", "--dry-run"],
@@ -2367,7 +2371,7 @@ class TestSecondPassInterruptedHold:
         [
             (None, None, "rfe"),  # a review written before the marker existed, no pass launched
             (0, None, "rfe"),  # no pipeline state (a manual submit job's workspace)
-            (0, 1, "initiative"),  # another type's pipeline run
+            (0, 1, MEMBER),  # another type's pipeline run
         ],
         ids=["no-marker", "no-state", "other-type-state"],
     )
@@ -2521,7 +2525,7 @@ class TestSecondPassInterruptedHold:
         assert submit._launched_revise_passes("rfe", str(path)) == {}
         path.write_text("type: rfe\nrevise_passes:\n  RHAIRFE-1: 1\n  RHAIRFE-2: x\n")
         assert submit._launched_revise_passes("rfe", str(path)) == {"RHAIRFE-1": 1}
-        assert submit._launched_revise_passes("initiative", str(path)) == {}
+        assert submit._launched_revise_passes(MEMBER, str(path)) == {}
 
 
 class TestReportCommandArgv:
@@ -2568,7 +2572,7 @@ class TestReportCommandArgv:
         ]
 
     def test_other_types_are_named_explicitly(self, monkeypatch, tmp_path):
-        yaml_cmd, html_cmd = self._capture(monkeypatch, "initiative", tmp_path)
+        yaml_cmd, html_cmd = self._capture(monkeypatch, MEMBER, tmp_path)
         assert yaml_cmd[2:] == [
             "--start-time",
             "20260404-170041",
@@ -2577,7 +2581,7 @@ class TestReportCommandArgv:
             "--report-stage",
             "final",
             "--type",
-            "initiative",
+            MEMBER,
         ]
         assert html_cmd[2:] == [
             "--revised-only",
@@ -2588,7 +2592,7 @@ class TestReportCommandArgv:
                 str(tmp_path), "auto-fix-runs", "initiative-run-20260404-170041-report.html"
             ),
             "--type",
-            "initiative",
+            MEMBER,
         ]
 
 
@@ -2644,7 +2648,8 @@ class TestIsExistingRule:
             self._existing(data)
         message = str(exc.value)
         assert message == (
-            "RHAIRFE-1 carries tracker_ref 'RHAISTRAT-7', a key type initiative owns, not the "
+            "RHAIRFE-1 carries tracker_ref 'RHAISTRAT-7', a key type initiative-rhaistrat owns, "
+            "not the "
             "resolved type rfe (key prefixes: RHAIRFE-); an artifact bound to another type is "
             "never updated or created here — fix the artifact before re-running; nothing submitted"
         )
@@ -2693,7 +2698,7 @@ class TestEffectiveBindingInTheConfig:
     def test_no_override_is_the_descriptor_projection(self):
         import submit as submit_mod
 
-        for name in ("rfe", "initiative"):
+        for name in ("rfe", MEMBER):
             binding = submit_mod._TYPES.get(name).binding({})
             cfg = submit_mod._effective_config(name, binding)
             assert cfg == submit_mod.TYPE_CONFIGS[name]
@@ -2864,7 +2869,8 @@ class TestResolveLineAndOwnership:
         assert stdout == ""
         assert stderr.startswith(
             "Error: rfe: effective binding ('jira', 'RHAISTRAT', 'Initiative') (source: env) is "
-            "the binding registered for type 'initiative'; a tracker binding must be owned by "
+            "the binding registered for type 'initiative-rhaistrat'; a tracker binding must be "
+            "owned by "
             "exactly one type"
         )
         assert stderr.count("\n") == 1 and "Traceback" not in stderr
@@ -2916,7 +2922,8 @@ class TestForeignTrackerRefIsAHardError:
         assert rc == 1
         assert stdout == ""
         assert stderr == (
-            "Error: RHAIRFE-1234 carries tracker_ref 'RHAISTRAT-7', a key type initiative owns, "
+            "Error: RHAIRFE-1234 carries tracker_ref 'RHAISTRAT-7', a key type "
+            "initiative-rhaistrat owns, "
             "not the resolved type rfe (key prefixes: RHAIRFE-); an artifact bound to another "
             "type is never updated or created here — fix the artifact before re-running; "
             "nothing submitted\n"
@@ -3316,11 +3323,12 @@ class TestShorthandIsRefused:
         # import; the writer's own resolve / ownership step then reports the value once.
         self._draft(art_dir)
         stdout, stderr, rc = _run_submit_env(
-            art_dir, {"RFE_CREATOR_BINDING_INITIATIVE_PROJECT": "lower"}
+            art_dir, {"RFE_CREATOR_BINDING_INITIATIVE_RHAISTRAT_PROJECT": "lower"}
         )
         assert (rc, stdout) == (1, "")
         assert stderr == (
-            "Error: RFE_CREATOR_BINDING_INITIATIVE_PROJECT='lower': expected an upper-case "
+            "Error: RFE_CREATOR_BINDING_INITIATIVE_RHAISTRAT_PROJECT='lower': expected an "
+            "upper-case "
             "tracker project key\n"
         )
 

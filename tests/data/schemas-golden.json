@@ -222,7 +222,7 @@
       "required": false
     }
   },
-  "initiative-task": {
+  "initiative-rhaistrat-task": {
     "initiative_id": {
       "type": "string",
       "required": true,
@@ -280,7 +280,7 @@
       "default": null
     }
   },
-  "initiative-review": {
+  "initiative-rhaistrat-review": {
     "initiative_id": {
       "type": "string",
       "required": true,

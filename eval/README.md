@@ -380,7 +380,7 @@ validation retry (Dispatch rule 3 of `.fullsend/rfe-creator/prompt.md`) was not 
 
 # Evaluation — rfe-speedrun --type initiative
 
-Automated evaluation of the `rfe-speedrun --type initiative` pipeline using the [agent-eval-harness](https://github.com/fullsend-ai/agent-eval-harness).
+Automated evaluation of the `rfe-speedrun --type initiative` pipeline (the generated config spells the member, `--type initiative-rhaistrat`; `initiative` is the family alias of the same run) using the [agent-eval-harness](https://github.com/fullsend-ai/agent-eval-harness).
 
 
 ## Quick Start
@@ -401,7 +401,8 @@ The evaluation runs the `rfe-speedrun` skill with `--type initiative` headlessly
 
 - **`eval-initiative.yaml`** — defines the skill, dataset, outputs, judges, and thresholds.
   **Generated** from the same `eval/config/skeleton.yaml` as `eval.yaml`, with
-  `types/initiative/eval/fragment.yaml` and `types/initiative/type.yaml`; the two configs can
+  `types/initiative/eval/fragment.yaml` and `types/initiative-rhaistrat/type.yaml` (which extends
+  `types/initiative/type.yaml`); the two configs can
   no longer drift apart silently (see the RFE section above for how to change and regenerate).
 - **`types/initiative/eval/pairwise-judge.md`** — prompt for blind A/B comparison across runs.
 

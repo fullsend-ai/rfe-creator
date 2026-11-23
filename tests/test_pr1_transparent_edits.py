@@ -74,6 +74,10 @@ NEW_FIELDS = ("type", "tracker_ref")
 BODY = "## Summary\n\nBody text with a horizontal rule below.\n\n---\n\nMore body.\n"
 
 # (schema, artifact path under artifacts/, initial data, update applied second)
+# The registered Initiative type (the sole member of the `initiative` family, AISDLC-851): the
+# artifact schemas are keyed by it; the sample paths and bytes are the family's, unchanged.
+MEMBER = "initiative-rhaistrat"
+
 SAMPLES = {
     "rfe-task": (
         "rfe-tasks/RHAIRFE-1595.md",
@@ -101,7 +105,7 @@ SAMPLES = {
         },
         {"needs_attention": False},
     ),
-    "initiative-task": (
+    f"{MEMBER}-task": (
         "initiatives/RHAISTRAT-12345.md",
         {
             "initiative_id": "RHAISTRAT-12345",
@@ -112,7 +116,7 @@ SAMPLES = {
         },
         {"status": "Submitted"},
     ),
-    "initiative-review": (
+    f"{MEMBER}-review": (
         "initiative-reviews/RHAISTRAT-12345-review.md",
         {
             "initiative_id": "RHAISTRAT-12345",
@@ -147,13 +151,13 @@ GOLDEN = {
         b"before_score: 5\nlocal_id: null\nerror: null\nneeds_attention_reason: null\n"
         b"before_scores: null\n---\n" + BODY.encode()
     ),
-    "initiative-task": (
+    f"{MEMBER}-task": (
         b"---\ninitiative_id: RHAISTRAT-12345\n"
         b"title: Unify model serving telemetry across RHOAI components\n"
         b"priority: Normal\nstatus: Submitted\nparent_key: RHAISTRAT-42\nlocal_id: null\n"
         b"original_labels: null\n---\n" + BODY.encode()
     ),
-    "initiative-review": (
+    f"{MEMBER}-review": (
         b"---\ninitiative_id: RHAISTRAT-12345\nscore: 7\npass: true\nrecommendation: submit\n"
         b"feasibility: feasible\nauto_revised: false\nneeds_attention: true\n"
         b"needs_attention_reason: 'Alignment weak: parent outcome scope differs'\nscores:\n"

@@ -1,6 +1,6 @@
 # GENERATED — do not edit by hand. Regenerate: python3 scripts/generate_eval_config.py
 # Sources: eval/config/skeleton.yaml (shared structure, checks and judge prose), types/initiative/eval/fragment.yaml
-# (typed prose) and types/initiative/type.yaml (identity, dirs, score fields, thresholds).
+# (typed prose) and types/initiative-rhaistrat/type.yaml (extends types/initiative/type.yaml) (identity, dirs, score fields, thresholds).
 name: initiative-speedrun
 description: End-to-end Initiative pipeline — create, review, auto-fix, split, and submit Initiatives
 
@@ -8,7 +8,7 @@ description: End-to-end Initiative pipeline — create, review, auto-fix, split,
 execution:
   mode: batch
   skill: rfe-speedrun
-  arguments: --headless --dry-run --input batch.yaml --type initiative
+  arguments: --headless --dry-run --input batch.yaml --type initiative-rhaistrat
   timeout: 12000          # 3 h 20 — the fullsend child's 180-minute agent budget plus 20 minutes of sandbox start, pre- and post-script (tests/test_eval_profiles.py pins the sum); the 29-case RFE batch ran past 150 minutes twice on 2026-11-12, 113 minutes of agent time on 2026-11-05
   max_budget_usd: 100.0  # Per-invocation cost cap
   env:

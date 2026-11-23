@@ -24,6 +24,10 @@ from split_submit import (
     phase3_close,
 )
 
+# The registered Initiative type: the sole member of the `initiative` family (AISDLC-851);
+# `--type initiative` is the family alias, kept below as a CLI input.
+MEMBER = "initiative-rhaistrat"
+
 SCRIPT = os.path.join(os.path.dirname(__file__), "..", "scripts", "split_submit.py")
 REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
 EXTRA_TYPES = os.path.join(os.path.dirname(__file__), "fixtures", "types")
@@ -379,7 +383,7 @@ class TestSplitConfigProjection:
             [sys.executable, SCRIPT, "--help"], capture_output=True, text=True, env=env
         )
         assert r.returncode == 0, r.stderr
-        assert "{rfe,epic,initiative}" in r.stdout
+        assert f"{{rfe,epic,{MEMBER}}}" in r.stdout
         # The epic fixture never splits (no split_link_type, state_map {}), so a split of one
         # is refused up front — before the scan that would otherwise report no epic files.
         r = subprocess.run(
@@ -572,7 +576,7 @@ class TestInitiativeDryRun:
         _write(f"{art}/initiatives/RHAISTRAT-2000.md", INITIATIVE_PARENT)
         for i in (1, 2):
             _write(f"{art}/initiatives/INIT-{i:03d}.md", INITIATIVE_CHILD.format(num=i))
-        desc = split_submit._TYPES.get("initiative")
+        desc = split_submit._TYPES.get(MEMBER)
         review = _review_fields(
             desc, "INIT-001", auto_revised=True, needs_attention=True, alignment="weak"
         )
@@ -615,7 +619,7 @@ class TestInitiativeDryRun:
         _write(f"{art}/initiatives/RHAISTRAT-2000.md", INITIATIVE_PARENT)
         for i in (1, 2):
             _write(f"{art}/initiatives/INIT-{i:03d}.md", INITIATIVE_CHILD.format(num=i))
-        desc = split_submit._TYPES.get("initiative")
+        desc = split_submit._TYPES.get(MEMBER)
         review = _review_fields(
             desc,
             "INIT-001",
@@ -719,7 +723,7 @@ class TestSplitFactsGuards:
             [sys.executable, SCRIPT, "--help"], capture_output=True, text=True, env=env
         )
         assert r.returncode == 0, r.stderr
-        assert "{rfe,initiative,rfe2}" in r.stdout
+        assert f"{{rfe,{MEMBER},rfe2}}" in r.stdout
         for chosen, other in (("rfe2", "rfe"), ("rfe", "rfe2")):
             r = subprocess.run(
                 [sys.executable, SCRIPT, "RHAIRFE-1", "--dry-run", "--type", chosen]
@@ -951,8 +955,10 @@ class TestEffectiveBindingCli:
         assert r.stdout == ""
         assert r.stderr == (
             "Error: rfe: effective binding ('jira', 'RHAISTRAT', 'Initiative') (source: env) is "
-            "the binding registered for type 'initiative'; a tracker binding must be owned by "
-            "exactly one type (design §3.3 rule 1) — fix the override or pass --type initiative\n"
+            "the binding registered for type 'initiative-rhaistrat'; a tracker binding must be "
+            "owned by "
+            "exactly one type (design §3.3 rule 1) — fix the override or pass --type "
+            "initiative-rhaistrat\n"
         )
 
     def test_the_shorthand_is_refused_before_any_access(self, tmp_path):

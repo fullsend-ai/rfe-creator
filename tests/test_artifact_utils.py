@@ -44,6 +44,11 @@ from artifact_utils import (
     write_frontmatter,
 )
 
+# The registered Initiative type: the sole member of the `initiative` type family (AISDLC-851).
+# Schema keys, descriptor lookups and the names readers resolve to are the member's; a fixture
+# that DECLARES `type: initiative` (the family alias) is kept as written and expected to read as it.
+MEMBER = "initiative-rhaistrat"
+
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
 
@@ -126,19 +131,19 @@ class TestSchemas:
 class TestNeedsAttentionSourceFields:
     """AISDLC-442: the optional source / dimension of a needs_attention flag."""
 
-    @pytest.mark.parametrize("t", ["rfe", "initiative"])
+    @pytest.mark.parametrize("t", ["rfe", MEMBER])
     def test_dimension_enum_is_the_types_score_fields(self, t):
         spec = SCHEMAS[f"{t}-review"]["needs_attention_dimension"]
         assert spec["enum"] == list(_TYPES.get(t).score_fields)
         assert spec["required"] is False
 
-    @pytest.mark.parametrize("t", ["rfe", "initiative"])
+    @pytest.mark.parametrize("t", ["rfe", MEMBER])
     def test_source_enum(self, t):
         spec = SCHEMAS[f"{t}-review"]["needs_attention_source"]
         assert spec["enum"] == ["feasibility", "alignment", "rubric", "classification", "agent"]
         assert spec["required"] is False
 
-    @pytest.mark.parametrize("t", ["rfe", "initiative"])
+    @pytest.mark.parametrize("t", ["rfe", MEMBER])
     def test_no_default_so_existing_reviews_gain_no_keys(self, t):
         for field in ("needs_attention_source", "needs_attention_dimension"):
             assert "default" not in SCHEMAS[f"{t}-review"][field]
@@ -723,22 +728,22 @@ VALID_INITIATIVE_TASK_FM = {
 
 class TestInitiativeSchemas:
     def test_initiative_review_schema_exists(self):
-        assert "initiative-review" in SCHEMAS
+        assert f"{MEMBER}-review" in SCHEMAS
 
     def test_initiative_task_schema_exists(self):
-        assert "initiative-task" in SCHEMAS
+        assert f"{MEMBER}-task" in SCHEMAS
 
     def test_initiative_review_has_alignment(self):
-        assert "alignment" in SCHEMAS["initiative-review"]
+        assert "alignment" in SCHEMAS[f"{MEMBER}-review"]
 
     def test_alignment_defaults_to_not_assessed(self):
         """Omitting alignment must read the same as the alignment file's own value."""
         data = {}
-        apply_defaults(data, "initiative-review")
+        apply_defaults(data, f"{MEMBER}-review")
         assert data["alignment"] == "not_assessed"
 
     def test_initiative_review_score_fields(self):
-        fields = SCHEMAS["initiative-review"]["scores"]["fields"]
+        fields = SCHEMAS[f"{MEMBER}-review"]["scores"]["fields"]
         assert "what" in fields
         assert "why" in fields
         assert "scope" in fields
@@ -746,54 +751,54 @@ class TestInitiativeSchemas:
         assert "right_sized" in fields
 
     def test_initiative_task_has_initiative_id(self):
-        assert "initiative_id" in SCHEMAS["initiative-task"]
+        assert "initiative_id" in SCHEMAS[f"{MEMBER}-task"]
 
     def test_initiative_task_no_size_field(self):
-        assert "size" not in SCHEMAS["initiative-task"]
+        assert "size" not in SCHEMAS[f"{MEMBER}-task"]
 
 
 class TestInitiativeValidate:
     def test_valid_initiative_review(self):
-        errors = validate(VALID_INITIATIVE_REVIEW_FM, "initiative-review")
+        errors = validate(VALID_INITIATIVE_REVIEW_FM, f"{MEMBER}-review")
         assert errors == []
 
     def test_valid_initiative_task(self):
-        errors = validate(VALID_INITIATIVE_TASK_FM, "initiative-task")
+        errors = validate(VALID_INITIATIVE_TASK_FM, f"{MEMBER}-task")
         assert errors == []
 
     def test_initiative_review_rejects_rfe_id(self):
         data = {**VALID_INITIATIVE_REVIEW_FM, "initiative_id": "RHAIRFE-1234"}
-        errors = validate(data, "initiative-review")
+        errors = validate(data, f"{MEMBER}-review")
         assert any("initiative_id" in e for e in errors)
 
     def test_initiative_task_accepts_rhoaieng_id(self):
         data = {**VALID_INITIATIVE_TASK_FM, "initiative_id": "RHAISTRAT-5000"}
-        errors = validate(data, "initiative-task")
+        errors = validate(data, f"{MEMBER}-task")
         assert errors == []
 
     def test_initiative_task_parent_key(self):
         data = {**VALID_INITIATIVE_TASK_FM, "parent_key": "RHAISTRAT-100"}
-        errors = validate(data, "initiative-task")
+        errors = validate(data, f"{MEMBER}-task")
         assert errors == []
 
 
 class TestInitiativeFrontmatter:
     def test_write_and_read_initiative_review(self, tmp_dir):
-        write_frontmatter("init-review.md", VALID_INITIATIVE_REVIEW_FM.copy(), "initiative-review")
+        write_frontmatter("init-review.md", VALID_INITIATIVE_REVIEW_FM.copy(), f"{MEMBER}-review")
         assert os.path.exists("init-review.md")
         data, _ = read_frontmatter("init-review.md")
         assert data["initiative_id"] == "INIT-001"
         assert data["scores"]["what"] == 2
 
     def test_write_and_read_initiative_task(self, tmp_dir):
-        write_frontmatter("init-task.md", VALID_INITIATIVE_TASK_FM.copy(), "initiative-task")
+        write_frontmatter("init-task.md", VALID_INITIATIVE_TASK_FM.copy(), f"{MEMBER}-task")
         data, _ = read_frontmatter("init-task.md")
         assert data["initiative_id"] == "INIT-001"
         assert data["title"] == "Test Initiative"
 
     def test_update_initiative_review(self, tmp_dir):
-        write_frontmatter("init-review.md", VALID_INITIATIVE_REVIEW_FM.copy(), "initiative-review")
-        update_frontmatter("init-review.md", {"auto_revised": True}, "initiative-review")
+        write_frontmatter("init-review.md", VALID_INITIATIVE_REVIEW_FM.copy(), f"{MEMBER}-review")
+        update_frontmatter("init-review.md", {"auto_revised": True}, f"{MEMBER}-review")
         data, _ = read_frontmatter("init-review.md")
         assert data["auto_revised"] is True
         assert data["initiative_id"] == "INIT-001"
@@ -853,7 +858,7 @@ class TestRenamePersistsLocalId:
         write_frontmatter(
             "artifacts/initiatives/INIT-001.md",
             VALID_INITIATIVE_TASK_FM.copy(),
-            "initiative-task",
+            f"{MEMBER}-task",
         )
 
         rename_initiative_to_jira_key("artifacts", "INIT-001", "RHAISTRAT-1234")
@@ -910,7 +915,7 @@ class TestRenameInitiativeToJiraKey:
         write_frontmatter(
             "artifacts/initiatives/INIT-001.md",
             VALID_INITIATIVE_TASK_FM.copy(),
-            "initiative-task",
+            f"{MEMBER}-task",
         )
         for name in extra_files:
             with open(f"artifacts/initiatives/{name}", "w") as f:
@@ -954,7 +959,7 @@ class TestRenameInitiativeToJiraKey:
 # behaviour the pre-registry twins had, so the collapse stays behaviour-neutral per type.
 
 RFE = _TYPES.get("rfe")
-INITIATIVE = _TYPES.get("initiative")
+INITIATIVE = _TYPES.get(MEMBER)
 
 
 def _tree(files):
@@ -1044,7 +1049,7 @@ class TestScanGenerics:
         write_frontmatter(
             "artifacts/initiative-reviews/INIT-001-review.md",
             VALID_INITIATIVE_REVIEW_FM.copy(),
-            "initiative-review",
+            f"{MEMBER}-review",
         )
         rfe_found = scan_review_files("artifacts")
         assert rfe_found == scan_reviews("artifacts", RFE)
@@ -1077,7 +1082,7 @@ class TestRenameGenerics:
         write_frontmatter(
             f"{root}/initiative-reviews/INIT-001-review.md",
             VALID_INITIATIVE_REVIEW_FM.copy(),
-            "initiative-review",
+            f"{MEMBER}-review",
         )
 
     def test_wrappers_produce_the_same_tree_as_the_generic(self, tmp_dir):
@@ -1140,7 +1145,7 @@ class TestRenameGenerics:
                 "rename_initiative_to_jira_key: invalid Jira key 'RHAISTRAT-1/../2'",
             ),
         ]
-        wrappers = {"rfe": rename_to_jira_key, "initiative": rename_initiative_to_jira_key}
+        wrappers = {"rfe": rename_to_jira_key, MEMBER: rename_initiative_to_jira_key}
         for desc, item_id, key, message in cases:
             with pytest.raises(ValueError) as generic:
                 rename_to_tracker_key("artifacts", item_id, key, desc)
@@ -1173,7 +1178,7 @@ class TestRenameGenerics:
         write_frontmatter(
             "artifacts/initiative-reviews/INIT-001-some-slug-review.md",
             VALID_INITIATIVE_REVIEW_FM.copy(),
-            "initiative-review",
+            f"{MEMBER}-review",
         )
         rename_to_tracker_key("artifacts", "INIT-001", "RHAISTRAT-7", INITIATIVE)
         assert os.listdir("artifacts/initiative-reviews") == ["INIT-001-some-slug-review.md"]
@@ -1237,13 +1242,13 @@ class TestLookupsUseDetect:
         ("RHOAIENG-42", "rfe"),
         ("RFE-x", "rfe"),
         ("", "rfe"),
-        ("INIT-001", "initiative"),
-        ("RHAISTRAT-1234", "initiative"),
-        ("INIT-x", "initiative"),
+        ("INIT-001", MEMBER),
+        ("RHAISTRAT-1234", MEMBER),
+        ("INIT-x", MEMBER),
     ]
 
     def test_find_review_file(self, tmp_dir):
-        dirs = {"rfe": "rfe-reviews", "initiative": "initiative-reviews"}
+        dirs = {"rfe": "rfe-reviews", MEMBER: "initiative-reviews"}
         for ident, _ in self.IDS:
             for d in dirs.values():
                 _write(f"artifacts/{d}/{ident}-review.md", "---\nx: 1\n---\n")
@@ -1254,7 +1259,7 @@ class TestLookupsUseDetect:
         assert find_review_file("nowhere", "RFE-001") is None
 
     def test_find_removed_context_yaml(self, tmp_dir):
-        dirs = {"rfe": "rfe-tasks", "initiative": "initiatives"}
+        dirs = {"rfe": "rfe-tasks", MEMBER: "initiatives"}
         for ident, _ in self.IDS:
             for d in dirs.values():
                 _write(f"artifacts/{d}/{ident}-removed-context.yaml", "blocks: []\n")
@@ -1481,8 +1486,9 @@ class TestTypeForProbesTheTaskFrontmatter:
         )
         _write("artifacts/rfe-tasks/KONFLUX-2.md", _task_fm("rfe_id", "KONFLUX-2", type="rfe"))
         found = _TYPES.candidates("KONFLUX-1")
-        assert found.provisional and found.names == ["rfe", "initiative"]
-        assert artifact_utils._type_for("KONFLUX-1").name == "initiative"
+        assert found.provisional and found.names == ["rfe", MEMBER]
+        # the file declares the family alias: the probe reads it as the member (never rewritten)
+        assert artifact_utils._type_for("KONFLUX-1").name == MEMBER
         assert artifact_utils._type_for("KONFLUX-2").name == "rfe"
         # No task file, or one that declares nothing: today's default.
         assert artifact_utils._type_for("KONFLUX-3").name == "rfe"
@@ -1504,7 +1510,7 @@ class TestTypeForProbesTheTaskFrontmatter:
         _write("elsewhere/initiative-reviews/KONFLUX-1-review.md", "---\nx: 1\n---\n")
         _write("elsewhere/rfe-reviews/KONFLUX-1-review.md", "---\nx: 1\n---\n")
         _write("elsewhere/initiatives/KONFLUX-1-removed-context.yaml", "blocks: []\n")
-        assert artifact_utils._type_for("KONFLUX-1", "elsewhere").name == "initiative"
+        assert artifact_utils._type_for("KONFLUX-1", "elsewhere").name == MEMBER
         assert artifact_utils._type_for("KONFLUX-1").name == "rfe"  # cwd artifacts/: nothing
         assert find_review_file("elsewhere", "KONFLUX-1") == os.path.join(
             "elsewhere", "initiative-reviews", "KONFLUX-1-review.md"
@@ -1594,9 +1600,9 @@ class TestFindTaskFileDescriptorForm:
             ("rfe", "RHAIRFE-1"): "artifacts/rfe-tasks/RHAIRFE-1.md",
             ("rfe", "RHAIRFE-2"): None,  # tracker key: exact name only
             ("rfe", "RFE-x"): "artifacts/rfe-tasks/RFE-x.md",  # parity rung: local prefix
-            ("initiative", "INIT-001"): "artifacts/initiatives/INIT-001.md",
-            ("initiative", "INIT-002"): "artifacts/initiatives/INIT-002-slug.md",
-            ("initiative", "RHAISTRAT-1"): "artifacts/initiatives/RHAISTRAT-1.md",
+            (MEMBER, "INIT-001"): "artifacts/initiatives/INIT-001.md",
+            (MEMBER, "INIT-002"): "artifacts/initiatives/INIT-002-slug.md",
+            (MEMBER, "RHAISTRAT-1"): "artifacts/initiatives/RHAISTRAT-1.md",
         }
         for desc in (RFE, INITIATIVE):
             bare = desc.dirs("bare")["tasks"]
@@ -1778,7 +1784,7 @@ class TestRenameStampsSelfDescribingFields:
             rename_initiative_to_jira_key("artifacts", "INIT-001", "RHAISTRAT-1")
         assert str(exc.value) == (
             "rename_initiative_to_jira_key: artifacts/initiatives/INIT-001.md declares "
-            "type='rfe', expected initiative; nothing renamed"
+            "type='rfe', expected initiative-rhaistrat; nothing renamed"
         )
         assert _snapshot("artifacts") == before
 
@@ -1786,12 +1792,12 @@ class TestRenameStampsSelfDescribingFields:
         os.makedirs("artifacts/initiatives")
         os.makedirs("artifacts/initiative-reviews")
         write_frontmatter(
-            "artifacts/initiatives/INIT-001.md", VALID_INITIATIVE_TASK_FM.copy(), "initiative-task"
+            "artifacts/initiatives/INIT-001.md", VALID_INITIATIVE_TASK_FM.copy(), f"{MEMBER}-task"
         )
         write_frontmatter(
             "artifacts/initiative-reviews/INIT-001-review.md",
             VALID_INITIATIVE_REVIEW_FM.copy(),
-            "initiative-review",
+            f"{MEMBER}-review",
         )
         rename_initiative_to_jira_key("artifacts", "INIT-001", "RHAISTRAT-1234")
         for path in (
@@ -1800,7 +1806,8 @@ class TestRenameStampsSelfDescribingFields:
         ):
             data, _ = read_frontmatter(path)
             assert list(data)[-2:] == ["type", "tracker_ref"], path
-            assert (data["type"], data["tracker_ref"]) == ("initiative", "RHAISTRAT-1234")
+            # the rename stamps the registered (member) name, never the family alias
+            assert (data["type"], data["tracker_ref"]) == (MEMBER, "RHAISTRAT-1234")
             assert (data["initiative_id"], data["local_id"]) == ("RHAISTRAT-1234", "INIT-001")
 
     def test_renamed_files_validate_and_the_wrappers_agree_with_the_generic(self, tmp_dir):
@@ -1826,7 +1833,7 @@ class TestSchemasFollowTheRegistry:
         size = SCHEMAS["rfe-task"]["size"]
         assert size is not RFE.get("schema.task.extra_fields.size")
         assert size == RFE.get("schema.task.extra_fields.size")
-        alignment = SCHEMAS["initiative-review"]["alignment"]
+        alignment = SCHEMAS[f"{MEMBER}-review"]["alignment"]
         assert alignment is not INITIATIVE.get("schema.review.extra_fields.alignment")
         assert alignment == INITIATIVE.get("schema.review.extra_fields.alignment")
 
@@ -1877,8 +1884,8 @@ class TestPartialDropInTypes:
         import json
 
         names, schemas, table, owner_local, owner_key, detected = json.loads(result.stdout)
-        assert names == ["rfe", "docs", "initiative"]
-        assert schemas == ["rfe-task", "rfe-review", "initiative-task", "initiative-review"]
+        assert names == ["rfe", "docs", MEMBER]
+        assert schemas == ["rfe-task", "rfe-review", f"{MEMBER}-task", f"{MEMBER}-review"]
         assert all(not s.startswith("docs-") for _, s in table)
         assert (owner_local, owner_key, detected) == ("docs", "docs", None)
 
@@ -2104,8 +2111,8 @@ class TestEffectiveIdGrammar:
         import artifact_utils
 
         desc = _bound_to(INITIATIVE, KONFLUX_ENV)
-        assert artifact_utils._task_schema(desc) == SCHEMAS["initiative-task"]
-        assert artifact_utils._review_schema(desc) == SCHEMAS["initiative-review"]
+        assert artifact_utils._task_schema(desc) == SCHEMAS[f"{MEMBER}-task"]
+        assert artifact_utils._review_schema(desc) == SCHEMAS[f"{MEMBER}-review"]
 
     def test_schemas_reflect_the_environment_at_import(self):
         # SCHEMAS is built once at import from the process environment (like every other
@@ -2115,7 +2122,7 @@ class TestEffectiveIdGrammar:
             "import sys, json; sys.path.insert(0, 'scripts'); import artifact_utils as a; "
             "fm = {'title': 'T', 'priority': 'Major', 'status': 'Ready'}; "
             "print(json.dumps([a.SCHEMAS['rfe-task']['rfe_id']['pattern'], "
-            "a.SCHEMAS['initiative-task']['initiative_id']['pattern'], "
+            f"a.SCHEMAS['{MEMBER}-task']['initiative_id']['pattern'], "
             "a.validate({'rfe_id': 'KONFLUX-1', **fm}, 'rfe-task'), "
             "a.validate({'rfe_id': 'RHAIRFE-1', **fm}, 'rfe-task'), "
             "a.validate({'rfe_id': 'RHAISTRAT-1', **fm}, 'rfe-task')]))"
@@ -2130,7 +2137,7 @@ class TestEffectiveIdGrammar:
         assert result.returncode == 0, result.stderr
         rfe_pattern, init_pattern, konflux, rhairfe, rhoaieng = json.loads(result.stdout)
         assert rfe_pattern == r"^(RFE-\d+|KONFLUX-\d+|RHAIRFE-\d+)$"
-        assert init_pattern == SCHEMAS["initiative-task"]["initiative_id"]["pattern"]
+        assert init_pattern == SCHEMAS[f"{MEMBER}-task"]["initiative_id"]["pattern"]
         assert konflux == [] and rhairfe == []
         assert rhoaieng == [f"rfe_id: 'RHAISTRAT-1' does not match {rfe_pattern}"]
         # In this process (no override) the overridden key is not an rfe id.
@@ -2150,9 +2157,9 @@ class TestMalformedOverrideNeverBreaksTheImport:
         code = (
             "import sys, json; sys.path.insert(0, 'scripts'); import artifact_utils as a; "
             "print(json.dumps([a.SCHEMAS['rfe-task']['rfe_id']['pattern'], "
-            "a.SCHEMAS['initiative-task']['initiative_id']['pattern'], "
+            f"a.SCHEMAS['{MEMBER}-task']['initiative_id']['pattern'], "
             "a.SCHEMAS['rfe-task']['parent_key']['pattern'], "
-            "a.SCHEMAS['initiative-task']['parent_key']['pattern']]))"
+            f"a.SCHEMAS['{MEMBER}-task']['parent_key']['pattern']]))"
         )
         for var in ("RFE_CREATOR_BINDING_INITIATIVE_PROJECT", "RFE_CREATOR_BINDING_RFE_PROJECT"):
             result = subprocess.run(
@@ -2166,9 +2173,9 @@ class TestMalformedOverrideNeverBreaksTheImport:
             assert "Traceback" not in result.stderr
             assert json.loads(result.stdout) == [
                 SCHEMAS["rfe-task"]["rfe_id"]["pattern"],
-                SCHEMAS["initiative-task"]["initiative_id"]["pattern"],
+                SCHEMAS[f"{MEMBER}-task"]["initiative_id"]["pattern"],
                 SCHEMAS["rfe-task"]["parent_key"]["pattern"],
-                SCHEMAS["initiative-task"]["parent_key"]["pattern"],
+                SCHEMAS[f"{MEMBER}-task"]["parent_key"]["pattern"],
             ], var
 
     def test_helpers_degrade_to_the_descriptor(self, tmp_dir, monkeypatch):
@@ -2330,7 +2337,7 @@ class TestRenameUnderAProjectOverride:
         write_frontmatter(
             "artifacts/initiatives/INIT-001.md",
             {"initiative_id": "INIT-001", "title": "T", "priority": "Major", "status": "Ready"},
-            "initiative-task",
+            f"{MEMBER}-task",
         )
         code = (
             f"import sys; sys.path.insert(0, {SCRIPTS_DIR!r}); import artifact_utils as a; "

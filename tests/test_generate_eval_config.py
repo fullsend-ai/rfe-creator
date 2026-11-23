@@ -23,7 +23,9 @@ import type_registry  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TYPES_ROOT = REPO_ROOT / "types"
-TYPES = ["rfe", "initiative"]
+MEMBER = "initiative-rhaistrat"  # the registered Initiative type (the family's sole member)
+FAMILY = "initiative"  # the type family: a `--type` alias of MEMBER, never a registered name
+TYPES = ["rfe", MEMBER]
 REG = type_registry.load(root=TYPES_ROOT, extra_roots=[], env={})
 FRAGMENT_SCHEMA = json.loads(
     (TYPES_ROOT / "_schema" / "eval-fragment.schema.json").read_text(encoding="utf-8")
@@ -237,7 +239,7 @@ class TestDerivedValues:
         """The generator's own error type, naming the field, so validate_types and the CLI
         report it instead of surfacing the registry's KeyError."""
         with pytest.raises(gen.GenerateError, match="descriptor has no 'eval.config'"):
-            gen.config_path(_desc("initiative", mutate=lambda d: d["eval"].pop("config")))
+            gen.config_path(_desc(MEMBER, mutate=lambda d: d["eval"].pop("config")))
         with pytest.raises(gen.GenerateError, match="eval.config is unset"):
             gen.config_path(_desc("rfe", mutate=lambda d: d["eval"].__setitem__("config", None)))
 
@@ -264,9 +266,25 @@ class TestDerivedValues:
         assert d["arch.not_relevant_pattern_def"].startswith("not_relevant_pattern = None")
         assert set(d) == set(gen.DERIVED)
 
+    def test_member_identity_is_the_family_stem_except_the_type_it_passes(self):
+        """A member of a type family renders under the FAMILY's run name and judge key
+        (``eval_stem``: the metric history, the pairwise baselines and the thresholds key are
+        the family's, AISDLC-851), passes its OWN concrete name as ``--type`` (a family name
+        is ambiguous once it has two members) and writes to its own ``eval.config``."""
+        desc = REG.get(MEMBER)
+        assert desc.extends == FAMILY
+        assert gen.eval_stem(desc) == FAMILY
+        assert gen.eval_stem(REG.get("rfe")) == "rfe"
+        d = gen.derived_values(desc, gen.flatten(_fragment(MEMBER)))
+        assert d["name"] == f"{FAMILY}-speedrun"
+        assert d["quality_judge"] == f"{FAMILY}_quality"
+        assert d["arguments"] == f"--headless --dry-run --input batch.yaml --type {MEMBER}"
+        assert str(gen.config_path(desc)).endswith("eval-initiative.yaml")
+        assert gen.config_path(desc) == gen.config_path(_desc(MEMBER))
+
     def test_initiative_extra_fields_rules_and_annotations(self):
-        frag = _fragment("initiative")
-        d = gen.derived_values(REG.get("initiative"), gen.flatten(frag))
+        frag = _fragment(MEMBER)
+        d = gen.derived_values(REG.get(MEMBER), gen.flatten(frag))
         assert d["annotations_extra"] == (
             "- expected_alignment (nullable string: strong/partial/weak/not_assessed)\n"
             "- expected_classification (nullable)"
@@ -339,10 +357,10 @@ class TestDerivedValues:
             _render_mini(desc=desc)
 
     def test_invalid_not_relevant_regex_is_an_error(self):
-        frag = _fragment("initiative")
+        frag = _fragment(MEMBER)
         frag["architecture_context"]["not_relevant_pattern"] = "("
         with pytest.raises(gen.GenerateError, match="not a valid regex"):
-            gen.derived_values(REG.get("initiative"), gen.flatten(frag))
+            gen.derived_values(REG.get(MEMBER), gen.flatten(frag))
 
     def test_malformed_extra_rule_is_an_error(self):
         desc = _desc(
@@ -410,12 +428,18 @@ class TestShippedConfigs:
 
     @pytest.mark.parametrize("t", TYPES)
     def test_header_names_the_sources(self, t):
-        head = (
-            (REPO_ROOT / REG.get(t).get("eval.config")).read_text(encoding="utf-8").splitlines()[:3]
-        )
+        """The fragment is read from the type's own eval/ or, for a member of a type family
+        without one, the family's (``eval_dir``); the descriptor line names the member's file
+        and the family it extends."""
+        desc = REG.get(t)
+        stem = desc.extends or t
+        head = (REPO_ROOT / desc.get("eval.config")).read_text(encoding="utf-8").splitlines()[:3]
         assert head[0].startswith("# GENERATED — do not edit by hand")
-        assert gen.SKELETON_RELPATH in head[1] and f"types/{t}/eval/fragment.yaml" in head[1]
-        assert f"types/{t}/type.yaml" in head[2]
+        assert gen.SKELETON_RELPATH in head[1] and f"types/{stem}/eval/fragment.yaml" in head[1]
+        if desc.extends is None:
+            assert f"types/{t}/type.yaml (" in head[2] and "extends" not in head[2]
+        else:
+            assert f"types/{t}/type.yaml (extends types/{stem}/type.yaml)" in head[2]
 
     def test_thresholds_are_the_descriptor_map_verbatim(self):
         for t in TYPES:
@@ -434,7 +458,7 @@ class TestShippedConfigs:
         }
         for name in ("revision_flag_consistency", "revision_coverage"):
             rfe = {k: v for k, v in configs["rfe"][name].items() if k != "arguments"}
-            init = {k: v for k, v in configs["initiative"][name].items() if k != "arguments"}
+            init = {k: v for k, v in configs[MEMBER][name].items() if k != "arguments"}
             assert rfe == init, name
         # The one typed key of a shared judge: the dataset the run's cases come
         # from, where revision_coverage reads the sibling cases' tags.
@@ -448,7 +472,7 @@ class TestShippedConfigs:
         out = capsys.readouterr().out
         assert (
             "rfe: eval.yaml up to date" in out
-            and "initiative: eval-initiative.yaml up to date" in out
+            and f"{MEMBER}: eval-initiative.yaml up to date" in out
         )
 
     def test_write_then_check_over_a_fake_repo_root(self, tmp_path, capsys):
@@ -470,9 +494,12 @@ class TestShippedConfigs:
         assert printed.startswith("# GENERATED")
         assert gen.main(["--type", "nope", "--repo-root", str(repo)]) == 2
 
-    def test_stdout_render_equals_compare(self, capsys):
-        assert gen.main(["--type", "initiative", "--stdout"]) == 0
-        assert capsys.readouterr().out == gen.compare(REG.get("initiative"))[1]
+    @pytest.mark.parametrize("spelling", [MEMBER, FAMILY])
+    def test_stdout_render_equals_compare(self, capsys, spelling):
+        """``--type <member>`` and ``--type <family>`` (the single-member alias, through
+        ``_select`` -> ``canonical``) both render the member's config."""
+        assert gen.main(["--type", spelling, "--stdout"]) == 0
+        assert capsys.readouterr().out == gen.compare(REG.get(MEMBER))[1]
 
 
 # ── first-regeneration dispositions (design §4.5) ─────────────────────────────────
@@ -518,7 +545,7 @@ class TestDispositions:
         assert "not_relevant_pattern = re.compile(" in init
         assert "architecture context (was |is )?(not |un)relevant" in init
         assert self.cfg["rfe"]["thresholds"]["architecture_context_used"] == {"min_pass_rate": 1.0}
-        assert self.cfg["initiative"]["thresholds"]["architecture_context_used"] == {
+        assert self.cfg[MEMBER]["thresholds"]["architecture_context_used"] == {
             "min_pass_rate": 0.85
         }
 
@@ -560,8 +587,12 @@ class TestDispositions:
             assert "EMPTY_HISTORY_PREFIX = re.compile(" in cov
 
     def test_pairwise_prompts_live_with_their_type(self):
+        # A member of a type family with no eval/ of its own renders the family's prompt
+        # (generate_eval_config.eval_dir), so the path names the family directory.
         for t in TYPES:
-            assert self.judges[t]["pairwise"]["prompt_file"] == f"types/{t}/eval/pairwise-judge.md"
+            stem = REG.get(t).extends or t
+            prompt_file = self.judges[t]["pairwise"]["prompt_file"]
+            assert prompt_file == f"types/{stem}/eval/pairwise-judge.md"
         assert not (REPO_ROOT / "eval" / "config" / "pairwise-judge.md").exists()
 
     def test_reclassify_is_a_held_recommendation(self):
@@ -590,5 +621,5 @@ class TestDispositions:
             assert "submit/revise/split/reject/reclassify" in dataset
             assert "No deterministic judge reads it" in dataset
         # the initiative's typed rule (weak alignment sets needs_attention) renders after it
-        init = self.judges["initiative"]["recommendation_consistency"]["check"]
+        init = self.judges[MEMBER]["recommendation_consistency"]["check"]
         assert init.index("recommendation={rec}") < init.index("alignment=weak but")

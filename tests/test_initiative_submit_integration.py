@@ -13,6 +13,10 @@ import sys
 import pytest
 import yaml
 
+# The registered Initiative type: the sole member of the `initiative` family (AISDLC-851);
+# `--type initiative` is the family alias, kept below as a CLI input.
+MEMBER = "initiative-rhaistrat"
+
 SCRIPT = os.path.join(os.path.dirname(__file__), "..", "scripts", "submit.py")
 
 
@@ -844,7 +848,7 @@ class TestResolveLine:
         )
         r = _run_submit(art_dir, jira.url)
         assert r.returncode == 0, r.stderr
-        assert r.stderr.startswith("TYPE RESOLVED: initiative (--type)\n")
+        assert r.stderr.startswith("TYPE RESOLVED: initiative-rhaistrat (--type)\n")
         assert r.stderr.count("TYPE RESOLVED") == 1 and "Traceback" not in r.stderr
         assert "RHAISTRAT-1234: Updated" in r.stdout
         assert (
@@ -867,7 +871,7 @@ class TestResolveLine:
         assert r.returncode == 0, r.stderr
         assert (
             "Reason: binding mismatch — RHAISTRAT-1234 is (RHAISTRAT, Feature Request) in Jira "
-            "but type initiative binds (RHAISTRAT, Initiative)"
+            "but type initiative-rhaistrat binds (RHAISTRAT, Initiative)"
         ) in r.stdout
         assert "Updated" not in r.stdout
         assert _read_frontmatter(f"{art_dir}/initiatives/RHAISTRAT-1234.md")["status"] == "Ready"

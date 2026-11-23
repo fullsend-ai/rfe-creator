@@ -12,6 +12,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
 from generate_run_report import _parse_run_id, build_report
 
+# The registered Initiative type: the sole member of the `initiative` family (AISDLC-851).
+MEMBER = "initiative-rhaistrat"
+
 REVIEW_TEMPLATE = """\
 ---
 initiative_id: {init_id}
@@ -95,7 +98,7 @@ class TestBuildReport:
             ),
         )
         report = build_report(
-            ["INIT-001"], "20260404-170041", artifacts_dir=art_dir, entry_type="initiative"
+            ["INIT-001"], "20260404-170041", artifacts_dir=art_dir, entry_type=MEMBER
         )
         assert report["run_id"] == "20260404-170041"
         assert report["input_count"] == 1
@@ -132,7 +135,7 @@ class TestBuildReport:
             ).replace("needs_attention: false", "needs_attention: true"),
         )
         report = build_report(
-            ["INIT-001"], "20260404-170041", artifacts_dir=art_dir, entry_type="initiative"
+            ["INIT-001"], "20260404-170041", artifacts_dir=art_dir, entry_type=MEMBER
         )
         assert report["results"] == {
             "passed": 0,
@@ -152,7 +155,7 @@ class TestBuildReport:
 
     def test_missing_review_counts_as_error(self, art_dir):
         report = build_report(
-            ["INIT-MISSING"], "20260404-170041", artifacts_dir=art_dir, entry_type="initiative"
+            ["INIT-MISSING"], "20260404-170041", artifacts_dir=art_dir, entry_type=MEMBER
         )
         assert report["results"]["errors"] == 1
         assert len(report["errors"]) == 1
@@ -197,7 +200,7 @@ class TestBuildReport:
             ["INIT-001", "INIT-002"],
             "20260404-170041",
             artifacts_dir=art_dir,
-            entry_type="initiative",
+            entry_type=MEMBER,
         )
         assert report["after_scores_avg"]["total"] == 7.0
         assert report["after_scores_avg"]["what"] == 2.0
@@ -224,7 +227,7 @@ class TestBuildReport:
             ),
         )
         report = build_report(
-            ["INIT-001"], "20260404-170041", artifacts_dir=art_dir, entry_type="initiative"
+            ["INIT-001"], "20260404-170041", artifacts_dir=art_dir, entry_type=MEMBER
         )
         assert report["before_scores_avg"]["total"] == 5.0
         assert report["before_scores_avg"]["what"] == 1.0
@@ -251,7 +254,7 @@ class TestBuildReport:
             ),
         )
         report = build_report(
-            ["INIT-001"], "20260404-170041", artifacts_dir=art_dir, entry_type="initiative"
+            ["INIT-001"], "20260404-170041", artifacts_dir=art_dir, entry_type=MEMBER
         )
         assert report["results"]["split"] == 1
 
@@ -274,7 +277,7 @@ class TestBuildReport:
             ),
         )
         report = build_report(
-            ["INIT-001"], "20260404-170041", artifacts_dir=art_dir, entry_type="initiative"
+            ["INIT-001"], "20260404-170041", artifacts_dir=art_dir, entry_type=MEMBER
         )
         assert report["per_initiative"][0]["alignment"] == "partial"
 
@@ -316,7 +319,7 @@ class TestSplitChildrenIncluded:
             self._review(art_dir, child)
 
         report = build_report(
-            ["INIT-001"], "20260404-170041", artifacts_dir=art_dir, entry_type="initiative"
+            ["INIT-001"], "20260404-170041", artifacts_dir=art_dir, entry_type=MEMBER
         )
 
         ids = [e["id"] for e in report["per_initiative"]]
@@ -344,7 +347,7 @@ class TestSplitChildrenIncluded:
         self._review(art_dir, "INIT-001")
 
         report = build_report(
-            ["INIT-001"], "20260404-170041", artifacts_dir=art_dir, entry_type="initiative"
+            ["INIT-001"], "20260404-170041", artifacts_dir=art_dir, entry_type=MEMBER
         )
 
         assert [e["id"] for e in report["per_initiative"]] == ["INIT-001"]

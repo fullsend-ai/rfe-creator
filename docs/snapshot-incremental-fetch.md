@@ -453,7 +453,7 @@ subtree name is the descriptor field `snapshot.results_subdir`
 | Type | `snapshot.results_subdir` | Runs | `latest` |
 |------|---------------------------|------|----------|
 | `rfe` | `""` — the root, grandfathered: the repository's history and the production `latest` live there | `<ts>/` | `latest` |
-| `initiative` | `initiative-rhaistrat` | `initiative-rhaistrat/<ts>/` | `initiative-rhaistrat/latest` |
+| `initiative-rhaistrat` (`--type initiative`, the family name, resolves to it) | `initiative-rhaistrat` | `initiative-rhaistrat/<ts>/` | `initiative-rhaistrat/latest` |
 
 A subtree is named `<type>-<project lowercased>`: the Jira project is part
 of the name because a second deployment of the same type against another

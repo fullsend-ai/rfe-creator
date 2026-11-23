@@ -11,6 +11,11 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
 import frontmatter  # noqa: E402
+
+# The registered Initiative type: the sole member of the `initiative` family (AISDLC-851). The
+# schemas are keyed by it; a file declaring `type: initiative` and `--schema-type initiative-*`
+# (the family's short names) are the alias, kept below as inputs read as the member.
+MEMBER = "initiative-rhaistrat"
 from artifact_utils import SCHEMAS, get_schema_yaml  # noqa: E402
 
 REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
@@ -23,8 +28,8 @@ class TestDetectSchemaType:
         assert frontmatter._SCHEMA_BY_DIR == [
             ("rfe-reviews/", "rfe-review"),
             ("rfe-tasks/", "rfe-task"),
-            ("initiative-reviews/", "initiative-review"),
-            ("initiatives/", "initiative-task"),
+            ("initiative-reviews/", f"{MEMBER}-review"),
+            ("initiatives/", f"{MEMBER}-task"),
         ]
 
     @pytest.mark.parametrize(
@@ -35,10 +40,10 @@ class TestDetectSchemaType:
             ("/abs/work/artifacts/rfe-tasks/RHAIRFE-1595.md", "rfe-task"),
             ("artifacts/rfe-reviews/RFE-001-review.md", "rfe-review"),
             ("rfe-reviews/RHAIRFE-1595-review.md", "rfe-review"),
-            ("artifacts/initiatives/INIT-001.md", "initiative-task"),
-            ("initiatives/RHAISTRAT-1.md", "initiative-task"),
-            ("artifacts/initiative-reviews/INIT-001-review.md", "initiative-review"),
-            ("/abs/artifacts/initiative-reviews/RHAISTRAT-1-review.md", "initiative-review"),
+            ("artifacts/initiatives/INIT-001.md", f"{MEMBER}-task"),
+            ("initiatives/RHAISTRAT-1.md", f"{MEMBER}-task"),
+            ("artifacts/initiative-reviews/INIT-001-review.md", f"{MEMBER}-review"),
+            ("/abs/artifacts/initiative-reviews/RHAISTRAT-1-review.md", f"{MEMBER}-review"),
             # Not a task/review dir: originals, staging, anything else.
             ("artifacts/rfe-originals/RHAIRFE-1595.md", None),
             ("artifacts/initiative-originals/RHAISTRAT-1.md", None),
@@ -153,14 +158,14 @@ LEGACY = {
         "before_scores: null\n---\n\nFeedback.\n",
         ("auto_revised", "false", "true"),
     ),
-    "initiative-task": (
+    f"{MEMBER}-task": (
         "artifacts/initiatives/RHAISTRAT-12345.md",
         "---\ninitiative_id: RHAISTRAT-12345\ntitle: Legacy initiative\npriority: Normal\n"
         "status: Ready\nparent_key: RHAISTRAT-42\nlocal_id: null\noriginal_labels: null\n"
         "---\n\nBody.\n",
         ("status", "Ready", "Submitted"),
     ),
-    "initiative-review": (
+    f"{MEMBER}-review": (
         "artifacts/initiative-reviews/RHAISTRAT-12345-review.md",
         "---\ninitiative_id: RHAISTRAT-12345\nscore: 7\npass: true\nrecommendation: submit\n"
         "feasibility: feasible\nauto_revised: false\nneeds_attention: false\nscores:\n"
@@ -217,7 +222,7 @@ class TestSchemaForRung:
 
     def test_new_file_is_the_path_table(self, tmp_path):
         path = tmp_path / "artifacts" / "initiatives" / "INIT-009.md"
-        assert frontmatter._schema_for(str(path)) == "initiative-task"
+        assert frontmatter._schema_for(str(path)) == f"{MEMBER}-task"
         assert frontmatter._schema_for(str(tmp_path / "elsewhere" / "INIT-009.md")) is None
 
     @pytest.mark.parametrize(
@@ -225,8 +230,8 @@ class TestSchemaForRung:
         [
             ("artifacts/rfe-reviews/INIT-001-review.md", "initiative", "rfe", "review"),
             ("artifacts/rfe-tasks/INIT-001.md", "initiative", "rfe", "task"),
-            ("artifacts/initiatives/RFE-001.md", "rfe", "initiative", "task"),
-            ("artifacts/initiative-reviews/RFE-001-review.md", "rfe", "initiative", "review"),
+            ("artifacts/initiatives/RFE-001.md", "rfe", MEMBER, "task"),
+            ("artifacts/initiative-reviews/RFE-001-review.md", "rfe", MEMBER, "review"),
         ],
     )
     def test_type_directory_mismatch_names_both(self, tmp_path, rel, fm_type, dir_type, kind):
@@ -245,7 +250,7 @@ class TestSchemaForRung:
         with pytest.raises(frontmatter.SchemaTypeError) as exc:
             frontmatter._schema_for(str(path))
         assert "type: bogus" in str(exc.value)
-        assert "registered types: rfe, initiative" in str(exc.value)
+        assert f"registered types: rfe, {MEMBER}" in str(exc.value)
 
     @pytest.mark.parametrize("value", ["5", "''", "[a, b]", "{a: 1}", "'   '"])
     def test_non_string_or_blank_type_is_loud(self, tmp_path, value):
@@ -260,7 +265,7 @@ class TestSchemaForRung:
         path = _place(
             tmp_path, "artifacts/rfe-tasks/INIT-001.md", "---\ntype: initiative\n---\n\nB.\n"
         )
-        assert frontmatter._schema_for(str(path), "initiative-task") == "initiative-task"
+        assert frontmatter._schema_for(str(path), f"{MEMBER}-task") == f"{MEMBER}-task"
         assert frontmatter._schema_for(str(path), "rfe-review") == "rfe-review"
 
     def test_type_outside_a_known_directory_has_no_kind(self, tmp_path):
@@ -293,14 +298,14 @@ class TestSchemaForRung:
         path.parent.mkdir(parents=True)
         path.write_bytes(b"\xff\xfe")
         assert frontmatter._frontmatter_type(str(path)) is None
-        assert frontmatter._schema_for(str(path)) == "initiative-task"
+        assert frontmatter._schema_for(str(path)) == f"{MEMBER}-task"
 
         def unreadable(p):
             raise PermissionError(13, "Permission denied", p)
 
         monkeypatch.setattr(frontmatter, "read_frontmatter", unreadable)
         assert frontmatter._frontmatter_type(str(path)) is None
-        assert frontmatter._schema_for(str(path)) == "initiative-task"
+        assert frontmatter._schema_for(str(path)) == f"{MEMBER}-task"
 
 
 class TestCliUsesTheRung:
@@ -355,7 +360,10 @@ class TestCliUsesTheRung:
         )
         assert result.returncode == 1
         assert "under the rfe review directory (rfe-review by path)" in result.stderr
-        assert "its frontmatter type: initiative would make its type initiative" in result.stderr
+        # the file's own spelling is echoed (the alias is read, never rewritten): exact phrase
+        assert "its frontmatter type: initiative would make its type initiative; a self-" in (
+            result.stderr
+        )
         assert path.read_bytes() == before
 
     _INITIATIVE_FIELDS = ("title=T", "priority=Major", "status=Draft", "type=initiative")
@@ -376,7 +384,7 @@ class TestCliUsesTheRung:
         )
         assert result.returncode == 1
         assert "under the rfe task directory (rfe-task by path)" in result.stderr
-        assert "type=initiative would make its type initiative" in result.stderr
+        assert "type=initiative would make its type initiative; a self-" in result.stderr
         assert not path.exists()
         # Without type=, the flag's own type is the effective one: still refused, and an
         # existing file is left byte-identical.
@@ -388,7 +396,10 @@ class TestCliUsesTheRung:
         )
         assert result.returncode == 1
         assert "under the rfe task directory (rfe-task by path)" in result.stderr
-        assert "--schema-type initiative-task would make its type initiative" in result.stderr
+        # the converter hands cmd_set the member's schema key: the message echoes that spelling
+        assert (
+            "--schema-type initiative-rhaistrat-task would make its type initiative-rhaistrat"
+        ) in result.stderr
         assert legacy.read_bytes() == before
 
     def test_set_schema_type_outside_known_directories_still_works(self, tmp_path):

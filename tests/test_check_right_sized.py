@@ -15,9 +15,13 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 import check_right_sized as crs  # noqa: E402
 
-UNKNOWN = "ERROR: unknown --type 'bogus'; registered types: rfe, initiative\n"
-TRAILING = "ERROR: --type requires a value; registered types: rfe, initiative\n"
-USAGE = "Usage: check_right_sized.py [--type rfe|initiative] ID1 [ID2 ...]\n"
+# The registered Initiative type: the sole member of the `initiative` family (AISDLC-851);
+# `--type initiative` is the family alias, kept below as a CLI input.
+MEMBER = "initiative-rhaistrat"
+
+UNKNOWN = f"ERROR: unknown --type 'bogus'; registered types: rfe, {MEMBER}\n"
+TRAILING = f"ERROR: --type requires a value; registered types: rfe, {MEMBER}\n"
+USAGE = f"Usage: check_right_sized.py [--type rfe|{MEMBER}] ID1 [ID2 ...]\n"
 
 
 def _write_review(reviews_dir, item_id, right_sized, id_field="rfe_id", recommendation="revise"):
@@ -111,7 +115,7 @@ class TestTypeArg:
 
     def test_usage_choices_follow_the_registry(self):
         assert crs._TYPE_CHOICES == "|".join(crs._TYPES.choices())
-        assert crs._TYPE_CHOICES == "rfe|initiative"
+        assert crs._TYPE_CHOICES == f"rfe|{MEMBER}"
 
     def test_unknown_type_exits_2_with_the_registered_list(self, workspace, monkeypatch, capsys):
         code, out, err = _main(monkeypatch, capsys, "--type", "bogus", "X")

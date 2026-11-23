@@ -64,8 +64,8 @@ generate local artifacts but do not POST/PUT/DELETE against Jira.
 `/rfe-create`, `/rfe-review`, `/rfe-submit`, `/rfe-split`, `/rfe-auto-fix`,
 `/rfe-speedrun` (the dotted forms `/rfe.review` etc. are compatibility aliases).
 Every skill accepts `--type <name>` for any type in `python3
-scripts/type_registry.py list` (`rfe` by default, `initiative` for RHAISTRAT
-Initiatives). Review dimensions and scoring agents are launched by the skills
+scripts/type_registry.py list` (`rfe` by default; `initiative-rhaistrat` for RHAISTRAT
+Initiatives, which `--type initiative` also names). Review dimensions and scoring agents are launched by the skills
 themselves, not by this prompt.
 
 Follow the matching skill's `SKILL.md`. Do not reimplement a skill in this
@@ -96,7 +96,7 @@ there). The Stop hook returns you here until the file exists.
 - `action`: `completed` | `failed` | `skipped`
 - `pipeline`: `none` when skipped; otherwise the generic skill that ran
   (`rfe-auto-fix`, `rfe-speedrun`, `rfe-review`, ...).
-- `type`: the resolved work-item type (`rfe`, `initiative`, ...), from the
+- `type`: the resolved work-item type (`rfe`, `initiative-rhaistrat`, ...), from the
   `TYPE RESOLVED:` line the skill prints or `type:` in `tmp/pipeline-state.yaml`;
   `none` when skipped.
 - Counts default to 0. Include `errors` as an array of strings (empty if none).

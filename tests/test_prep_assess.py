@@ -56,7 +56,8 @@ class TestTaskDirRouting:
 
     def test_routing_is_the_descriptor_dirs_value(self):
         reg = prep_assess._TYPES
-        assert prep_assess._task_dir_for("INIT-001") == reg.get("initiative").dirs()["tasks"]
+        initiative_tasks = reg.get("initiative-rhaistrat").dirs()["tasks"]
+        assert prep_assess._task_dir_for("INIT-001") == initiative_tasks
         assert prep_assess._task_dir_for("RHAIRFE-1") == reg.get("rfe").dirs()["tasks"]
 
     def test_staging_dir_is_type_neutral(self):

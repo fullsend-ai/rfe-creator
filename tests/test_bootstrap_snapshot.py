@@ -31,6 +31,10 @@ from bootstrap_snapshot import (  # noqa: E402
 )
 from snapshot_fetch import normalize_for_hash  # noqa: E402
 
+# The registered Initiative type: the sole member of the `initiative` family (AISDLC-851);
+# `--type initiative` is the family alias, kept below as a CLI input.
+MEMBER = "initiative-rhaistrat"
+
 
 def _write(path, content):
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -1821,6 +1825,16 @@ class TestLoadRunReportTypeCrossCheck:
         with pytest.raises(ValueError, match=f"is a {other} report, expected {type_name}"):
             _load_run_report(results, run, config=cfg)
 
+    def test_a_pre_split_report_naming_the_family_reads_under_the_member(self, tmp_path):
+        """A results-repository report written before AISDLC-851 says `type: initiative`; under
+        the member's config it is the same type (the canonical compare) and the file is left
+        as written."""
+        cfg = BOOTSTRAP_CONFIG[MEMBER]
+        body = f"type: initiative\n{cfg['item_key']}:\n" + self.ENTRY.format(key="RHAISTRAT-1")
+        results, run = self._write(tmp_path, body, prefix=cfg["report_prefix"])
+        ids, report = _load_run_report(results, run, config=cfg)
+        assert ids == {"RHAISTRAT-1"} and report["type"] == "initiative"
+
     def test_generated_report_round_trips(self, tmp_path):
         # The writer's own header (generate_run_report.py: report_schema_version, type,
         # report_stage) under the matching bootstrap.
@@ -1880,7 +1894,7 @@ class TestLoadRunReportConfig:
         with open(os.path.join(report_dir, f"initiative-run-{run_name}.yaml"), "w") as f:
             yaml.dump(report, f)
 
-        config = BOOTSTRAP_CONFIG["initiative"]
+        config = BOOTSTRAP_CONFIG[MEMBER]
         ids, _ = _load_run_report(results, run_name, config=config)
         assert ids == {"RHAISTRAT-1", "RHAISTRAT-2"}
 
@@ -1894,7 +1908,7 @@ class TestLoadRunReportConfig:
         with open(os.path.join(report_dir, f"{run_name}.yaml"), "w") as f:
             yaml.dump(report, f)
 
-        config = BOOTSTRAP_CONFIG["initiative"]
+        config = BOOTSTRAP_CONFIG[MEMBER]
         ids, _ = _load_run_report(results, run_name, config=config)
         assert ids is None
 
@@ -1990,13 +2004,13 @@ class TestBootstrapConfigDerivesFromTheRegistry:
         # PR-3c appends the config's own type name (`type`): the report.type cross-check key.
         assert BOOTSTRAP_CONFIG == {
             "rfe": {"report_prefix": "", "item_key": "per_rfe", "type": "rfe"},
-            "initiative": {
+            MEMBER: {
                 "report_prefix": "initiative-run-",
                 "item_key": "per_initiative",
-                "type": "initiative",
+                "type": MEMBER,
             },
         }
-        assert list(BOOTSTRAP_CONFIG) == ["rfe", "initiative"]
+        assert list(BOOTSTRAP_CONFIG) == ["rfe", MEMBER]
         for config in BOOTSTRAP_CONFIG.values():
             assert list(config) == ["report_prefix", "item_key", "type"]
 
@@ -2013,7 +2027,7 @@ class TestBootstrapConfigDerivesFromTheRegistry:
             [sys.executable, SCRIPT, "--help"], capture_output=True, text=True, env=_clean_env()
         )
         assert result.returncode == 0
-        assert "--type {rfe,initiative}" in result.stdout
+        assert f"--type {{rfe,{MEMBER}}}" in result.stdout
 
     def test_a_drop_in_type_is_offered_and_configured(self, tmp_path):
         root = _dropin_root(tmp_path)
@@ -2027,7 +2041,7 @@ class TestBootstrapConfigDerivesFromTheRegistry:
         result = subprocess.run(
             [sys.executable, SCRIPT, "--help"], capture_output=True, text=True, env=env
         )
-        assert "--type {rfe,docs,initiative}" in result.stdout
+        assert f"--type {{rfe,docs,{MEMBER}}}" in result.stdout
         # Both per-type tables are indexed before the first Jira call; an empty results dir
         # stops the run at the offline gate right after, so this proves the drop-in type is
         # configured end to end without a server.
@@ -2093,7 +2107,8 @@ class TestBootstrapJqlBindingCheck:
         (
             "initiative",
             'project = RHAISTRAT AND issuetype = "Feature Request"',
-            "ERROR: --jql names issuetype Feature Request but the initiative binding is Initiative",
+            "ERROR: --jql names issuetype Feature Request but the initiative-rhaistrat binding is "
+            "Initiative",
         ),
     ]
     CREDS_LINE = "Error: JIRA_SERVER, JIRA_USER, and JIRA_TOKEN required\n"

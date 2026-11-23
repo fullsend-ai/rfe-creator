@@ -14,6 +14,10 @@ import type_registry  # noqa: E402
 from artifact_utils import write_frontmatter  # noqa: E402
 from generate_run_report import TYPE_CONFIG  # noqa: E402
 
+# The registered Initiative type: the sole member of the `initiative` family (AISDLC-851);
+# `--type initiative` is the family alias, kept below as a CLI input.
+MEMBER = "initiative-rhaistrat"
+
 SCRIPT = os.path.join(os.path.dirname(__file__), "..", "scripts", "batch_summary.py")
 
 RFE_REVIEW_PASS = {
@@ -240,12 +244,12 @@ class TestChildExpansion:
         write_frontmatter(
             str(workspace / "artifacts/initiative-reviews/INIT-001-review.md"),
             {**INIT_REVIEW, "initiative_id": "INIT-001", "recommendation": "split", "pass": False},
-            "initiative-review",
+            f"{MEMBER}-review",
         )
         write_frontmatter(
             str(workspace / "artifacts/initiative-reviews/INIT-002-review.md"),
             {**INIT_REVIEW, "initiative_id": "INIT-002"},
-            "initiative-review",
+            f"{MEMBER}-review",
         )
         out, _, rc = _run(["--type", "initiative", "INIT-001"], cwd=str(workspace))
         assert rc == 0
@@ -264,7 +268,7 @@ class TestChildExpansion:
         write_frontmatter(
             str(workspace / "artifacts/initiative-reviews/INIT-010-review.md"),
             {**INIT_REVIEW, "initiative_id": "INIT-010"},
-            "initiative-review",
+            f"{MEMBER}-review",
         )
         out, _, rc = _run(["--type", "initiative", "INIT-010"], cwd=str(workspace))
         assert rc == 0
@@ -327,7 +331,7 @@ class TestInitiativeType:
         write_frontmatter(
             str(workspace / "artifacts/initiative-reviews/RHAISTRAT-100-review.md"),
             {**INIT_REVIEW},
-            "initiative-review",
+            f"{MEMBER}-review",
         )
         out, _, rc = _run(["--type", "initiative", "RHAISTRAT-100"], cwd=str(workspace))
         assert rc == 0
@@ -338,7 +342,7 @@ class TestInitiativeType:
         write_frontmatter(
             str(workspace / "artifacts/initiative-reviews/RHAISTRAT-100-review.md"),
             {**INIT_REVIEW, "feasibility": "infeasible"},
-            "initiative-review",
+            f"{MEMBER}-review",
         )
         out, _, rc = _run(["--type", "initiative", "RHAISTRAT-100"], cwd=str(workspace))
         assert rc == 0
@@ -362,7 +366,7 @@ class TestInitiativeType:
         write_frontmatter(
             str(workspace / "artifacts/initiative-reviews/RHAISTRAT-100-review.md"),
             {**INIT_REVIEW, "feasibility": "feasible"},
-            "initiative-review",
+            f"{MEMBER}-review",
         )
         out, _, rc = _run(["--type", "initiative", "RHAISTRAT-100"], cwd=str(workspace))
         assert rc == 0
