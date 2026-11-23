@@ -4496,15 +4496,21 @@ class TestInitAndTheRegistry:
         assert cfg["ASSESS"]["parallel"] == []
         assert [k for k in cfg["REVIEW"]["vars"] if k.endswith("_PATH")] == ["ASSESS_PATH"]
 
-    def test_a_type_without_context_sources_still_bootstraps_its_rubric(
+    def test_a_type_without_context_sources_keeps_the_legacy_setup(
         self, tmp_dir, monkeypatch, drop_in_root
     ):
-        # pipeline.context_sources is optional in the schema: SETUP falls back to the rubric
-        # bootstrap instead of failing to iterate a missing key.
+        # pipeline.context_sources is optional in the schema: a type that omits it keeps the
+        # SETUP every type ran before the key drove it (rubric bootstrap + RHOAI fetch), and
+        # the review body's ARCH_FETCH is the same default fetch.
         drop_in_root.add("memo", overrides=_memo_overrides(), drop=("pipeline.context_sources",))
         self._registry(monkeypatch, drop_in_root.path)
         cfg = ps._build_phase_config("memo")
-        assert cfg["SETUP"]["commands"] == ["bash scripts/bootstrap.sh --type memo"]
+        assert cfg["SETUP"]["commands"] == [
+            "bash scripts/bootstrap.sh --type memo",
+            "bash scripts/fetch-architecture-context.sh",
+        ]
+        arch = dict(ps.type_registry.launch_vars(ps._TYPES.get("memo"), "review"))["ARCH_FETCH"]
+        assert arch == "bash scripts/fetch-architecture-context.sh"
 
     def test_an_unregistered_name_exits_2_with_the_registered_list(
         self, tmp_dir, monkeypatch, drop_in_root

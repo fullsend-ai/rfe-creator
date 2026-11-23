@@ -1953,10 +1953,19 @@ def _dimension_condition(dim):
     return "always"
 
 
+# The architecture fetch every type got before pipeline.context_sources drove it: a descriptor
+# that omits the key keeps it (pipeline_state SETUP and ARCH_FETCH alike); one that declares the
+# list without an architecture-context entry opts out.
+DEFAULT_ARCH_FETCH = "bash scripts/fetch-architecture-context.sh"
+
+
 def _arch_fetch_command(pipe):
     """The SETUP command of the type's ``architecture-context`` context source (its bootstrap
-    script and args), or ``none`` when the type declares none — the ARCH_FETCH launch var the
-    generic review body runs in its setup step."""
+    script and args), the RHOAI default when the type omits ``context_sources``, or ``none``
+    when its list declares no such entry — the ARCH_FETCH launch var the generic review body
+    runs in its setup step."""
+    if pipe.get("context_sources", None) is None:
+        return DEFAULT_ARCH_FETCH
     for cs in pipe.get("context_sources", []) or []:
         if cs.get("name") == "architecture-context":
             return context_source_command(cs)

@@ -557,12 +557,19 @@ def _build_phase_config(pipeline_type, reassess_cycle=0):
             # the previous `a & b & wait` form returned wait's status, which is
             # always 0, so this preserves behaviour. One command per
             # pipeline.context_sources entry (the rubric bootstrap, the architecture fetch);
-            # the key is optional, and a type without it still gets its rubric bootstrap.
-            "commands": [
-                type_registry.context_source_command(cs)
-                for cs in _TYPES.get(pipeline_type).get("pipeline.context_sources", None)
-                or [{"bootstrap": "scripts/bootstrap.sh", "args": ["--type", pipeline_type]}]
-            ],
+            # the key is optional, and a type without it keeps the two commands every type
+            # ran before (its rubric bootstrap and the default RHOAI architecture fetch).
+            "commands": (
+                [
+                    type_registry.context_source_command(cs)
+                    for cs in _TYPES.get(pipeline_type).get("pipeline.context_sources")
+                ]
+                if _TYPES.get(pipeline_type).get("pipeline.context_sources", None) is not None
+                else [
+                    f"bash scripts/bootstrap.sh --type {pipeline_type}",
+                    type_registry.DEFAULT_ARCH_FETCH,
+                ]
+            ),
         },
         "ASSESS": {
             "type": "agent",
