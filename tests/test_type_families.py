@@ -1048,6 +1048,21 @@ class TestGate1Findings:
         assert other.ok, other.lines()
         assert other.families == []
 
+    def test_a_family_and_members_without_eval_need_no_member_eval_config(self, families_copy):
+        # eval is optional: with no eval block anywhere in the family, no member owes its own
+        # eval.config (generate_eval_config skips such types too).
+        for name in (FAMILY, *MEMBERS):
+            _mutate(families_copy, name, lambda d: d.pop("eval"))
+        report = _validate(families_copy)
+        assert report.ok, report.lines()
+        assert _find(report, "eval.config") == []
+
+    def test_a_member_of_an_eval_family_still_owes_its_eval_config(self, families_copy):
+        _mutate(families_copy, "brief-acme", lambda d: d["eval"].pop("config"))
+        report = _validate(families_copy)
+        hit = _assert_finding(report, "eval.config: a member of family", "brief-acme")
+        assert hit
+
     def test_a_family_with_abstract_false_is_a_load_finding(self, families_copy):
         path = _mutate(families_copy, FAMILY, lambda d: d.__setitem__("abstract", False)).resolve()
         report = _validate(families_copy)

@@ -1150,13 +1150,16 @@ def _discriminator(binding):
 
 def member_messages(desc):
     """A member of a type family declares the MEMBER_OWN_KEYS itself and names its
-    ``snapshot.results_subdir`` after itself (its name already carries the project)."""
+    ``snapshot.results_subdir`` after itself (its name already carries the project). ``eval``
+    is optional: ``eval.config`` is member-own only when the merged member has an eval block."""
     family = getattr(desc, "family", None)
     if family is None:
         return []
     own = getattr(desc, "own", None) or {}
     messages = []
     for dotted in _member_own_keys(_opt(desc, "identity.tracker")):
+        if dotted == "eval.config" and not has_eval(desc):
+            continue
         if not _has_own(own, dotted):
             messages.append(
                 f"{dotted}: a member of family {family.name!r} declares its own value (inherited "
