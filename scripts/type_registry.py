@@ -2918,25 +2918,56 @@ def classification_digest(reg):
     """Design §6 stage 1 (AISDLC-190): one entry per registered type that lists the ``create``
     stage and declares a ``classification`` block, in registry order — what the generic create
     body reads an interactive idea against. A type without the block, or without the stage, is
-    left out (gate 1 refuses the former once any type declares the block)."""
+    left out (gate 1 refuses the former once any type declares the block).
+
+    Beside the merged block a row carries what tells the members of a type family apart
+    (AISDLC-853): ``family`` (the family name; ``None`` for a standalone type), ``project`` (the
+    tracker discriminator, as the ``PROJECT`` launch var renders it), ``own_signals`` (the
+    member's OWN ``classification.signals`` from the file it declares — the domain signals,
+    next to the family's shape signals in ``signals``; equal to ``signals`` for a standalone
+    type) and ``label`` (the member question's option: the member's own ``display.entity``
+    when its file declares one, else ``<entity> (<project>)`` for a member of a family with two
+    or more members, else the entity)."""
     rows = []
     for desc in reg:
         block = desc.get("classification", None)
         stages = desc.get("pipeline.stages", None)
         if not isinstance(block, dict) or not isinstance(stages, list) or "create" not in stages:
             continue
+        family = desc.extends
+        signals = list(block.get("signals") or [])
+        entity = desc.get("display.entity", desc.name)
+        tracker = desc.get("identity.tracker", "") or ""
+        project = str(
+            desc.get(f"identity.{tracker}.{_TRACKER_PROJECT_KEY.get(tracker, 'project')}", "") or ""
+        )
+        if family is None:
+            own_signals, label = list(signals), entity
+        else:
+            own = desc.own if isinstance(desc.own, dict) else {}
+            own_block = own.get("classification")
+            own_signals = list(
+                (own_block.get("signals") if isinstance(own_block, dict) else None) or []
+            )
+            own_display = own.get("display")
+            labelled = isinstance(own_display, dict) and bool(own_display.get("entity"))
+            sole = len(reg.members(family)) == 1
+            label = entity if (sole or labelled) else f"{entity} ({project})"
         rows.append(
             {
                 # The sole member of a family renders under the FAMILY's name: the digest is
                 # the create step's and the review agent's vocabulary (`consider /rfe-create
                 # --type <family>`) and the alias resolves it. With two or more members each
-                # renders under its own name — the family name would not resolve (the
-                # second-member story decides the digest's shape).
+                # renders under its own name and the keys below tell them apart.
                 "type": digest_label(reg, desc),
-                "entity": desc.get("display.entity", desc.name),
+                "entity": entity,
+                "label": label,
+                "family": family,
+                "project": project,
                 "summary": block.get("summary", ""),
                 "driver": block.get("driver", ""),
-                "signals": list(block.get("signals") or []),
+                "signals": signals,
+                "own_signals": own_signals,
                 "counter_signals": list(block.get("counter_signals") or []),
                 "examples": list(block.get("examples") or []),
             }
@@ -2945,22 +2976,37 @@ def classification_digest(reg):
 
 
 def render_classification_digest(rows):
-    """The text form of ``classification_digest``: a TYPES line, then one section per type."""
+    """The text form of ``classification_digest``: a TYPES line, then one section per type. A
+    member of a family with two or more members (its row renders under its own name, not the
+    family's) adds the ``Label:``, ``Family:``, ``Project:`` and ``Member signals:`` lines; a
+    standalone type and a family's sole member render as they always did."""
     if not rows:
         return "TYPES: none (no registered create-stage type declares a classification block)\n"
     out = ["TYPES: " + ", ".join(r["type"] for r in rows), ""]
     for r in rows:
+        grouped = r.get("family") is not None and r["type"] != r["family"]
         out.append(f"## {r['type']} ({r['entity']})")
+        if grouped:
+            out.append(f"Label: {r['label']}")
         out.append(f"Summary: {r['summary']}")
         if r["driver"]:
             out.append(f"Driver: {r['driver']}")
+        if grouped:
+            members = ", ".join(x["type"] for x in rows if x.get("family") == r["family"])
+            out.append(f"Family: {r['family']} (members {members})")
+            out.append(f"Project: {r['project']}")
         out.append("Signals: " + "; ".join(r["signals"]))
+        if grouped:
+            out.append("Member signals: " + "; ".join(r["own_signals"]))
         if r["counter_signals"]:
             out.append("Counter-signals: " + "; ".join(r["counter_signals"]))
         out.append("Examples:")
         out.extend(f"- {e}" for e in r["examples"])
         out.append("")
     return "\n".join(out)
+
+
+OTHERS_EMPTY_LINE = "TYPES: none (no other create-stage type is installed)"
 
 
 HEADLESS_CLASSIFICATION_LINE = (
@@ -2972,16 +3018,29 @@ def _cmd_classification(reg, args):
     """Headless runs (``--headless``, or the CI markers in the environment) get the HEADLESS
     line and no digest, so the create body cannot classify where it must not ask: the gate is
     in code, not in the model's reading of the environment (review on #282). ``--others
-    <type>`` is stage 2's form (AISDLC-191): the blocks of every create-stage type except
-    ``<type>``, the review agent's context for a misfiled item; it asks nothing, so the
+    <type>`` is stage 2's form (AISDLC-191): the blocks of every create-stage type outside
+    ``<type>``'s family — a type family's siblings are never "other types" (an item of one
+    member filed under another is a project misfile, not a type misfile), so ``<type>`` may
+    be a type or a family name of any member count and the whole family is dropped
+    (AISDLC-853) — the review agent's context for a misfiled item; it asks nothing, so the
     headless gate does not apply to it."""
     others = getattr(args, "others", None)
     if others is not None:
-        mine = reg.get(reg.canonical(others))  # unknown: the registry's own KeyError text, exit 1
-        label = digest_label(reg, mine)  # the row the type renders under (its family's, if sole)
-        rows = [r for r in classification_digest(reg) if r["type"] != label]
+        if others in reg.families() and reg.members(others):
+            drop = {others, *reg.members(others)}
+        else:
+            # unknown (or a memberless family): the registry's own KeyError text, exit 1
+            mine = reg.get(reg.canonical(others))
+            drop = {mine.extends, *reg.members(mine.extends)} if mine.extends else {mine.name}
+        rows = [
+            r
+            for r in classification_digest(reg)
+            if r["type"] not in drop and r["family"] not in drop
+        ]
         if args.json:
             _emit(rows, True)
+        elif not rows:
+            print(OTHERS_EMPTY_LINE)
         else:
             sys.stdout.write(render_classification_digest(rows))
         return 0
@@ -3146,7 +3205,8 @@ def _build_parser():
         "--others",
         metavar="TYPE",
         default=None,
-        help="print the blocks of every create-stage type except TYPE: the review agent's "
+        help="print the blocks of every create-stage type outside TYPE's family (a type or a "
+        "type family name; a family's siblings are never other types): the review agent's "
         "context for a misfiled item (design §6 stage 2); asks nothing, so it is not gated "
         "by --headless or the CI markers",
     )

@@ -87,6 +87,52 @@ SKIP_LINE = "RFE_SKIP_BOOTSTRAP set - skipping dependency bootstrapping step\n"
 FAST_POLL_STAGES = ("review", "split", "speedrun")
 FAMILY_TASK = "---\ntype: brief\n---\n\nBody.\n"
 WORKSPACE_FAMILY = "bindings:\n  brief:\n    jira:\n      project: KONFLUX\n"
+# A synthetic second member of the shipped Initiative family (AISDLC-853): the one root on
+# which the SHIPPED member renders as one of two. Built in a tmp root per module, as the
+# repository duplicates its copy helpers; never committed under types/.
+SECOND_INITIATIVE = "initiative-globex"
+SECOND_INITIATIVE_YAML = r"""schema_version: 1
+type: initiative-globex
+extends: initiative
+display: { entity: Globex Initiative, entity_plural: Globex Initiatives }
+identity:
+  jira: { project: GLOBEX, key_prefixes: ["GLOBEX-"] }
+  local_prefix: "INITG-"
+  local_id_pattern: '^INITG-\d+$'
+  id_field: initiative_globex_id
+dirs:
+  tasks: artifacts/initiative-globex
+  originals: artifacts/initiative-globex-originals
+  reviews: artifacts/initiative-globex-reviews
+classification:
+  signals:
+    - a Globex platform commitment, framed for the Globex build farm and its tenants
+    - hangs from a GLOBEXOUT Outcome in the Globex strategy project
+  examples:
+    - Give the Globex build farms a shared GPU scheduler so tenant teams stop over-provisioning
+conventions:
+  query_default: 'project = GLOBEX AND issuetype = Initiative'
+  parent_key_patterns: ['GLOBEXOUT-\d+', 'INITG-\d+']
+pipeline:
+  poll_prefix: "initiative-globex-"
+  state_prefix: "initiative-globex-"
+  context_sources:
+    - name: assess-rubric
+      bootstrap: scripts/bootstrap.sh
+      args: ["--type", "initiative-globex"]
+      required: true
+  dimensions:
+    - name: alignment
+      condition: { prefix: "GLOBEXOUT-" }
+      skip_stub:
+        result: not_assessed
+        reason: "skipped by pipeline (no GLOBEXOUT Outcome parent)"
+snapshot:
+  prefix: "initiative-globex-snapshot-"
+  report_prefix: "initiative-globex-run-"
+  results_subdir: "initiative-globex"
+eval: { config: eval-initiative.yaml }
+"""
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────────
@@ -238,6 +284,19 @@ def shipped_reg():
 @pytest.fixture
 def member(single_reg):
     return single_reg.get(MEMBER)
+
+
+@pytest.fixture(scope="module")
+def two_initiative_root(tmp_path_factory):
+    """The shipped types plus ``initiative-globex``, a synthetic second member of the
+    ``initiative`` family: ``rfe``, ``initiative-globex``, ``initiative-rhaistrat``. Never
+    mutated."""
+    dest = tmp_path_factory.mktemp("two-initiative") / "types"
+    dest.mkdir()
+    for name in ("_schema", "rfe", SHIPPED_FAMILY, SHIPPED_MEMBER):
+        shutil.copytree(TYPES_ROOT / name, dest / name)
+    _write_text(dest / SECOND_INITIATIVE / "type.yaml", SECOND_INITIATIVE_YAML)
+    return dest
 
 
 # ── type_arg: the argparse converter beside choices= ────────────────────────────
@@ -495,15 +554,72 @@ class TestWorkspaceBindings:
 
 
 class TestClassification:
+    MEMBER_LINES = ("Label: ", "Family: ", "Project: ", "Member signals: ")
+
     def test_two_member_rows_render_under_their_own_names(self, two_reg):
-        # The family name would not resolve for a two-member family: each member renders under
-        # its own name there; the sole member of a family renders under the family's (below).
+        # A family with two members: each member renders under its own name and its row
+        # carries what tells the members apart (AISDLC-853); the sole member of a family
+        # renders under the family's name with the family's label (below).
         rows = type_registry.classification_digest(two_reg)
-        assert [r["type"] for r in rows] == [MEMBER, "brief-globex"]
-        assert {r["entity"] for r in rows} == {"Brief"}
-        # Still one row per member: each carries its own merged signals.
+        assert [r["type"] for r in rows] == [MEMBER, OTHER]
+        # brief-globex declares display.entity (the override form of the label); brief-acme
+        # keeps the family's entity and derives `<entity> (<project>)`.
+        assert {r["entity"] for r in rows} == {"Brief", "Globex Brief"}
+        assert {r["label"] for r in rows} == {"Brief (ACME)", "Globex Brief"}
+        assert [r["family"] for r in rows] == [FAMILY, FAMILY]
+        assert [r["project"] for r in rows] == ["ACME", "GLOBEX"]
+        # Still one row per member: each carries its own merged signals, and its OWN ones
+        # (the domain signals, from the member's file) under own_signals.
         assert rows[0]["signals"][-1] == "looked up in the acme catalogue"
         assert rows[1]["signals"][-1] == "a globex-only fixture cue"
+        assert rows[0]["own_signals"] == ["looked up in the acme catalogue"]
+        assert rows[1]["own_signals"] == ["a globex-only fixture cue"]
+        for row in rows:
+            assert row["signals"][: -len(row["own_signals"])] == [
+                "a one-quarter plan for one team",
+                "a fixture brief cue",
+            ]
+
+    def test_two_member_rows_render_the_member_lines(self):
+        """The text form of a two-member family: ``Label:`` after the heading, ``Family:`` and
+        ``Project:`` after ``Driver:``, ``Member signals:`` after ``Signals:``; a member's own
+        ``examples`` list replaces the family's."""
+        result = _registry("classification")
+        assert result.returncode == 0, result.stderr
+        out = result.stdout
+        assert out.startswith(
+            f"TYPES: {MEMBER}, {OTHER}\n\n## {MEMBER} (Brief)\nLabel: Brief (ACME)\n"
+        )
+        assert (
+            "Driver: a fixture author\n"
+            f"Family: {FAMILY} (members {MEMBER}, {OTHER})\n"
+            "Project: ACME\n"
+            "Signals: a one-quarter plan for one team; a fixture brief cue; "
+            "looked up in the acme catalogue\n"
+            "Member signals: looked up in the acme catalogue\n"
+            "Counter-signals: a multi-year programme\n"
+            "Examples:\n- Write the Q3 brief for the onboarding team\n"
+        ) in out
+        assert (f"\n## {OTHER} (Globex Brief)\nLabel: Globex Brief\nSummary: ") in out
+        assert f"Family: {FAMILY} (members {MEMBER}, {OTHER})\nProject: GLOBEX\n" in out
+        assert "Member signals: a globex-only fixture cue\n" in out
+        assert "Examples:\n- Write the Globex launch brief\n" in out
+        assert out.count("Label: ") == out.count("Family: ") == out.count("Member signals: ") == 2
+
+    def test_a_sole_member_and_the_shipped_types_render_no_member_lines(self, single_root):
+        """The member lines are for a family with two or more members only: the sole member of
+        a family (its row under the family's name) and a standalone type render as before."""
+        for kwargs in (
+            {"root": single_root},
+            {"root": "types", "extra_roots": single_root},
+            {"root": "types"},
+        ):
+            result = _registry("classification", **kwargs)
+            assert result.returncode == 0, result.stderr
+            for line in self.MEMBER_LINES:
+                assert line not in result.stdout, (kwargs, line)
+        rows = type_registry.classification_digest(_load(single_root))
+        assert [(r["type"], r["label"], r["family"]) for r in rows] == [(FAMILY, "Brief", FAMILY)]
 
     def test_a_sole_member_renders_under_the_family_name_beside_the_shipped_types(
         self, combined_reg, single_reg
@@ -513,10 +629,51 @@ class TestClassification:
         assert type_registry.digest_label(single_reg, single_reg.get(MEMBER)) == FAMILY
         assert type_registry.digest_label(single_reg, single_reg.get(MEMBER)) != MEMBER
 
-    def test_others_on_a_two_member_family_excludes_the_member_itself_only(self):
-        result = _registry("classification", "--others", MEMBER, "--json")
+    @pytest.mark.parametrize("others", [MEMBER, OTHER, FAMILY])
+    def test_others_on_a_two_member_family_excludes_the_whole_family(self, others):
+        """AISDLC-853: siblings are never "other types" — an item of one member filed under
+        another is a project misfile, not a type misfile — so ``--others`` drops the member's
+        whole family and accepts the family's name whatever its member count. On the fixture
+        root nothing is left; beside the shipped types the two standalone rows remain."""
+        result = _registry("classification", "--others", others, "--json")
         assert result.returncode == 0, result.stderr
-        assert [r["type"] for r in json.loads(result.stdout)] == ["brief-globex"]
+        assert json.loads(result.stdout) == []
+        text = _registry("classification", "--others", others)
+        assert (text.returncode, text.stdout, text.stderr) == (
+            0,
+            type_registry.OTHERS_EMPTY_LINE + "\n",
+            "",
+        )
+        assert text.stdout == "TYPES: none (no other create-stage type is installed)\n"
+        combined = _registry(
+            "classification", "--others", others, "--json", root="types", extra_roots=FAMILIES_REL
+        )
+        assert combined.returncode == 0, combined.stderr
+        assert [r["type"] for r in json.loads(combined.stdout)] == ["rfe", "initiative"]
+        combined_text = _registry(
+            "classification", "--others", others, root="types", extra_roots=FAMILIES_REL
+        )
+        # the blocks follow the TYPES line: never a whole-stdout ==
+        assert combined_text.stdout.startswith("TYPES: rfe, initiative\n\n## rfe (RFE)\n")
+        assert f"## {MEMBER} (" not in combined_text.stdout
+        assert f"## {OTHER} (" not in combined_text.stdout
+
+    def test_others_on_a_two_member_family_is_not_gated_by_headless(self):
+        for env in ({"CI": "true"}, {"RFE_CREATOR_HEADLESS": "1"}):
+            result = _registry("classification", "--others", MEMBER, env=env)
+            assert (result.returncode, result.stdout) == (
+                0,
+                type_registry.OTHERS_EMPTY_LINE + "\n",
+            ), env
+            beside = _registry(
+                "classification",
+                "--others",
+                MEMBER,
+                root="types",
+                extra_roots=FAMILIES_REL,
+                env=env,
+            )
+            assert beside.stdout.startswith("TYPES: rfe, initiative\n"), env
 
     def test_try_canonical_ignores_a_corrupted_stored_value(self, single_reg):
         # A list- or mapping-valued stored `type:` is never a name: the readers compare it as
@@ -534,15 +691,66 @@ class TestClassification:
         assert result.returncode == 0, result.stderr
         assert [r["type"] for r in json.loads(result.stdout)] == ["rfe", "initiative"]
 
-    def test_others_two_member_family_is_refused(self):
-        result = _registry("classification", "--others", FAMILY, "--json")
-        assert (result.returncode, result.stdout) == (1, "")
-        assert result.stderr == f"ERROR: {TWO_MEMBER_TEXT}\n"
+    def test_others_a_two_member_family_name_drops_the_same_rows_as_a_member(self):
+        # `--others <family>` is no longer canonical()'s refusal: a family of any member count
+        # names the rows to drop (the members' and, for a sole member, the family-named row).
+        by_family = _registry("classification", "--others", FAMILY, "--json")
+        by_member = _registry("classification", "--others", MEMBER, "--json")
+        assert (by_family.returncode, by_family.stderr) == (0, "")
+        assert by_family.stdout == by_member.stdout
+        beside = _registry(
+            "classification", "--others", FAMILY, "--json", root="types", extra_roots=FAMILIES_REL
+        )
+        assert (beside.returncode, beside.stderr) == (0, "")
+        assert [r["type"] for r in json.loads(beside.stdout)] == ["rfe", "initiative"]
 
     def test_others_unknown_keeps_the_registry_text(self, single_root):
         result = _registry("classification", "--others", "bogus", "--json", root=single_root)
         assert (result.returncode, result.stdout) == (1, "")
         assert result.stderr == "ERROR: unknown type 'bogus'; available: brief-acme\n"
+
+    def test_the_shipped_member_beside_a_second_initiative_member(self, two_initiative_root):
+        """The day a sibling registers: the family's label leaves the TYPES line, the shipped
+        member renders under its own name with the derived ``Initiative (RHAISTRAT)`` label
+        (its file declares no ``display.entity``) and its own two signals under ``Member
+        signals:``, the sibling with the label it declares; ``--others`` on the family or on
+        either member leaves ``rfe`` alone, ``--others rfe`` keeps both members."""
+        report = _validate(two_initiative_root, eval_gate=False)
+        assert report.ok, report.lines()
+        assert report.families == [SHIPPED_FAMILY]
+        own = _read_yaml(TYPES_ROOT / SHIPPED_MEMBER / "type.yaml")["classification"]["signals"]
+        result = _registry("classification", root=two_initiative_root)
+        assert (result.returncode, result.stderr) == (0, "")
+        out = result.stdout
+        assert out.startswith(
+            f"TYPES: rfe, {SECOND_INITIATIVE}, {SHIPPED_MEMBER}\n\n## rfe (RFE)\nSummary: "
+        )
+        assert f"\n## {SECOND_INITIATIVE} (Globex Initiative)\nLabel: Globex Initiative\n" in out
+        assert f"\n## {SHIPPED_MEMBER} (Initiative)\nLabel: Initiative (RHAISTRAT)\n" in out
+        assert (
+            f"Family: {SHIPPED_FAMILY} (members {SECOND_INITIATIVE}, {SHIPPED_MEMBER})\n"
+            "Project: RHAISTRAT\n"
+        ) in out
+        assert "Member signals: " + "; ".join(own) + "\n" in out
+        assert f"## {SHIPPED_FAMILY} (" not in out
+        rows = json.loads(_registry("classification", "--json", root=two_initiative_root).stdout)
+        assert [(r["type"], r["label"], r["family"], r["project"]) for r in rows] == [
+            ("rfe", "RFE", None, "RHAIRFE"),
+            (SECOND_INITIATIVE, "Globex Initiative", SHIPPED_FAMILY, "GLOBEX"),
+            (SHIPPED_MEMBER, "Initiative (RHAISTRAT)", SHIPPED_FAMILY, "RHAISTRAT"),
+        ]
+        assert rows[2]["own_signals"] == own
+        for others, left in (
+            (SHIPPED_FAMILY, ["rfe"]),
+            (SHIPPED_MEMBER, ["rfe"]),
+            (SECOND_INITIATIVE, ["rfe"]),
+            ("rfe", [SECOND_INITIATIVE, SHIPPED_MEMBER]),
+        ):
+            result = _registry(
+                "classification", "--others", others, "--json", root=two_initiative_root
+            )
+            assert result.returncode == 0, (others, result.stderr)
+            assert [r["type"] for r in json.loads(result.stdout)] == left, others
 
 
 # ── validate_all(only=<family>) ─────────────────────────────────────────────────

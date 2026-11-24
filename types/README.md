@@ -187,7 +187,7 @@ mapping), `show <family>` the family file as written, `show <member>` the merged
 single-member-only, on purpose, and goes through one seam, `canonical()`: a family with exactly one
 member is answered by that member everywhere a type NAME crosses a boundary — the `get`, `binding`,
 `launch-vars` (one `# <family>: a type family; answered by its sole member <member>` line on
-stderr), `canonical` and `classification --others` CLI commands; every script's `--type` (the
+stderr) and `canonical` CLI commands; every script's `--type` (the
 argparse converter `type_registry.type_arg`, used beside the registered `choices`, and
 `parse_type_arg` for the gates that parse by hand); `resolve` (rungs 1, 2 and 3 — the printed
 `TYPE RESOLVED:` line names the member, nothing else is printed); `validate_types.py --verify
@@ -214,12 +214,17 @@ spelling keeps working, and the member is the name `list`, the `TYPE RESOLVED:` 
 and run reports carry.
 
 The classification digest (`type_registry.py classification`) renders a member's merged block
-under its FAMILY's name while it is the family's sole member (with two or more members each
-renders under its own name, since the family name would not resolve), so the create step's `Type:`
-line and the review agent's misfiled-item sentence name `--type <family>`; `--others <member>`
-excludes the member's family row (two members would repeat the family's signals under one name,
-which the member-signals story refines). Cross rule 7 compares a member's own signals, with the
-family a participant under its own name, so siblings are not reported for what they inherit.
+under its FAMILY's name while it is the family's sole member, so the create step's `Type:` line
+and the review agent's misfiled-item sentence name `--type <family>`; with two or more members
+each renders under its own name and its row carries `family`, `project`, `own_signals` (the
+member's own signals — the domain signals, next to the family's shape signals in `signals`) and
+`label` (the member's own `display.entity` when it declares one, else `<entity> (<project>)`),
+rendered as `Label:`, `Family:`, `Project:` and `Member signals:` lines; a member's own
+`classification.examples` list replaces the family's. `--others <type>` excludes the type's whole
+family and accepts a family name: siblings are never "other types" — an item of one member filed
+under another is a project misfile, not a type misfile, and is not a reclassify. Cross rule 7
+compares a member's own signals, with the family a participant under its own name, so siblings
+are not reported for what they inherit.
 
 **Second-member checklist.** Three decisions in this registry assume the Initiative family has one
 member; a second member revisits them rather than inheriting them. The eval identity is the
@@ -259,11 +264,12 @@ AISDLC-190): an interactive run whose type came from the legacy default reads
 `python3 scripts/type_registry.py classification`, the digest of every create-stage type's block
 (a new type appears in it as soon as it is registered), and either prints
 `Type: <t> — pass --type to override` on a clear match, re-running `resolve --type <t>` when that
-is not the resolved type, or asks one question built from the types' `display.entity`, `summary`
-and `examples`; `--type` skips the step and a headless run never asks (under `--headless` or the
-CI markers the digest answers one `HEADLESS:` line and nothing else). The review agent is
-its second reader (stage 2, AISDLC-191): it runs `classification --others <type>`, the other
-create-stage types' blocks (allowed in headless runs: it asks nothing), and when the type's
+is not the resolved type, or asks one question built from the types' `display.entity` (for a
+member of a family with several members, its `label`), `summary` and `examples`; `--type` skips
+the step and a headless run never asks (under `--headless` or the CI markers the digest answers
+one `HEADLESS:` line and nothing else). The review agent is its second reader (stage 2,
+AISDLC-191): it runs `classification --others <type>`, the blocks of every create-stage type
+outside `<type>`'s family (allowed in headless runs: it asks nothing), and when the type's
 review rules say the item reads as one of them it flags the item with
 `needs_attention_source=classification` and a reason starting `likely a <entity>: …; consider
 /rfe-create --type <t>`, in the review file, the review report and the run report (which carries
