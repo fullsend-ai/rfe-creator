@@ -18,8 +18,9 @@ Usage:
 
 Batch root forms (design work-item-types-unified.md §5 rung 2; PR-3b): a bare
 list of entries (legacy form — prefix and directory come from --prefix/--dir,
-else the rfe defaults, exactly as before) or a mapping with exactly the keys
-``type`` and ``items`` (mapping form — prefix and directory come from that
+else the rfe defaults, exactly as before) or a mapping with the keys ``type``
+and ``items`` — and optionally ``project``, the member of a type family by its
+Jira project (AISDLC-853) — (mapping form — prefix and directory come from that
 type's descriptor; an explicit --prefix/--dir that disagrees with them is a
 conflict). The file is read ONCE through ``type_registry.read_batch`` (a pipe
 or /dev/stdin works) and the type decided by ``type_registry.resolve`` (the one
@@ -86,17 +87,26 @@ def load_batch(path):
     included) is exit 2 with the message on stderr, before anything is allocated.
     """
     try:
-        batch_type, entries = type_registry.read_batch(path)
+        batch_type, project, entries = type_registry.read_batch(path)
         resolution = type_registry.resolve(
             _TYPES,
             batch=path,
-            batch_items=(batch_type, entries),
+            batch_items=(batch_type, project, entries),
             items_are_ids=False,
             env=os.environ,
             binding=False,
         )
     except type_registry.RegistryError as exc:
         print(exc.args[0] if exc.args else exc, file=sys.stderr)
+        sys.exit(2)
+    if resolution.ambiguous:
+        # A mapping `type:` naming a type family with several members and nothing that picks
+        # one (AISDLC-853): no type, so no prefix and no directory to allocate under.
+        candidates = ", ".join(resolution.candidates)
+        print(
+            f"ambiguous type (candidates: {candidates}) - pass --type or --project",
+            file=sys.stderr,
+        )
         sys.exit(2)
     return batch_type, resolution, entries
 

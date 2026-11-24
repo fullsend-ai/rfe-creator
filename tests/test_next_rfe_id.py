@@ -372,7 +372,8 @@ class TestFromBatchMappingForm:
             ("type: initiative\nitems: 3\n", "'items' must be a list, got int"),
             (
                 "type: initiative\nitems: [{prompt: a}]\nlabels: []\n",
-                "exactly the keys 'type' and 'items'; unexpected key(s): labels",
+                "takes the keys 'type' and 'items' (and optionally 'project'); unexpected "
+                "key(s): labels",
             ),
         ],
     )

@@ -369,8 +369,9 @@ registered), is a hard failure. `DRAFT-` is not adopted at v1.
 
 ## Resolution (§5)
 
-`python3 scripts/type_registry.py resolve [--type T] [--batch FILE] [--artifact PATH] [--headless]
-[--workspace-root DIR] [--json] [ID ...]` runs the deterministic ladder and prints one line,
+`python3 scripts/type_registry.py resolve [--type T] [--project KEY] [--parent KEY ...] [--jql QUERY]
+[--batch FILE] [--artifact PATH] [--headless] [--workspace-root DIR] [--json] [ID ...]` runs the
+deterministic ladder and prints one line,
 `TYPE RESOLVED: <type> (<rung>)` — with `; binding override project=KONFLUX ...` inside the
 parentheses when the effective binding carries overrides (`project`, `issue_type`, `local_prefix`
 order). The `resolve` CLI always prints it; the entry scripts print it only when a non-default rung
@@ -381,11 +382,14 @@ below), and so do the writers ("Effective binding in the writers" below). `--jso
 
 | Rung | Signal | Notes |
 |---|---|---|
-| `--type` | explicit type | unknown → exit 1 with the registered list; a single-member family's name resolves to its member ("Type families" above) |
+| `--type` | explicit type | unknown → exit 1 with the registered list; a single-member family's name resolves to its member; a family with two or more members narrows the run to its members — the rungs below pick the member, nothing deciding is ambiguous (exit 3) |
+| `--project` | `--project KEY`, or the batch root's `project:` (reported as `batch type`) | the member of the named family bound to KEY over **effective** bindings (exact: a later signal naming another member is a conflict); alone, the registered type bound to KEY (several standalone owners → ambiguous); a key no member / no type is bound to → exit 1 naming the projects; not key-shaped → exit 2 |
 | `batch type` | `{type: <t>, items: [...]}` batch root | a legacy bare list gives no signal (its string items join the ids for the `resolve` CLI's batch of ids; an entry-grammar caller passes `items_are_ids=False`); `--type` disagreeing with `type:` is an error (D1); an item carrying its own `type` key is an error (D2); any other root shape is an error |
 | `frontmatter type` | artifact frontmatter `type:` | `--artifact PATH`; the block between the first two `---` lines |
 | `artifact dir` | the artifact's parent directory is one of a type's `dirs` | when there is no frontmatter `type:`; the file stem always joins the ids too, so a stem owned by another type is a conflict, not a silent directory win |
 | `id grammar` | ids through `candidates()` | rungs `local_id_pattern` → `key_prefix` → `local_prefix` → the Jira grammar `^[A-Z][A-Z0-9]+-[0-9]+$` (provisional: every Jira-bound type), each over **effective** bindings; under a `LOCAL_PREFIX` override the descriptor's own pattern and prefix stay read forms, so ids minted before the override still resolve |
+| `parent key` | `--parent KEY`, each batch entry's `parent_key` | the parent-bearing type (`batch.extra_fields` lists `parent_key`) whose `parent_key_pattern_effective` full-matches it (the alignment `condition.prefix` as tie-break among several claimants); batch entries' parents are read only while a family scope is open; no claimant while every scoped type is parent-bearing → exit 1 naming the patterns, otherwise ignored (the task schema judges it at write time) |
+| `jql project` | `--jql QUERY` | each comparable positive `project` value (`= X`, `in (X, Y)`; negated clauses, names and numeric ids skipped) → the type bound to it; two values naming two types → conflict; an unbound value → exit 1 naming the projects; `issuetype` is not read — `snapshot_fetch.py` cross-checks it after resolution |
 | `legacy default` | nothing | `rfe`, when registered |
 
 Two or more deterministic signals naming different types are a hard error (`conflicting type
