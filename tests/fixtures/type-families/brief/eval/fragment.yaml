@@ -21,5 +21,7 @@ architecture_context:
 quality:
   criteria: "- WHAT\n- WHY\n- Right-sized"
   extra_checks: none
+calibration:
+  extra_checks: ""
 revision:
   assessments: fixture

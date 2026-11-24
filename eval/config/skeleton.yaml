@@ -1295,7 +1295,9 @@ judges:
       review scores are accurate is self_score_calibration's question, not this judge's.
       Evidence is judged against the case input: the pipeline cannot know more than it was
       told. Sampled 3 times; the reported value is the median.
-    score_range: [0, ${gen.quality_max}]
+    score_range:
+      - 0
+      - ${gen.quality_max}
     samples: 3
     prompt: |
       You are an independent evaluator assessing the content an automated
@@ -1435,7 +1437,9 @@ judges:
       exactly right. Kept apart from ${gen.quality_judge} on purpose: graded inside the
       quality score, it pushed optimized pipelines to lower their own scores, which left
       review tables inconsistent and triggered needless splits.
-    score_range: [0, ${gen.criteria_count}]
+    score_range:
+      - 0
+      - ${gen.criteria_count}
     prompt: |
       You are an independent evaluator checking whether an automated
       ${fragment.entity_long} creation pipeline scores its own output accurately.

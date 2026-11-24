@@ -1293,7 +1293,9 @@ judges:
       review scores are accurate is self_score_calibration's question, not this judge's.
       Evidence is judged against the case input: the pipeline cannot know more than it was
       told. Sampled 3 times; the reported value is the median.
-    score_range: [0, 10]
+    score_range:
+      - 0
+      - 10
     samples: 3
     prompt: |
       You are an independent evaluator assessing the content an automated
@@ -1446,7 +1448,9 @@ judges:
       exactly right. Kept apart from rfe_quality on purpose: graded inside the
       quality score, it pushed optimized pipelines to lower their own scores, which left
       review tables inconsistent and triggered needless splits.
-    score_range: [0, 5]
+    score_range:
+      - 0
+      - 5
     prompt: |
       You are an independent evaluator checking whether an automated
       RFE (Request for Enhancement) creation pipeline scores its own output accurately.
