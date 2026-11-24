@@ -261,7 +261,10 @@ def main():
     if resolution.ambiguous:
         candidates = ", ".join(resolution.candidates)
         _report(
-            [f"batch: ambiguous type (candidates: {candidates}) - pass --type or --project"],
+            [
+                f"batch: ambiguous type (candidates: {candidates}) - pass --type <member> or add "
+                f"project: <KEY> to the batch root"
+            ],
             [],
             args.strict,
         )

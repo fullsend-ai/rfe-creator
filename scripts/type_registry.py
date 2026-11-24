@@ -755,7 +755,7 @@ class Descriptor:
             return None
         return "^(" + "|".join(patterns) + ")$"
 
-    def parent_key_pattern_effective(self, env=None):
+    def parent_key_pattern_effective(self, env=None, workspace=None):
         """``parent_key_pattern`` over the EFFECTIVE binding (design §3.2.1; PR-3c, the writers).
 
         Under a project override the effective write prefix's ``<PROJECT>-\\d+`` is prepended
@@ -764,15 +764,19 @@ class Descriptor:
         (``parent_key: KONFLUX-1``) passes the task schema and the batch validator. With no
         project override — or when the derived alternative is already declared — the string is
         ``parent_key_pattern`` byte for byte; ``None`` when the descriptor declares no patterns.
-        ``env`` defaults as for ``binding()`` and a malformed override raises ``RegistryError``
-        the same way (``artifact_utils`` and ``validate_batch_input`` fall back to
-        ``parent_key_pattern`` then; the writers report the value).
+        ``env`` and ``workspace`` default as for ``binding()`` (the ``parent key`` rung of
+        ``resolve`` passes its workspace mapping, so a project the workspace file overrides
+        derives the alternative exactly as the id and ``--project`` rungs honour it; the task
+        schema and the batch validator read the environment layer alone, as before) and a
+        malformed override raises ``RegistryError`` the same way (``artifact_utils`` and
+        ``validate_batch_input`` fall back to ``parent_key_pattern`` then; the writers report
+        the value).
         """
         patterns = self.get("conventions.parent_key_patterns", None)
         if not patterns:
             return None
         alternatives = list(patterns)
-        binding = self.binding(env)
+        binding = self.binding(env, workspace=workspace)
         if "project" in binding["overrides"]:
             derived = binding["key_prefixes"][0] + r"\d+"
             if derived not in alternatives:
@@ -1463,11 +1467,14 @@ def assert_not_shorthand(type_name, binding):
 # A clause negated with `NOT` asserts nothing about the binding and is skipped: `NOT <field> = X`
 # is the optional first group below, and a `NOT ( ... )` group is blanked by
 # _blank_negated_groups before the scan. `!=`, `not in (...)`, `~`, `is` and every other operator
-# and field are ignored on purpose (no JQL lexer here; a value quoted inside a text search would
-# be read). The parser lives here so the ``jql project`` rung of ``resolve`` and
-# ``snapshot_fetch.jql_binding_conflict`` (the post-resolution cross-check) read ONE grammar;
-# ``snapshot_fetch`` rebinds every name of this section. ``re`` only: the import-clean invariant
-# holds.
+# and field are ignored on purpose (no JQL lexer here). Clause-shaped text INSIDE a quoted
+# literal (`summary ~ "project = X"`) is text, not a clause: the scan skips a keyword that falls
+# inside a literal (_quoted_spans) and resumes after the literal, while the quoted VALUE of a
+# real clause (`project = "X"`) is read as before — the ``jql project`` rung picks the member
+# from these values, so a false positive would route a run, not merely refuse it. The parser
+# lives here so the ``jql project`` rung of ``resolve`` and ``snapshot_fetch.jql_binding_conflict``
+# (the post-resolution cross-check) read ONE grammar; ``snapshot_fetch`` rebinds every name of
+# this section. ``re`` only: the import-clean invariant holds.
 _JQL_VALUE = r"""(?:"([^"]*)"|'([^']*)'|([^\s()"',]+))"""
 _JQL_CLAUSE_RE = re.compile(
     r"""\b(?:(not)\s+)?(project|issuetype|type)(?:\s*=\s*"""
@@ -1536,16 +1543,50 @@ def _blank_negated_groups(jql):
     return "".join(out)
 
 
+def _quoted_spans(text):
+    """``[(start, end), ...]`` — the quoted literals of ``text`` in order: a ``"..."`` or
+    ``'...'`` span (``end`` is the index after the closing quote), a backslash escaping the next
+    character inside it (Jira text search: ``"a \\" b"``), an unterminated literal running to
+    the end of the string — the reading ``_blank_negated_groups`` applies."""
+    spans = []
+    i, quote, start = 0, None, 0
+    while i < len(text):
+        ch = text[i]
+        if quote is not None:
+            if ch == "\\" and i + 1 < len(text):
+                i += 2
+                continue
+            if ch == quote:
+                spans.append((start, i + 1))
+                quote = None
+        elif ch in "\"'":
+            quote, start = ch, i
+        i += 1
+    if quote is not None:
+        spans.append((start, len(text)))
+    return spans
+
+
 def jql_binding_clauses(jql):
     """``{"project": [...], "issuetype": [...]}`` — the values every POSITIVE ``project`` /
     ``issuetype`` clause of ``jql`` asserts: the ``X`` of ``<field> = X`` and each member of
     ``<field> in (X, Y)`` (``type``, the alias, is listed under ``issuetype``; keyword
     case-insensitive; quoted or bare values, quotes stripped, in order of appearance). A clause
     negated with ``NOT`` — ``NOT <field> = X``, or any clause inside a ``NOT ( ... )`` group —
-    is skipped, and so are ``!=``, ``not in (...)`` and the other operators. A JQL that names
-    neither field yields two empty lists."""
+    is skipped, and so are ``!=``, ``not in (...)`` and the other operators; clause-shaped text
+    inside a quoted literal (``summary ~ "project = X"``) is text and asserts nothing. A JQL
+    that names neither field yields two empty lists."""
     found = {"project": [], "issuetype": []}
-    for match in _JQL_CLAUSE_RE.finditer(_blank_negated_groups(jql or "")):
+    text = _blank_negated_groups(jql or "")
+    spans = _quoted_spans(text)
+    pos = 0
+    while (match := _JQL_CLAUSE_RE.search(text, pos)) is not None:
+        keyword_at = match.start(2)
+        literal_end = next((end for start, end in spans if start <= keyword_at < end), None)
+        if literal_end is not None:
+            pos = literal_end  # a keyword inside a quoted literal: text — resume after it
+            continue
+        pos = match.end()
         negated, keyword, members = match.group(1), match.group(2).lower(), match.group(6)
         if negated:
             continue
@@ -1663,10 +1704,13 @@ def resolve(
        a family scoped, the one member bound to it is chosen — exact, like ``--type
        <member>``, so a later signal naming a sibling is a conflict with the key as origin;
        with a chosen type it must be that type's project (the conflict grammar otherwise);
-       alone, one owner resolves and several standalone owners are one ambiguous signal. A
-       key no type (no member of the named family) is bound to is an error naming the
-       projects. The bindings table is read ONLY when a key has to be matched (here, or by the
-       ``jql project`` rung), so a caller giving none reads no override.
+       alone, one owner resolves and several standalone owners — or several members sharing
+       the key under an override — are one ambiguous signal. A key no type (no member of the
+       named family) is bound to is an error naming the projects. The bindings table is read
+       ONLY when a key has to be matched (here, or by the ``jql project`` rung), so a caller
+       giving none reads no override; with ``binding`` the chosen type ALSO owns the key the
+       bare ``JIRA_PROJECT`` shorthand binds it to (``owners_of``), the binding the result
+       reports.
     3. ``batch type`` — ``batch`` is a YAML path, read through ``read_batch`` unless the
        caller already did: ``batch_items`` is that ``(type, project, items)`` triple (the older
        ``(type, items)`` pair is accepted; a batch-root consumer reads a pipe or
@@ -1710,15 +1754,18 @@ def resolve(
        decided -> headless (``is_headless(env, headless)``, ``env`` defaulting to the
        registry's and a registry built with ``headless=True`` counting as headless) raises
        ``ResolveError`` with ``exit_code`` 3 naming the candidates (and, under a family, both
-       remedies); interactive returns a ``Resolution`` with ``type_name None``, ``candidates``
-       filled and ``family`` set when a family scoped the run.
+       remedies — ``--type <member>`` alone when a ``--project`` / ``project:`` key was given
+       and left several members); interactive returns a ``Resolution`` with ``type_name
+       None``, ``candidates`` filled and ``family`` set when a family scoped the run.
     6. ``legacy default`` — no signal at all and no family scope -> ``rfe`` when registered,
        else an error.
 
     The binding on the result is ``desc.binding(env, workspace, shorthand=True)`` — the bare
-    ``JIRA_PROJECT`` / ``JIRA_ISSUE_TYPE`` shorthand applies to the resolved type only.
-    ``workspace`` is the mapping ``TypeRegistry.workspace_bindings`` returned; a headless run
-    whose resolved binding was overridden from the workspace is refused (§3.2.1 g). With
+    ``JIRA_PROJECT`` / ``JIRA_ISSUE_TYPE`` shorthand applies to the resolved type only (and,
+    once a type is chosen, the ``--project`` and ``jql project`` rungs take the key it binds
+    that type to as the chosen type's own, beside the shorthand-free table). ``workspace`` is
+    the mapping ``TypeRegistry.workspace_bindings`` returned; a headless run whose resolved
+    binding was overridden from the workspace is refused (§3.2.1 g). With
     ``binding=False`` the caller wants the type verdict only (``type_name``, ``rung``,
     ``desc``): the RESOLVED type's binding is not computed — its overrides are neither read
     nor validated, so a caller that would never apply them cannot fail on them —
@@ -1744,16 +1791,40 @@ def resolve(
     # fail a caller that would never apply it). A RegistryError propagates, as candidates() does.
     table = {}
 
-    def project_of(name):
-        """The tracker's discriminator of ``name``'s effective binding (``project`` for jira,
-        ``repo`` for github — never the literal ``project``)."""
-        if not table:
-            table.update(registry.bindings(env, workspace))
-        bound = table[name]
+    def _discriminator(bound):
         return str(bound.get(_TRACKER_PROJECT_KEY.get(bound.get("tracker"), "project")) or "")
 
+    def project_of(name):
+        """The tracker's discriminator of ``name``'s effective binding over the shorthand-free
+        table (``project`` for jira, ``repo`` for github — never the literal ``project``): what
+        the error texts list."""
+        if not table:
+            table.update(registry.bindings(env, workspace))
+        return _discriminator(table[name])
+
+    shorthand_project = {}  # the chosen type's shorthand-aware discriminator, read once
+
     def owners_of(key):
-        return [n for n in registered if project_of(n).casefold() == key.casefold()]
+        """The registered types bound to ``key`` over the table — PLUS the chosen type when the
+        bare ``JIRA_PROJECT`` shorthand binds it to ``key``. The shorthand applies to the
+        RESOLVED type only and the result reports that binding (``binding``), so a key naming
+        it is the chosen type's own, exactly as ``snapshot_fetch.jql_binding_conflict`` finds
+        it against ``Resolution.binding`` after resolution. Additive on purpose: the
+        descriptor's own key keeps its owner under the shorthand (D1 (a) holds), and a
+        ``--project`` pick that fixes ``chosen`` mid-ladder can only ADD that member to a later
+        rung's owners, never remove one. Under ``binding=False`` the shorthand stays unread (the
+        batch-root consumers' documented contract: no ``JIRA_PROJECT`` value is read or
+        validated there), and so it is while no type is chosen — a family scope has no member
+        to apply it to."""
+        owners = [n for n in registered if project_of(n).casefold() == key.casefold()]
+        if binding and chosen is not None and chosen not in owners:
+            if chosen not in shorthand_project:
+                shorthand_project[chosen] = _discriminator(
+                    descs[chosen].binding(env, workspace=workspace, shorthand=True)
+                )
+            if shorthand_project[chosen].casefold() == key.casefold():
+                owners = [n for n in registered if n in owners or n == chosen]
+        return owners
 
     def projects_text(names):
         return ", ".join(f"{n}: {project_of(n)}" for n in names)
@@ -1964,7 +2035,7 @@ def resolve(
     for label, parent_key in parent_inputs:
         claim = []
         for name in bearing:
-            pattern = descs[name].parent_key_pattern_effective(env)
+            pattern = descs[name].parent_key_pattern_effective(env, workspace)
             if pattern and re.fullmatch(pattern, parent_key):
                 claim.append(name)
         if len(claim) > 1:
@@ -1983,7 +2054,9 @@ def resolve(
                 continue
             raise ResolveError(
                 f"{label} matches no parent-key pattern of "
-                + ", ".join(f"{n} ({descs[n].parent_key_pattern_effective(env)})" for n in scope)
+                + ", ".join(
+                    f"{n} ({descs[n].parent_key_pattern_effective(env, workspace)})" for n in scope
+                )
             )
         take("parent key", label, claim)
 
@@ -2075,7 +2148,12 @@ def resolve(
     if family is not None:
         labels = [family_label] + labels  # the one place the family label joins the signals
     if headless_run:
-        tail = "--type <member> or --project <KEY>" if family is not None else "--type"
+        tail = "--type"
+        if family is not None:
+            # both remedies — unless a key (--project, the batch root's project:) was given and
+            # left several members (a project shared under an override): a member's name alone
+            # decides then
+            tail = "--type <member>" if key is not None else "--type <member> or --project <KEY>"
         raise ResolveError(
             f"ambiguous type for {', '.join(labels)}: candidates {', '.join(ambiguous)} — pass "
             f"{tail}",
@@ -2586,21 +2664,25 @@ def parse_type_arg(
 
     The one hand-parser behind the pipeline gates that take ``--type`` without argparse
     (``check_revised.py``, ``check_right_sized.py``, ``check_autofix_complete.py``), so their
-    error text cannot drift. Returns ``(type_name, remaining_argv)``: only the first occurrence
-    of each flag is consumed, wherever it sits in ``argv`` and in either spelling (``--type x``
-    or ``--type=x``; ``argv`` itself is not mutated), and ``default`` (``rfe``, design §5 rung
-    5) is the type when both are absent. A single-member family's name answers through its
-    sole member (design §3.2.2). ``project_flag`` (AISDLC-853) applies ``resolve``'s
-    ``--project`` rules at the gates: with a family of two or more members it picks the member
-    bound to the key; with a concrete type it must be that type's project; alone, the one type
-    bound to the key. The bindings table is read ONLY when the project flag is given, so a
-    malformed ``RFE_CREATOR_BINDING_*`` value keeps today's verdict without it. Raises
-    ``ResolveError`` with ``exit_code`` 2 — the usage-error code; the message is ready for an
-    ``ERROR:`` prefix — when a flag is the last token, when the name is not registered, when a
-    family with two or more members has no project flag beside it, when the key is not
-    key-shaped or names no (matching) type, when the flag is absent and ``default`` is not
-    registered, or when the bindings table cannot be read (its ``RegistryError`` is rewrapped:
-    the gates catch ``ResolveError`` only).
+    error text cannot drift. Returns ``(type_name, remaining_argv)``: the first ``flag``
+    occurrence (as before) and EVERY ``project_flag`` occurrence are consumed, wherever they
+    sit in ``argv`` and in either spelling (``--type x`` or ``--type=x``; ``argv`` itself is not
+    mutated) — repeated project flags must agree (equal keys collapse, different keys are a
+    usage error), so no key can slip through to a gate's positional ids — and ``default``
+    (``rfe``, design §5 rung 5) is the type when both are absent. A single-member family's
+    name answers through its sole member (design §3.2.2). ``project_flag`` (AISDLC-853) applies
+    ``resolve``'s ``--project`` rules at the gates: with a family of two or more members it
+    picks the ONE member bound to the key (several members sharing it under an override is the
+    ambiguity ``resolve`` reports, a usage error here: the gates take explicit arguments only);
+    with a concrete type it must be that type's project; alone, the one type bound to the key.
+    The bindings table is read ONLY when the project flag is given, so a malformed
+    ``RFE_CREATOR_BINDING_*`` value keeps today's verdict without it. Raises ``ResolveError``
+    with ``exit_code`` 2 — the usage-error code; the message is ready for an ``ERROR:`` prefix
+    — when a flag is the last token, when the name is not registered, when a family with two
+    or more members has no project flag beside it, when the key is not key-shaped, is given
+    twice with different values, names no (matching) type or several members, when the flag
+    is absent and ``default`` is not registered, or when the bindings table cannot be read (its
+    ``RegistryError`` is rewrapped: the gates catch ``ResolveError`` only).
     """
     argv = list(argv)
     registered = ", ".join(registry.names()) or "(none)"
@@ -2623,13 +2705,30 @@ def parse_type_arg(
                 return value
         return None
 
-    name, project = pop(flag), pop(project_flag)
-    if project is not None and not _PROJECT_KEY_RE.match(project):
+    def pop_all(name):
+        """Every ``name <v>`` / ``name=<v>`` removed from ``argv``, values in order; ``[]`` when
+        absent."""
+        values = []
+        while (value := pop(name)) is not None:
+            values.append(value)
+        return values
+
+    name, keys = pop(flag), pop_all(project_flag)
+    for key in keys:
+        if not _PROJECT_KEY_RE.match(key):
+            raise ResolveError(
+                f"{project_flag} {key!r} is not a Jira project key (expected "
+                f"{_PROJECT_KEY_RE.pattern})",
+                2,
+            )
+    distinct = list(dict.fromkeys(keys))
+    if len(distinct) > 1:
         raise ResolveError(
-            f"{project_flag} {project!r} is not a Jira project key (expected "
-            f"{_PROJECT_KEY_RE.pattern})",
+            f"{project_flag} given more than once with different keys ({', '.join(distinct)}); "
+            f"pass one",
             2,
         )
+    project = distinct[0] if distinct else None
     owners, project_text = [], {}
     if project is not None:  # the ONLY binding read: no project flag, no override read
         try:
@@ -2678,6 +2777,11 @@ def parse_type_arg(
             raise ResolveError(
                 f"{project_flag} {project} names no member of type family {name!r} "
                 f"({projects(members)})",
+                2,
+            )
+        if len(hit) > 1:  # the ambiguity resolve() reports for the same inputs, never hit[0]
+            raise ResolveError(
+                f"{project_flag} {project} is shared by {', '.join(hit)}; pass {flag} <member>",
                 2,
             )
         return hit[0], argv

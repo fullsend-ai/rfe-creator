@@ -104,7 +104,8 @@ def load_batch(path):
         # one (AISDLC-853): no type, so no prefix and no directory to allocate under.
         candidates = ", ".join(resolution.candidates)
         print(
-            f"ambiguous type (candidates: {candidates}) - pass --type or --project",
+            f"ambiguous type (candidates: {candidates}) - name a member in the batch root's "
+            f"type: or add project: <KEY>",
             file=sys.stderr,
         )
         sys.exit(2)

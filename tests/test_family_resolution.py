@@ -45,6 +45,7 @@ import type_registry  # noqa: E402
 from type_registry import (  # noqa: E402
     RegistryError,
     ResolveError,
+    jql_binding_clauses,
     jql_project_keys,
     load,
     parse_type_arg,
@@ -358,6 +359,76 @@ class TestProject:
         chosen = resolve(two_reg, explicit_type=FAMILY, project="ACME", env={})
         assert (chosen.type_name, chosen.rung, chosen.family) == (ACME, "--project", None)
         assert resolve(shipped_reg, ids=["KONFLUX-1"], env={}).family is None
+
+    def test_the_shorthand_binds_the_chosen_type_as_the_result_reports_it(
+        self, shipped_reg, two_reg
+    ):
+        # JIRA_PROJECT applies to the RESOLVED type only: under --type rfe the key it names is
+        # rfe's own at the --project and jql rungs, as the post-resolution cross-check finds it
+        # against Resolution.binding. ADDITIVE: the descriptor's own key keeps its owner.
+        env = {"JIRA_PROJECT": "KONFLUX"}
+        line = "TYPE RESOLVED: rfe (--type; binding override project=KONFLUX)"
+        res = resolve(shipped_reg, explicit_type="rfe", jql="project = KONFLUX", env=env)
+        assert res.line() == line
+        assert snapshot_fetch.jql_binding_conflict("project = KONFLUX", res.binding, "rfe") is None
+        assert resolve(shipped_reg, explicit_type="rfe", project="KONFLUX", env=env).line() == line
+        result = _cli("resolve", "--type", "rfe", "--jql", "project = KONFLUX", env=env)
+        assert _triple(result) == (0, f"{line}\n", "")
+        # D1 (a) under the shorthand: the descriptor's key still names its type at the rung
+        # (--project, and with an id), and a query naming it is left to the cross-check, which
+        # refuses it against the binding the result reports — as before this fix-up
+        assert resolve(shipped_reg, explicit_type="rfe", project="RHAIRFE", env=env).line() == line
+        res = resolve(
+            shipped_reg, explicit_type="rfe", project="RHAIRFE", ids=["RHAIRFE-1"], env=env
+        )
+        assert res.line() == line
+        res = resolve(shipped_reg, explicit_type="rfe", jql="project = RHAIRFE", env=env)
+        assert res.line() == line
+        assert snapshot_fetch.jql_binding_conflict("project = RHAIRFE", res.binding, "rfe") == (
+            "ERROR: --jql names project RHAIRFE but the rfe binding is KONFLUX"
+        )
+        # the verdict for one key against one member is the same whichever rung asks first:
+        # a --project pick that fixes the member mid-ladder adds it to the owners of the key
+        # the shorthand binds it to, and never removes an owner
+        acme = "TYPE RESOLVED: brief-acme ({rung}; binding override project=KONFLUX)"
+        for kwargs, rung in (
+            ({"explicit_type": FAMILY, "project": "ACME"}, "--project"),
+            ({"explicit_type": ACME, "project": "ACME"}, "--type"),
+            ({"explicit_type": FAMILY, "project": "ACME", "jql": "project = ACME"}, "--project"),
+            ({"explicit_type": FAMILY, "jql": "project = ACME"}, "jql project"),
+            ({"explicit_type": FAMILY, "project": "ACME", "jql": "project = KONFLUX"}, "--project"),
+            ({"explicit_type": ACME, "project": "KONFLUX"}, "--type"),
+        ):
+            assert resolve(two_reg, env=env, **kwargs).line() == acme.format(rung=rung), kwargs
+        # a family scope has no member to apply the shorthand to: the table decides
+        with pytest.raises(ResolveError) as excinfo:
+            resolve(two_reg, explicit_type=FAMILY, project="KONFLUX", env=env)
+        assert str(excinfo.value) == (
+            f"--project KONFLUX names no member of type family 'brief' ({PROJECTS})"
+        )
+        # nothing chosen: the shorthand names no type (it cannot pick one), the table decides
+        unbound = (
+            "--jql names project KONFLUX, which no registered type is bound to "
+            f"({SHIPPED_PROJECTS})"
+        )
+        with pytest.raises(ResolveError) as excinfo:
+            resolve(shipped_reg, jql="project = KONFLUX", env=env)
+        assert str(excinfo.value) == unbound
+        # binding=False reports no binding, so the shorthand stays unread (the batch-root
+        # consumers' contract: no JIRA_PROJECT value is ever read or validated there)
+        with pytest.raises(ResolveError) as excinfo:
+            resolve(
+                shipped_reg, explicit_type="rfe", jql="project = KONFLUX", env=env, binding=False
+            )
+        assert str(excinfo.value) == unbound
+        res = resolve(
+            shipped_reg,
+            explicit_type="rfe",
+            project="RHAIRFE",
+            env={"JIRA_PROJECT": "bad project"},
+            binding=False,
+        )
+        assert (res.type_name, res.rung, res.binding) == ("rfe", "--type", None)
 
 
 # ── the scope ───────────────────────────────────────────────────────────────────
@@ -709,6 +780,40 @@ class TestParent:
         )
         assert (res.type_name, res.rung) == (MEMBER, "parent key")
 
+    def test_a_workspace_project_override_derives_the_parent_alternative(self, two_reg, tmp_path):
+        # The rung reads the same workspace mapping the id and --project rungs honour: a
+        # member's project overridden to KONFLUX by the workspace file claims KONFLUX-1.
+        workspace = {ACME: {"jira": {"project": "KONFLUX"}}}
+        desc = two_reg.get(ACME)
+        assert desc.parent_key_pattern_effective({}, workspace=workspace) == (
+            r"^(KONFLUX-\d+|ACMEOUT-\d+|BRA-\d+)$"
+        )
+        assert desc.parent_key_pattern_effective({}) == desc.parent_key_pattern  # default kept
+        res = resolve(
+            two_reg, explicit_type=FAMILY, parent=["KONFLUX-1"], env={}, workspace=workspace
+        )
+        line = "TYPE RESOLVED: brief-acme (parent key; binding override project=KONFLUX)"
+        assert res.line() == line
+        with pytest.raises(ResolveError, match="matches no parent-key pattern of brief-acme"):
+            resolve(two_reg, explicit_type=FAMILY, parent=["KONFLUX-1"], env={})
+        # through the CLI's --workspace-root; a headless run ignores the file, as it does for
+        # every binding, and the key is then unclaimed
+        _write_yaml(tmp_path / "rfe-creator.yaml", {"bindings": workspace})
+        args = (
+            "resolve",
+            "--workspace-root",
+            str(tmp_path),
+            "--type",
+            FAMILY,
+            "--parent",
+            "KONFLUX-1",
+        )
+        assert _triple(_fixture(*args)) == (0, f"{line}\n", "")
+        headless = _fixture(*args, "--headless")
+        assert headless.returncode == 1 and headless.stdout == ""
+        assert "ignoring the workspace bindings file" in headless.stderr
+        assert "--parent KONFLUX-1 matches no parent-key pattern of brief-acme" in headless.stderr
+
 
 # ── jql project ─────────────────────────────────────────────────────────────────
 
@@ -797,12 +902,62 @@ class TestJql:
             ('project = "Acme Briefs"', []),
             ("project = 10042", []),
             ("NOT (project = RHAISTRAT AND type = Epic) AND project = RHAIRFE", ["RHAIRFE"]),
+            # clause-shaped text inside a quoted literal is text; a real clause beside it, or
+            # after an unclosed `in (` inside the literal, is still read; an escaped quote does
+            # not end the literal early; an unterminated literal runs to the end
+            ('summary ~ "project = GLOBEX"', []),
+            ("summary ~ 'project in (ACME, GLOBEX)'", []),
+            ('project = ACME AND summary ~ "project = GLOBEX"', ["ACME"]),
+            ('summary ~ "project in (A" AND project = GLOBEX', ["GLOBEX"]),
+            ('summary ~ "a \\" project = ACME" AND project = GLOBEX', ["GLOBEX"]),
+            ('summary ~ "project = ACME', []),
+            # the quoted VALUE of a real clause is read as before
+            ('project = "GLOBEX"', ["GLOBEX"]),
+            ("project = 'GLOBEX'", ["GLOBEX"]),
+            ('project in ("ACME", GLOBEX)', ["ACME", "GLOBEX"]),
+            ('project = "GLOBEX" AND summary ~ "project = ACME"', ["GLOBEX"]),
             ("", []),
             (None, []),
         ],
     )
     def test_jql_project_keys(self, jql, expected):
         assert jql_project_keys(jql) == expected
+
+    def test_clause_shaped_text_inside_a_quoted_literal_is_no_signal(self):
+        # a text search quoting clause-shaped words names no project: the family stays
+        # undecided, a real clause beside it decides alone (no false conflict), and the shipped
+        # tree keeps its legacy default
+        literal = 'summary ~ "project = GLOBEX"'
+        assert _triple(_fixture("resolve", "--type", FAMILY, "--jql", literal)) == (
+            3,
+            AMBIGUOUS_LINE,
+            "",
+        )
+        result = _fixture("resolve", "--type", FAMILY, "--jql", f"project = ACME AND {literal}")
+        assert _triple(result) == (0, "TYPE RESOLVED: brief-acme (jql project)\n", "")
+        shipped = _cli("resolve", "--jql", 'summary ~ "project = RHAISTRAT"')
+        assert _triple(shipped) == (0, "TYPE RESOLVED: rfe (legacy default)\n", "")
+        # the one parser serves the post-resolution cross-check too: no false refusal there,
+        # and a clause-shaped issuetype inside a literal is text as well
+        rfe = _load(TYPES_ROOT).get("rfe").binding({})
+        assert snapshot_fetch.jql_binding_conflict(literal, rfe, "rfe") is None
+        assert jql_binding_clauses('text ~ "issuetype = Epic" AND issuetype = Brief') == {
+            "project": [],
+            "issuetype": ["Brief"],
+        }
+
+    def test_a_quoted_value_of_a_real_clause_still_picks_the_member(self):
+        for jql in ('project = "GLOBEX"', "project = 'GLOBEX'", 'project in ("GLOBEX")'):
+            result = _fixture("resolve", "--type", FAMILY, "--jql", jql)
+            assert _triple(result) == (0, "TYPE RESOLVED: brief-globex (jql project)\n", ""), jql
+        both = _fixture(
+            "resolve",
+            "--type",
+            FAMILY,
+            "--jql",
+            'project = "GLOBEX" AND summary ~ "project = ACME"',
+        )
+        assert _triple(both) == (0, "TYPE RESOLVED: brief-globex (jql project)\n", "")
 
     def test_the_parser_moved_into_the_registry_and_snapshot_fetch_rebinds_it(self):
         assert snapshot_fetch.jql_binding_clauses is type_registry.jql_binding_clauses
@@ -1314,6 +1469,75 @@ class TestParseTypeArg:
             assert "type_registry.parse_type_arg(_TYPES, sys.argv[1:])" in text, rel
             assert "--project" not in text, rel
 
+    def test_a_project_shared_by_two_members_is_the_ambiguity_not_the_first(
+        self, monkeypatch, capsys
+    ):
+        # A binding override makes the siblings share ACME (distinct issue types: legal). The
+        # gate reports the ambiguity resolve() reports, never the first member in registry order.
+        env = {
+            "RFE_CREATOR_BINDING_BRIEF_GLOBEX_PROJECT": "ACME",
+            "RFE_CREATOR_BINDING_BRIEF_GLOBEX_ISSUE_TYPE": "Epic",
+        }
+        reg = _load(FAMILIES_ROOT, env=env)
+        shared = "--project ACME is shared by brief-acme, brief-globex; pass --type <member>"
+        with pytest.raises(ResolveError) as excinfo:
+            parse_type_arg(reg, ["--type", FAMILY, "--project", "ACME", "X-1"])
+        assert (str(excinfo.value), excinfo.value.exit_code) == (shared, 2)
+        assert resolve(reg, explicit_type=FAMILY, project="ACME", env=env).candidates == [
+            ACME,
+            GLOBEX,
+        ]
+        with pytest.raises(ResolveError) as excinfo:
+            resolve(reg, explicit_type=FAMILY, project="ACME", env=env, headless=True)
+        # the key is already given: the headless remedy names the member alone
+        assert (str(excinfo.value), excinfo.value.exit_code) == (
+            "ambiguous type for --type brief, --project ACME: candidates brief-acme, brief-globex "
+            "— pass --type <member>",
+            3,
+        )
+        with pytest.raises(ResolveError) as excinfo:
+            resolve(reg, project="ACME", env=env, headless=True)
+        assert str(excinfo.value).endswith("brief-acme, brief-globex — pass --type")
+        # a member named outright still passes; the gate's own verdict is the usage error
+        assert parse_type_arg(reg, ["--type", ACME, "--project", "ACME"]) == (ACME, [])
+        monkeypatch.setattr(check_autofix_complete, "_TYPES", reg)
+        assert _gate(
+            monkeypatch, capsys, check_autofix_complete, "--type", FAMILY, "--project", "ACME"
+        ) == (2, "", f"ERROR: {shared}\n")
+
+    def test_repeated_project_flags_are_consumed_and_must_agree(self, monkeypatch, capsys, two_reg):
+        # equal repeats collapse, in either spelling, and nothing is left for the gate's ids
+        assert parse_type_arg(
+            two_reg, ["--type", FAMILY, "--project", "ACME", "--project=ACME", "X-1"]
+        ) == (ACME, ["X-1"])
+        disagree = "--project given more than once with different keys (ACME, GLOBEX); pass one"
+        for argv in (
+            ["--type", ACME, "--project", "ACME", "--project", "GLOBEX"],
+            ["--type", FAMILY, "--project=ACME", "X-1", "--project", "GLOBEX"],
+            ["--project", "ACME", "--project", "GLOBEX", "--project", "ACME"],
+        ):
+            with pytest.raises(ResolveError) as excinfo:
+                parse_type_arg(two_reg, argv)
+            assert (str(excinfo.value), excinfo.value.exit_code) == (disagree, 2), argv
+        # every value is held to the key grammar, and a trailing flag is still the value error
+        with pytest.raises(ResolveError, match="--project 'acme' is not a Jira project key"):
+            parse_type_arg(two_reg, ["--project", "ACME", "--project", "acme"])
+        with pytest.raises(ResolveError, match="--project requires a value"):
+            parse_type_arg(two_reg, ["--project", "ACME", "--project"])
+        # through a gate that discards the remaining arguments: the second key is not ignored
+        monkeypatch.setattr(check_autofix_complete, "_TYPES", two_reg)
+        assert _gate(
+            monkeypatch,
+            capsys,
+            check_autofix_complete,
+            "--type",
+            ACME,
+            "--project",
+            "ACME",
+            "--project",
+            "GLOBEX",
+        ) == (2, "", f"ERROR: {disagree}\n")
+
 
 # ── the batch root ──────────────────────────────────────────────────────────────
 
@@ -1416,8 +1640,8 @@ class TestBatchRoot:
         result = _run(VALIDATOR, str(bare), "--strict", env=_seam(FAMILIES_ROOT))
         assert result.returncode == 1 and result.stderr == ""
         assert (
-            "ERROR: batch: ambiguous type (candidates: brief-acme, brief-globex) - pass --type or "
-            "--project\n"
+            "ERROR: batch: ambiguous type (candidates: brief-acme, brief-globex) - pass --type "
+            "<member> or add project: <KEY> to the batch root\n"
         ) in result.stdout
 
     def test_the_allocator_takes_a_family_batch_with_a_project(self, tmp_path):
@@ -1432,8 +1656,36 @@ class TestBatchRoot:
         assert _triple(result) == (
             2,
             "",
-            "ambiguous type (candidates: brief-acme, brief-globex) - pass --type or --project\n",
+            "ambiguous type (candidates: brief-acme, brief-globex) - name a member in the batch "
+            "root's type: or add project: <KEY>\n",
         )
+
+    def test_the_consumers_keep_the_table_under_the_shorthand(self, shipped_reg, tmp_path):
+        # The JIRA_PROJECT shorthand binds the CHOSEN type at the rungs only when the result
+        # reports a binding: `resolve --batch` (binding=True) takes a root project: naming it,
+        # the two consumers (binding=False, "Read once, verdict only") never read the shorthand
+        # and refuse the same file over the table — the known divergence, pinned as such.
+        env = {"JIRA_PROJECT": "KONFLUX"}
+        batch = _write_yaml(
+            tmp_path / "b.yaml", {"type": "rfe", "project": "KONFLUX", "items": [{"prompt": "x"}]}
+        )
+        line = "TYPE RESOLVED: rfe (batch type; binding override project=KONFLUX)\n"
+        assert _triple(_cli("resolve", "--batch", str(batch), env=env)) == (0, line, "")
+        refused = (
+            f"{batch} project: KONFLUX names no registered type's project ({SHIPPED_PROJECTS})"
+        )
+        assert _triple(_cli("resolve", "--batch", str(batch))) == (1, "", f"ERROR: {refused}\n")
+        result = _run(VALIDATOR, str(batch), "--strict", env=env)
+        assert _triple(result) == (
+            1,
+            f"ERROR_COUNT=1\nWARNING_COUNT=0\nERROR: batch: {refused}\nVALID=false\n",
+            "",
+        )
+        result = _run(ALLOCATOR, "--from-batch", str(batch), env=env, cwd=tmp_path)
+        assert _triple(result) == (2, "", f"{refused}\n")
+        with pytest.raises(ResolveError) as excinfo:
+            resolve(shipped_reg, batch=batch, env=env, binding=False, items_are_ids=False)
+        assert str(excinfo.value) == refused
 
     def test_resolve_accepts_the_pair_and_the_triple(self, shipped_reg, two_reg, tmp_path):
         gone = tmp_path / "gone.yaml"

@@ -327,9 +327,14 @@ without criteria, remote-children skip checks, sibling `Blocks` links, attachmen
    non-alphanumerics mapped to `_`); the only source a headless or CI run honours.
 2. **shorthand** — bare `JIRA_PROJECT` / `JIRA_ISSUE_TYPE`, applied by `resolve` to the **resolved
    type only** (`binding(shorthand=True)`); `binding <type>`, `bindings()` and every other reader
-   ignore it, so one shorthand can never move two types. A `resolve`-CLI verdict only: the
-   writers refuse a shorthand-sourced binding (`assert_not_shorthand`, "Effective binding in the
-   writers" below) because the artifact layer does not read it.
+   ignore it, so one shorthand can never move two types (the `--project` and `jql project` rungs
+   match a key against the shorthand-free table AND, once a type is chosen, against that type's
+   shorthand-aware binding — the one the result reports — only when the result reports a binding
+   (`binding=True`); the batch-root consumers, `binding=False`, keep the table, so a root
+   `project:` naming the shorthand's project passes `resolve --batch` and fails them). A
+   `resolve`-CLI verdict only: the writers refuse a shorthand-sourced binding
+   (`assert_not_shorthand`, "Effective binding in the writers" below) because the artifact layer
+   does not read it.
 3. **workspace** — the `bindings:` block of `rfe-creator.yaml` in the directory passed as
    `--workspace-root` / `workspace_root=` (the cwd is never probed implicitly), read by
    `load_workspace_bindings()` and handed out by `TypeRegistry.workspace_bindings()` in interactive
@@ -383,13 +388,13 @@ below), and so do the writers ("Effective binding in the writers" below). `--jso
 | Rung | Signal | Notes |
 |---|---|---|
 | `--type` | explicit type | unknown → exit 1 with the registered list; a single-member family's name resolves to its member; a family with two or more members narrows the run to its members — the rungs below pick the member, nothing deciding is ambiguous (exit 3) |
-| `--project` | `--project KEY`, or the batch root's `project:` (reported as `batch type`) | the member of the named family bound to KEY over **effective** bindings (exact: a later signal naming another member is a conflict); alone, the registered type bound to KEY (several standalone owners → ambiguous); a key no member / no type is bound to → exit 1 naming the projects; not key-shaped → exit 2 |
+| `--project` | `--project KEY`, or the batch root's `project:` (reported as `batch type`) | the member of the named family bound to KEY over **effective** bindings (exact: a later signal naming another member is a conflict; several members sharing KEY under an override → ambiguous, the headless remedy naming `--type <member>` alone); alone, the registered type bound to KEY (several standalone owners → ambiguous); a key no member / no type is bound to → exit 1 naming the projects; not key-shaped → exit 2 |
 | `batch type` | `{type: <t>, items: [...]}` batch root | a legacy bare list gives no signal (its string items join the ids for the `resolve` CLI's batch of ids; an entry-grammar caller passes `items_are_ids=False`); `--type` disagreeing with `type:` is an error (D1); an item carrying its own `type` key is an error (D2); any other root shape is an error |
 | `frontmatter type` | artifact frontmatter `type:` | `--artifact PATH`; the block between the first two `---` lines |
 | `artifact dir` | the artifact's parent directory is one of a type's `dirs` | when there is no frontmatter `type:`; the file stem always joins the ids too, so a stem owned by another type is a conflict, not a silent directory win |
 | `id grammar` | ids through `candidates()` | rungs `local_id_pattern` → `key_prefix` → `local_prefix` → the Jira grammar `^[A-Z][A-Z0-9]+-[0-9]+$` (provisional: every Jira-bound type), each over **effective** bindings; under a `LOCAL_PREFIX` override the descriptor's own pattern and prefix stay read forms, so ids minted before the override still resolve |
 | `parent key` | `--parent KEY`, each batch entry's `parent_key` | the parent-bearing type (`batch.extra_fields` lists `parent_key`) whose `parent_key_pattern_effective` full-matches it (the alignment `condition.prefix` as tie-break among several claimants); batch entries' parents are read only while a family scope is open; no claimant while every scoped type is parent-bearing → exit 1 naming the patterns, otherwise ignored (the task schema judges it at write time) |
-| `jql project` | `--jql QUERY` | each comparable positive `project` value (`= X`, `in (X, Y)`; negated clauses, names and numeric ids skipped) → the type bound to it; two values naming two types → conflict; an unbound value → exit 1 naming the projects; `issuetype` is not read — `snapshot_fetch.py` cross-checks it after resolution |
+| `jql project` | `--jql QUERY` | each comparable positive `project` value (`= X`, `in (X, Y)`; negated clauses, names, numeric ids and clause-shaped text inside a quoted literal skipped) → the type bound to it; two values naming two types → conflict; an unbound value → exit 1 naming the projects; `issuetype` is not read — `snapshot_fetch.py` cross-checks it after resolution |
 | `legacy default` | nothing | `rfe`, when registered |
 
 Two or more deterministic signals naming different types are a hard error (`conflicting type
@@ -512,7 +517,7 @@ behind `resolve` (rung 2), `validate_batch_input.py` and `next_rfe_id.py --from-
 | Form | Root | Type |
 |---|---|---|
 | legacy list | a bare list of entries | `--type`, else the legacy default `rfe` (no signal — silent) |
-| mapping | `{type: <t>, items: [...]}`, exactly those two keys | `type:` (rung 2); `--type`, when given, must agree |
+| mapping | `{type: <t>, items: [...]}`, those two keys plus an optional `project:` | `type:` (rung 2); `--type`, when given, must agree; `project:` picks the member of a family (the file's `--project`) |
 
 The rules are `resolve`'s, so the two scripts cannot drift from the ladder:
 
@@ -533,7 +538,7 @@ The rules are `resolve`'s, so the two scripts cannot drift from the ladder:
   `--prefix`/`--dir` that disagrees with the mapping type's descriptor values (the initiative
   speedrun's `--prefix INIT --dir artifacts/initiatives` with a legacy list is no conflict: the
   legacy default is not a signal).
-- **Read once, verdict only.** Both scripts hand `resolve` the pair `read_batch` returned
+- **Read once, verdict only.** Both scripts hand `resolve` the triple `read_batch` returned
   (`batch_items`: a pipe or `/dev/stdin` is read exactly once), tell it that a bare string item is
   an entry, not an id (`items_are_ids=False`: the validator's `entry N: must be a mapping` error,
   never a rung-3 signal nor a headless D5 error), and take the type verdict only (`binding=False`:
