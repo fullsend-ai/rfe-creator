@@ -2951,6 +2951,8 @@ def classification_digest(reg):
             )
             own_display = own.get("display")
             labelled = isinstance(own_display, dict) and bool(own_display.get("entity"))
+            # The registry's member list, create stage or not: the set ``digest_label``
+            # counts and the renderer's ``Family:`` roster names.
             sole = len(reg.members(family)) == 1
             label = entity if (sole or labelled) else f"{entity} ({project})"
         rows.append(
@@ -2975,11 +2977,18 @@ def classification_digest(reg):
     return rows
 
 
-def render_classification_digest(rows):
+def render_classification_digest(rows, reg=None):
     """The text form of ``classification_digest``: a TYPES line, then one section per type. A
     member of a family with two or more members (its row renders under its own name, not the
     family's) adds the ``Label:``, ``Family:``, ``Project:`` and ``Member signals:`` lines; a
-    standalone type and a family's sole member render as they always did."""
+    standalone type and a family's sole member render as they always did.
+
+    ``Family:`` names the registry's members (``reg.members``, the set the row's label was
+    counted over), so a member without the create stage — no row of its own — is still named:
+    the roster is context, and the create body's member question offers the listed types (the
+    ``##`` blocks) only, never a roster-only name; a caller without a registry gets the members
+    that have a row. ``Member signals:`` is left out for a member whose own file declares no
+    signals (its JSON row keeps ``own_signals: []``): the review on #317."""
     if not rows:
         return "TYPES: none (no registered create-stage type declares a classification block)\n"
     out = ["TYPES: " + ", ".join(r["type"] for r in rows), ""]
@@ -2992,11 +3001,14 @@ def render_classification_digest(rows):
         if r["driver"]:
             out.append(f"Driver: {r['driver']}")
         if grouped:
-            members = ", ".join(x["type"] for x in rows if x.get("family") == r["family"])
-            out.append(f"Family: {r['family']} (members {members})")
+            if reg is not None:
+                members = reg.members(r["family"])
+            else:
+                members = [x["type"] for x in rows if x.get("family") == r["family"]]
+            out.append(f"Family: {r['family']} (members {', '.join(members)})")
             out.append(f"Project: {r['project']}")
         out.append("Signals: " + "; ".join(r["signals"]))
-        if grouped:
+        if grouped and r["own_signals"]:
             out.append("Member signals: " + "; ".join(r["own_signals"]))
         if r["counter_signals"]:
             out.append("Counter-signals: " + "; ".join(r["counter_signals"]))
@@ -3042,7 +3054,7 @@ def _cmd_classification(reg, args):
         elif not rows:
             print(OTHERS_EMPTY_LINE)
         else:
-            sys.stdout.write(render_classification_digest(rows))
+            sys.stdout.write(render_classification_digest(rows, reg))
         return 0
     if is_headless(reg.env, getattr(reg, "headless", False) or getattr(args, "headless", False)):
         if args.json:
@@ -3054,7 +3066,7 @@ def _cmd_classification(reg, args):
     if args.json:
         _emit(rows, True)
     else:
-        sys.stdout.write(render_classification_digest(rows))
+        sys.stdout.write(render_classification_digest(rows, reg))
     return 0
 
 

@@ -286,17 +286,21 @@ def member(single_reg):
     return single_reg.get(MEMBER)
 
 
+def _two_initiative_root(dest, member_yaml=SECOND_INITIATIVE_YAML):
+    """``dest``: the shipped types plus ``initiative-globex`` written from ``member_yaml``."""
+    dest.mkdir(parents=True)
+    for name in ("_schema", "rfe", SHIPPED_FAMILY, SHIPPED_MEMBER):
+        shutil.copytree(TYPES_ROOT / name, dest / name)
+    _write_text(dest / SECOND_INITIATIVE / "type.yaml", member_yaml)
+    return dest
+
+
 @pytest.fixture(scope="module")
 def two_initiative_root(tmp_path_factory):
     """The shipped types plus ``initiative-globex``, a synthetic second member of the
     ``initiative`` family: ``rfe``, ``initiative-globex``, ``initiative-rhaistrat``. Never
     mutated."""
-    dest = tmp_path_factory.mktemp("two-initiative") / "types"
-    dest.mkdir()
-    for name in ("_schema", "rfe", SHIPPED_FAMILY, SHIPPED_MEMBER):
-        shutil.copytree(TYPES_ROOT / name, dest / name)
-    _write_text(dest / SECOND_INITIATIVE / "type.yaml", SECOND_INITIATIVE_YAML)
-    return dest
+    return _two_initiative_root(tmp_path_factory.mktemp("two-initiative") / "types")
 
 
 # ── type_arg: the argparse converter beside choices= ────────────────────────────
@@ -605,6 +609,23 @@ class TestClassification:
         assert "Member signals: a globex-only fixture cue\n" in out
         assert "Examples:\n- Write the Globex launch brief\n" in out
         assert out.count("Label: ") == out.count("Family: ") == out.count("Member signals: ") == 2
+        # the roster is the registry's member list, the set the label was counted over
+        reg = _load(FAMILIES_ROOT)
+        roster = ", ".join(reg.members(FAMILY))
+        assert out.count(f"Family: {FAMILY} (members {roster})\n") == 2
+        assert (
+            type_registry.render_classification_digest(
+                type_registry.classification_digest(reg), reg
+            )
+            == out
+        )
+        # `--others rfe` beside the shipped types: the two member rows, each with the full roster
+        others = _registry(
+            "classification", "--others", "rfe", root="types", extra_roots=FAMILIES_REL
+        )
+        assert (others.returncode, others.stderr) == (0, "")
+        assert others.stdout.startswith(f"TYPES: {MEMBER}, {OTHER}, {SHIPPED_FAMILY}\n")
+        assert others.stdout.count(f"Family: {FAMILY} (members {roster})\n") == 2
 
     def test_a_sole_member_and_the_shipped_types_render_no_member_lines(self, single_root):
         """The member lines are for a family with two or more members only: the sole member of
@@ -751,6 +772,90 @@ class TestClassification:
             )
             assert result.returncode == 0, (others, result.stderr)
             assert [r["type"] for r in json.loads(result.stdout)] == left, others
+
+    def test_the_family_roster_names_a_member_without_the_create_stage(self, tmp_path):
+        """Review on #317 (1): a member may drop the ``create`` stage (its own ``stages`` list
+        replaces the family's) and gate 1 accepts it; it then has no digest row, yet the family
+        has two members — the shipped member's label is the derived one — so the ``Family:``
+        roster names it too, on the plain form and on ``--others rfe`` (the review agent's): the
+        roster is the registry's member list, not the rows'."""
+        root = _two_initiative_root(
+            tmp_path / "types",
+            SECOND_INITIATIVE_YAML.replace(
+                "pipeline:\n", "pipeline:\n  stages: [review, submit, split, auto-fix, speedrun]\n"
+            ),
+        )
+        report = _validate(root, eval_gate=False)
+        assert report.ok, report.lines()
+        reg = _load(root)
+        assert reg.members(SHIPPED_FAMILY) == [SECOND_INITIATIVE, SHIPPED_MEMBER]
+        assert "create" not in reg.get(SECOND_INITIATIVE).get("pipeline.stages")
+        result = _registry("classification", root=root)
+        assert (result.returncode, result.stderr) == (0, "")
+        out = result.stdout
+        assert out.startswith(f"TYPES: rfe, {SHIPPED_MEMBER}\n\n## rfe (RFE)\n")
+        assert f"## {SECOND_INITIATIVE} (" not in out
+        assert f"\n## {SHIPPED_MEMBER} (Initiative)\nLabel: Initiative (RHAISTRAT)\n" in out
+        assert (
+            f"Family: {SHIPPED_FAMILY} (members {SECOND_INITIATIVE}, {SHIPPED_MEMBER})\n"
+            "Project: RHAISTRAT\n"
+        ) in out
+        assert f"(members {SHIPPED_MEMBER})" not in out
+        rows = json.loads(_registry("classification", "--json", root=root).stdout)
+        assert [(r["type"], r["label"]) for r in rows] == [
+            ("rfe", "RFE"),
+            (SHIPPED_MEMBER, "Initiative (RHAISTRAT)"),
+        ]
+        # a caller without a registry gets the members that have a row
+        assert f"(members {SHIPPED_MEMBER})\n" in type_registry.render_classification_digest(rows)
+        assert type_registry.render_classification_digest(rows, reg) == out
+        # the review agent's form: `--others rfe` leaves the member's row, the roster stays whole
+        others = _registry("classification", "--others", "rfe", root=root)
+        assert (others.returncode, others.stderr) == (0, "")
+        assert others.stdout.startswith(
+            f"TYPES: {SHIPPED_MEMBER}\n\n## {SHIPPED_MEMBER} (Initiative)\n"
+            "Label: Initiative (RHAISTRAT)\n"
+        )
+        assert (
+            f"Family: {SHIPPED_FAMILY} (members {SECOND_INITIATIVE}, {SHIPPED_MEMBER})\n"
+            "Project: RHAISTRAT\n"
+        ) in others.stdout
+        assert f"(members {SHIPPED_MEMBER})" not in others.stdout
+
+    def test_a_member_without_own_signals_renders_no_member_signals_line(self, tmp_path):
+        """Review on #317 (2): a member whose own file declares no ``classification`` block
+        inherits the family's and passes gate 1; its text block carries no ``Member signals:``
+        line (never a blank one with a trailing space) while its JSON row keeps
+        ``own_signals: []``; the sibling's line is unchanged."""
+        head, _, tail = SECOND_INITIATIVE_YAML.partition("classification:\n")
+        member_yaml = head + tail[tail.index("conventions:\n") :]
+        assert "classification" not in member_yaml
+        root = _two_initiative_root(tmp_path / "types", member_yaml)
+        report = _validate(root, eval_gate=False)
+        assert report.ok, report.lines()
+        result = _registry("classification", root=root)
+        assert (result.returncode, result.stderr) == (0, "")
+        out = result.stdout
+        assert out.startswith(f"TYPES: rfe, {SECOND_INITIATIVE}, {SHIPPED_MEMBER}\n")
+        assert "Member signals: \n" not in out
+        assert "Member signals:\n" not in out
+        own = _read_yaml(TYPES_ROOT / SHIPPED_MEMBER / "type.yaml")["classification"]["signals"]
+        assert out.count("Member signals: ") == 1
+        assert "Member signals: " + "; ".join(own) + "\n" in out
+        family_block = _read_yaml(TYPES_ROOT / SHIPPED_FAMILY / "type.yaml")["classification"]
+        globex = out[out.index(f"## {SECOND_INITIATIVE} (") : out.index(f"## {SHIPPED_MEMBER} (")]
+        assert (
+            "Signals: " + "; ".join(family_block["signals"]) + "\n"
+            "Counter-signals: " + "; ".join(family_block["counter_signals"]) + "\n"
+            "Examples:\n"
+        ) in globex
+        assert "Member signals" not in globex
+        rows = json.loads(_registry("classification", "--json", root=root).stdout)
+        assert [r["type"] for r in rows] == ["rfe", SECOND_INITIATIVE, SHIPPED_MEMBER]
+        assert rows[1]["own_signals"] == [] and "own_signals" in rows[1]
+        assert rows[1]["signals"] == family_block["signals"]
+        assert rows[1]["examples"] == family_block["examples"]
+        assert rows[2]["own_signals"] == own
 
 
 # ── validate_all(only=<family>) ─────────────────────────────────────────────────

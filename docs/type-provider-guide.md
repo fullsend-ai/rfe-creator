@@ -199,9 +199,9 @@ The one block written for a reader rather than a script: `summary`, `driver`, `s
 `counter_signals`, `examples` ("Classification block" in [`types/README.md`](../types/README.md)).
 Optional in the schema, required in practice for a type that lists the `create` stage: once any
 registered type declares the block, and `rfe` and the `initiative` family (hence its member
-`initiative-rhaistrat`) do, every create-stage type needs
-one. A member inherits the family's block, appends its own `signals` (the digest lists them under
-`Member signals:` once the family has two members) and may replace `examples`; declare
+`initiative-rhaistrat`) do, every create-stage type needs one. A member inherits the family's block,
+appends its own `signals` (the digest lists them under `Member signals:` once the family has two
+members; a member declaring none gets no such line) and may replace `examples`; declare
 `display.entity` on each member of a multi-member family (the create question's label and the
 `likely a <entity>` sentence — `Red Hat AI Initiative` is the shipped member's intended spelling),
 or the digest labels it `<entity> (<project>)`. `classification --others <your type>` lists the

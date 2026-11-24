@@ -219,7 +219,8 @@ and the review agent's misfiled-item sentence name `--type <family>`; with two o
 each renders under its own name and its row carries `family`, `project`, `own_signals` (the
 member's own signals — the domain signals, next to the family's shape signals in `signals`) and
 `label` (the member's own `display.entity` when it declares one, else `<entity> (<project>)`),
-rendered as `Label:`, `Family:`, `Project:` and `Member signals:` lines; a member's own
+rendered as `Label:`, `Family:` (the registry's members, create stage or not), `Project:`
+and `Member signals:` (left out for a member declaring none) lines; a member's own
 `classification.examples` list replaces the family's. `--others <type>` excludes the type's whole
 family and accepts a family name: siblings are never "other types" — an item of one member filed
 under another is a project misfile, not a type misfile, and is not a reclassify. Cross rule 7
