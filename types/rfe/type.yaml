@@ -154,7 +154,7 @@ eval:
     revision_coverage: { min_pass_rate: 0.92 }
     pipeline_flow: { min_pass_rate: 1.0 }
     architecture_context_used: { min_pass_rate: 1.0 }
-    rfe_quality: { min_mean: 3.5 }
+    rfe_quality: { min_mean: 7.0 }                       # 0-10 since the per-criterion judge (3.5/5 before: the same 70% bar)
     revision_quality: { min_mean: 3.5 }
     classification_signal: { min_pass_rate: 0.92 }     # AISDLC-192: provisional until the first baseline with the misfiled and ambiguous cases; see eval/fragment.yaml threshold_notes
   annotations_extra: [expected_classification]                                 # eval.yaml:41-57 lists no type-specific expected_* field (score_tolerance :53 is prose-only, no consumer)

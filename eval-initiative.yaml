@@ -1044,6 +1044,95 @@ judges:
           detail = "; ".join(f"{i}: {', '.join(e)}" for i, e in sorted(revised.items()))
           return (True, f"revised ({detail}); {coverage}")
       return (True, f"not revised (untagged); {coverage}")
+  - name: first_review_expectation
+    description: |
+      Compare the FIRST review with the case's first-review labels:
+      expected_scores (each non-null criterion within score_tolerance, default 1, of the
+      review's before_scores), expected_pass (total >= 7 with no zero, on before_scores) and
+      expected_recommendation (revise: auto-revised or a revise recommendation; split: a
+      split recommendation or more than one Initiative file; reject: a reject
+      recommendation; submit: submitted without revision). These labels describe the first
+      review (eval/README.md). On a case tagged revision-expected, expected_pass false and
+      expected_recommendation revise are revision_coverage's to test (a first review that
+      passes never revises), so they are skipped here and one miss is not counted twice;
+      the targeted expected_scores stay, since they test WHICH criterion the first review
+      caught. The reviewed item is the lowest-id review; split children come after it. A
+      case without any of these labels is not checked.
+    check: |
+      import yaml
+
+      ann = outputs.get("annotations")
+      ann = ann if isinstance(ann, dict) else {}
+      revision_expected = "revision-expected" in (ann.get("tags") or [])
+      want_scores = {k: v for k, v in (ann.get("expected_scores") or {}).items() if v is not None}
+      want_pass = ann.get("expected_pass")
+      if revision_expected and want_pass is False:
+          want_pass = None
+      want_rec = ann.get("expected_recommendation")
+      if revision_expected and want_rec == "revise":
+          want_rec = None
+      if not want_scores and want_pass is None and not want_rec:
+          return (True, "no first-review label applies to this case")
+      tolerance = ann.get("score_tolerance")
+      tolerance = 1 if tolerance is None else tolerance
+      files = outputs.get("files", {})
+      reviews = sorted(
+          k for k in files if k.startswith("artifacts/initiative-reviews/") and k.endswith("-review.md")
+      )
+      if not reviews:
+          return (False, "No review files to check")
+      content = files[reviews[0]]
+      fm = {}
+      if content.startswith("---"):
+          end = content.find("\n---", 3)
+          if end != -1:
+              try:
+                  fm = yaml.safe_load(content[3:end]) or {}
+              except yaml.YAMLError:
+                  fm = {}
+      if not isinstance(fm, dict):
+          fm = {}
+      first = fm.get("before_scores") or fm.get("scores") or {}
+      first = first if isinstance(first, dict) else {}
+      problems, matches = [], []
+      for criterion, want in sorted(want_scores.items()):
+          got = first.get(criterion)
+          line = f"{criterion}: first review {got}, expected {want} (+/-{tolerance})"
+          ok = isinstance(got, (int, float)) and abs(got - want) <= tolerance
+          (matches if ok else problems).append(line)
+      if want_pass is not None:
+          criteria = ['what', 'why', 'scope', 'open_to_how', 'right_sized']
+          vals = [first.get(c) for c in criteria]
+          got = None
+          if all(isinstance(v, (int, float)) for v in vals):
+              got = sum(vals) >= 7 and not any(v == 0 for v in vals)
+          line = f"pass: first review {got}, expected {want_pass}"
+          (matches if got == want_pass else problems).append(line)
+      if want_rec:
+          final = fm.get("recommendation")
+          revised = fm.get("auto_revised") is True
+          n_items = sum(
+              1
+              for k in files
+              if k.startswith("artifacts/initiatives/")
+              and k.endswith(".md")
+              and not k.endswith(("-comments.md", "-removed-context.md"))
+          )
+          got = {
+              "revise": revised or final in ("revise", "autorevise_reject"),
+              "split": final == "split" or n_items > 1,
+              "reject": final in ("reject", "autorevise_reject"),
+              "submit": final == "submit" and not revised,
+          }.get(want_rec, False)
+          line = (
+              f"recommendation: expected {want_rec}; review says {final}, "
+              f"auto_revised={revised}, {n_items} task file(s)"
+          )
+          (matches if got else problems).append(line)
+      name = reviews[0].rsplit("/", 1)[-1]
+      if problems:
+          return (False, f"{name}: " + "; ".join(problems))
+      return (True, f"{name}: matches " + "; ".join(matches))
   - name: pipeline_flow
     description: |
       Verify expected execution flow from stdout: all phases ran,
@@ -1213,19 +1302,32 @@ judges:
 
   - name: initiative_quality
     description: |
-      Assess the quality of produced Initiative task files against the 5 rubric
-      criteria and whether the pipeline's own scores are well-calibrated.
-    score_range: [1, 5]
+      Score the produced Initiative content against the 5 rubric
+      criteria, 0-2 each (0-10 in total). Content only: whether the pipeline's own
+      review scores are accurate is self_score_calibration's question, not this judge's.
+      Evidence is judged against the case input: the pipeline cannot know more than it was
+      told. Sampled 3 times; the reported value is the median.
+    score_range: [0, 10]
+    samples: 3
     prompt: |
-      You are an independent evaluator assessing the quality of an automated
-      Initiative creation pipeline.
+      You are an independent evaluator assessing the content an automated
+      Initiative creation pipeline produced.
+
+      Here is the request the pipeline was given (its whole input):
+
+      {{ inputs }}
 
       Here are the produced artifacts:
 
       {{ outputs }}
 
-      Assess the Initiative quality across these criteria, then provide a single
-      overall score 1-5.
+      Score ONLY the Initiative content itself (the task file(s) under
+      artifacts/initiatives/). Ignore the pipeline's own review scores, verdicts and
+      feasibility notes: they are judged elsewhere. If the pipeline produced several
+      Initiative files (a split), score them as one set.
+
+      Score each criterion 0, 1 or 2:
+        2 = fully meets it   1 = partly meets it   0 = does not meet it
 
       **Quality criteria** (the Initiative should):
       - WHAT: Have a clear objective — specific, measurable, achievable
@@ -1243,25 +1345,32 @@ judges:
       - Right-sized: Represent a single coherent effort — not bundle independent
         workstreams that could be planned and executed by different teams
 
-      **Calibration** — check the pipeline's own rubric scores in the review
-      file (scores.what/why/scope/open_to_how/right_sized, each 0-2).
-      Do they match what the Initiative content warrants?
+      **Evidence is judged against the request.** The pipeline cannot know more than it
+      was told, and inventing evidence is worse than having none. Score WHY by what the
+      Initiative does with the evidence the request (and the pipeline's own
+      architecture and feasibility notes, which are legitimate sources) actually contains:
+        2 = it carries every concrete piece of evidence the request gives (named customers,
+            numbers, incidents, deadlines), and where the request has none it says so
+            plainly or marks the gap (e.g. a `[NEEDS: ...]` note) instead of padding
+        1 = it drops or blurs some evidence the request gave, or hides a gap behind vague
+            claims ("many customers", "significant demand")
+        0 = no real problem statement (circular: "we need X because we lack X"), or it
+            states evidence the request does not contain (an invented customer, number or
+            quote)
+      Do NOT lower WHY only because the request itself has no customers or revenue data.
 
-      Also check feasibility and alignment verdicts — are they accurate
-      given the Initiative's content and any architecture context used?
-
-      Score 1-5:
-      - **5**: Exemplary Initiative — all criteria strong, pipeline scores accurate
-      - **4**: Good — meets most criteria, pipeline scores within ±1
-      - **3**: Adequate — noticeable quality issues or pipeline miscalibration
-      - **2**: Below standard — multiple quality issues or scores systematically off
-      - **1**: Poor — fails basic Initiative standards or pipeline scores unreliable
+      Write the rationale as one line per criterion, in the order listed above:
+      `<criterion>: <0|1|2> — <one-sentence reason>`, then `TOTAL: <sum>/10`,
+      then a short paragraph on what would raise the lowest criterion.
+      The score is the TOTAL: the sum of the criterion scores (0-10).
 
   - name: revision_quality
     description: |
       Assess whether auto-revisions improved the Initiative without losing content.
       Compares original (artifacts/initiative-originals/) vs revised (artifacts/initiatives/).
+      Sampled 3 times; the reported value is the median.
     score_range: [1, 5]
+    samples: 3
     prompt: |
       You are an independent evaluator assessing the quality of automated
       Initiative revisions. The pipeline may have auto-revised some Initiatives to improve
@@ -1319,6 +1428,95 @@ judges:
       - **3**: Mixed — some improvements but also introduced issues or lost specificity
       - **2**: Marginal — cosmetic changes, no real quality improvement, or minor content loss
       - **1**: Harmful — revision made the Initiative worse, lost critical information
+
+  - name: evidence_fidelity
+    description: |
+      Pass/fail: the produced Initiative states no customer, number, quote or
+      incident that neither the case input nor the pipeline's own feasibility notes
+      contain. "Never invent evidence" is a rule of the create and revise prompts; this
+      judge enforces it, so a padded WHY cannot outscore an honest one. Sampled 3 times;
+      the verdict is the majority.
+    feedback_type: bool
+    samples: 3
+    prompt: |
+      You are an independent evaluator checking an automated Initiative
+      creation pipeline for INVENTED facts.
+
+      Here is the request the pipeline was given (its whole input):
+
+      {{ inputs }}
+
+      Here are the produced artifacts:
+
+      {{ outputs }}
+
+      Look only at the Initiative file(s) under artifacts/initiatives/. List every
+      concrete factual claim used as evidence or commitment: a named customer, partner or
+      person; a number (counts, revenue, percentages, dates, deadlines, SLAs); a quote; a
+      named incident or ticket.
+
+      For each, decide where it comes from:
+        - the request above (wording may differ; the fact must be the same), or
+        - the pipeline's own review/feasibility notes in the artifacts, which cite the
+          product's architecture context (component names, versions, known gaps), or
+        - another work item of the same run (a split child, a sibling item in the batch), or
+        - nowhere: it is invented.
+      Clearly hedged or placeholder text ("[NEEDS: customer evidence]", "TBD", "for
+      example") is not a claim. General product knowledge without a specific fact is not a
+      claim.
+
+      Rationale: one line per invented claim (quote it), or "no invented claims".
+      PASS if there are no invented claims; FAIL if there is at least one.
+
+  - name: self_score_calibration
+    description: |
+      Diagnostic, no threshold: how closely the pipeline's own final review scores
+      (scores.what/why/scope/open_to_how/right_sized, each 0-2) match what the Initiative
+      content warrants, as the number of criteria (0-5) the pipeline scored
+      exactly right. Kept apart from initiative_quality on purpose: graded inside the
+      quality score, it pushed optimized pipelines to lower their own scores, which left
+      review tables inconsistent and triggered needless splits.
+    score_range: [0, 5]
+    prompt: |
+      You are an independent evaluator checking whether an automated
+      Initiative creation pipeline scores its own output accurately.
+
+      Here is the request the pipeline was given (its whole input):
+
+      {{ inputs }}
+
+      Here are the produced artifacts:
+
+      {{ outputs }}
+
+      The review file(s) under artifacts/initiative-reviews/ carry the pipeline's final rubric
+      scores in their frontmatter (scores.what/why/scope/open_to_how/right_sized, each 0-2). For the
+      Initiative under artifacts/initiatives/ (the first one, when there are
+      several), score each criterion 0-2 yourself against these criteria:
+      - WHAT: Have a clear objective — specific, measurable, achievable
+      - WHY: Present an evidence-based problem statement — concrete pain points,
+        data-driven justification
+      - Scope: Define explicit scope boundaries — clear inclusions and exclusions
+        (prose boundaries are fine, formal In/Out sections are not required)
+      - Open to HOW: Not mandate specific technology choices when alternatives
+        exist — referencing technologies dictated by integration context is fine
+        (e.g., "must support vLLM" when vLLM is the existing runtime),
+        and listing technologies as suggestions or illustrations is fine
+        (e.g., "could use Redis or similar"), but prescribing technology
+        choices as decisions when alternatives exist is not
+        (e.g., "implement using Redis" when the choice is open)
+      - Right-sized: Represent a single coherent effort — not bundle independent
+        workstreams that could be planned and executed by different teams
+      Judge evidence against the request: an Initiative that states plainly that
+      the request had no evidence, and invents none, is not penalized for that.
+
+      Also check feasibility and alignment verdicts — are they accurate
+      given the Initiative's content and any architecture context used?
+      Name any inaccurate verdict in the rationale (it does not change the count).
+
+      Write one line per criterion: `<criterion>: pipeline <n>, warranted <n>`, then
+      `MATCHES: <count>/5`. The score is the number of criteria where the
+      pipeline's score equals the warranted one (0-5).
 
   # --- Pairwise (used with --baseline) ---
 
@@ -1414,7 +1612,7 @@ thresholds:
   architecture_context_used:
     min_pass_rate: 0.85
   initiative_quality:
-    min_mean: 3.5
+    min_mean: 7.0
   revision_quality:
     min_mean: 3.5
   # classification_signal: stage 2 of classification (AISDLC-191/192): a case's expected_classification

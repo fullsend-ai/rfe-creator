@@ -47,6 +47,8 @@ quality:
     - Describe a need, not an activity (Not a Task)
     - Be right-sized for a single strategy feature
   extra_checks: ""
+calibration:
+  extra_checks: ""
 revision:
   assessments: |
     **Revision quality**: Did revisions genuinely improve the RFE?

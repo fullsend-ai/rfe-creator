@@ -78,6 +78,7 @@ DERIVED = (
     "score_fields_slash",
     "score_fields_py",
     "criteria_count",
+    "quality_max",
     "quality_judge",
     "annotations_extra",
     "review_extra_fields",
@@ -377,6 +378,8 @@ def derived_values(desc, fragment_flat, repo_root=None):
         "score_fields_slash": "/".join(score_fields),
         "score_fields_py": repr(score_fields),
         "criteria_count": str(len(score_fields)),
+        # the quality judge's top score: every criterion at 2 (0-2 each, summed).
+        "quality_max": str(2 * len(score_fields)),
         # <stem>_quality: the per-type LLM judge (eval.thresholds names it the same way); the
         # family's stem for a member, so the judge key survives the split.
         "quality_judge": f"{eval_stem(desc)}_quality",
