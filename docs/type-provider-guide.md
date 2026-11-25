@@ -199,10 +199,16 @@ The one block written for a reader rather than a script: `summary`, `driver`, `s
 `counter_signals`, `examples` ("Classification block" in [`types/README.md`](../types/README.md)).
 Optional in the schema, required in practice for a type that lists the `create` stage: once any
 registered type declares the block, and `rfe` and the `initiative` family (hence its member
-`initiative-rhaistrat`) do, every create-stage type needs
-one. Within the block `summary`, `signals` (at least one) and `examples` (one to five) are required,
-`driver` and `counter_signals` optional. The generic create body classifies a free-text idea
-against every installed type's block (stage 1, AISDLC-190): it reads
+`initiative-rhaistrat`) do, every create-stage type needs one. A member inherits the family's block,
+appends its own `signals` (the digest lists them under `Member signals:` once the family has two
+members; a member declaring none gets no such line) and may replace `examples`; declare
+`display.entity` on each member of a multi-member family (the create question's label and the
+`likely a <entity>` sentence — `Red Hat AI Initiative` is the shipped member's intended spelling),
+or the digest labels it `<entity> (<project>)`. `classification --others <your type>` lists the
+types outside your family only: a sibling filed under your project is a project misfile, not a
+reclassify. Within the block `summary`, `signals` (at least one) and `examples` (one to five) are
+required, `driver` and `counter_signals` optional. The generic create body classifies a free-text
+idea against every installed type's block (stage 1, AISDLC-190): it reads
 `python3 scripts/type_registry.py classification`, the digest of every create-stage type's block,
 so your type takes part in the notice and the question as soon as it is registered; the review
 agent reads `classification --others <your type>` (stage 2, AISDLC-191) and, when your
@@ -267,8 +273,9 @@ that `extends` it, and the registry merges the family under the member before an
 2. Override by key, not by file. What a member typically overrides: a dimension's `condition.prefix`
    and `skip_stub` (a same-name `pipeline.dimensions` entry merges into the family's and keeps its
    `prompt`, `blocking` and `frontmatter_field`), its own `classification.signals` (appended after
-   the family's) and `examples` (a list: it replaces the family's), one label under
-   `conventions.labels` (a mapping: the rest stay inherited). Everything else is inherited: the
+   the family's), `examples` (a list: it replaces the family's) and `display.entity` (its label in
+   the member question), one label under `conventions.labels` (a mapping: the rest stay
+   inherited). Everything else is inherited: the
    typed files (`types/<family>/...` paths resolve from the family's directory, wherever its root
    lives), the rubric pin, the schema facts, the eval prose (`types/<family>/eval/` serves a member
    with no `eval/` directory of its own) and — when the family declares them — the poll/state

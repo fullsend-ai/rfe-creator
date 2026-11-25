@@ -1,9 +1,11 @@
 # tests/fixtures/type-families/brief-globex/type.yaml — member two of the `brief` family: the
-# GLOBEX project, plus the three merge-rule demonstrations (a replaced list, a deep-merged
-# label, a dimension merged by name).
+# GLOBEX project, plus the four merge-rule demonstrations (a replaced list, a deep-merged
+# label, a dimension merged by name, an overridden `display` — the member's own label in the
+# classification digest, AISDLC-853).
 schema_version: 1
 type: brief-globex
 extends: brief
+display: { entity: Globex Brief, entity_plural: Globex Briefs }   # the label the member question shows; the sibling keeps the family's entity and gets the derived "Brief (ACME)"
 identity:
   jira:
     project: GLOBEX
