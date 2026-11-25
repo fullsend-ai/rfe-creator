@@ -4,10 +4,12 @@ every installed type's classification block, read through ``type_registry.py cla
 
 Pinned here: the digest command (every create-stage type with a block, in registry order; a
 drop-in joins it as soon as it is registered; a type without the block or the stage is left
-out), the three paths in the create body (notice, question, never headless), and what must not
-move: the headless sentence of the create body, the alias's forwarding paragraph and the
-speedrun's headless create launches — the production prompt strings the Epic's done-when
-keeps byte-stable."""
+out), the three paths in the create body (notice, question, never headless), the member hook
+of AISDLC-853 (a ``TYPE AMBIGUOUS`` line after ``--type <family>`` feeds the same step, read
+through the digest's member rows; every Step 0 forwards ``--project``, the dispatcher its
+``--jql``), and what must not move: the headless sentence of the create body, the alias's
+forwarding paragraph and the speedrun's headless create launches — the production prompt
+strings the Epic's done-when keeps byte-stable."""
 
 import json
 import os
@@ -24,6 +26,8 @@ TYPES_ROOT = REPO_ROOT / "types"
 CREATE_BODY = REPO_ROOT / ".claude" / "skills" / "rfe-create" / "SKILL.md"
 ALIAS_BODY = REPO_ROOT / ".claude" / "skills" / "rfe.create" / "SKILL.md"
 SPEEDRUN_BODY = REPO_ROOT / ".claude" / "skills" / "rfe-speedrun" / "SKILL.md"
+AUTOFIX_BODY = REPO_ROOT / ".claude" / "skills" / "rfe-auto-fix" / "SKILL.md"
+GENERIC_SKILLS = ("create", "review", "split", "submit", "speedrun", "auto-fix")
 
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 import type_registry  # noqa: E402
@@ -263,10 +267,17 @@ class TestCreateBodyStageOne:
         "If `--headless` is present, Step 2 still reads the guidance but asks nothing: proceed "
         "from that read straight to Step 3 using the provided input."
     )
+    # AISDLC-853: the line's second shape is the member hook — a `--type <family>` nothing
+    # decided — answered by the classification step, never by `list`.
     RESOLVE_SENTENCE = (
-        "It prints `TYPE RESOLVED: <type> (<how>)`. Interactive and unresolved, it asks you to "
-        "pick a type — offer the registered types (`python3 scripts/type_registry.py list`) to "
-        "the user with AskUserQuestion and re-run with `--type`."
+        "It prints `TYPE RESOLVED: <type> (<how>)`, or `TYPE AMBIGUOUS: <a>, <b> - pass --type` "
+        "and exits 3 when more than one type is still possible — a type family named by "
+        "`--type` whose member nothing decided. Interactive, the types on that line are the "
+        "candidates: the classification step below decides among them from the idea, or asks "
+        "once the same way when there is no idea — never offer "
+        "`python3 scripts/type_registry.py list`. Headless, exit 3 is an error: stop and report "
+        "the line, and that `--type <member>`, or the family name with `--project <KEY>`, "
+        "decides it. Any other non-zero exit is an error: stop and report it."
     )
     LAUNCH_SENTENCE = (
         "Then print the stage's launch block and keep it: every `{VAR}` in this skill is the "
@@ -317,6 +328,59 @@ class TestCreateBodyStageOne:
         # never headless; --type skips it
         assert "An explicit `--type` skips this step" in paragraph
         assert "a headless run never asks and the resolved type stands" in paragraph
+
+    def test_the_member_hook_of_a_type_family(self):
+        """AISDLC-853: a `--type <family>` nothing decided ends `resolve` on the
+        `TYPE AMBIGUOUS` line (exit 3); the same classification step answers it from the
+        digest's member rows — only the line's candidates count, a `Family:` row is read by
+        its own signals and examples, the question's label is the row's `Label:` line, and
+        with no idea at all the question is asked straight away. The resolution sentence
+        never sends the user to `list` and names both headless remedies."""
+        body = CREATE_BODY.read_text()
+        paragraph = next(line for line in body.splitlines() if line.startswith(self.STAGE))
+        assert (
+            "or the line is `TYPE AMBIGUOUS` after a `--type` that named a type family" in paragraph
+        )
+        assert "only the candidates on that line count" in paragraph
+        assert "no idea at all" in paragraph and "straight to the one question" in paragraph
+        assert "a row with a `Family:` line" in paragraph
+        assert "the `Label:` line is the label" in paragraph
+        assert "in the digest's order" in paragraph
+        assert "unless it named a type family the `TYPE AMBIGUOUS` line answered" in paragraph
+        assert "never offer `python3 scripts/type_registry.py list`" in self.RESOLVE_SENTENCE
+        assert "`--type <member>`, or the family name with `--project <KEY>`" in body
+        # the parent reaches resolve as a member signal; the Step 4 write is unchanged
+        assert "`--parent <KEY>` and `--headless` (each when given" in body
+        assert body.count("parent_key=<parent_key>") == 1
+
+    def test_every_step_zero_forwards_project(self):
+        """AISDLC-853: every generic Step 0 parses `--project <KEY>` and forwards it to
+        `resolve`; the create body also forwards `--parent <KEY>`; the dispatcher forwards the
+        JQL verbatim as `--jql "<query>"` (it used to say never) so a positive `project`
+        clause can pick the member of a type family."""
+        for stage in GENERIC_SKILLS:
+            body = (REPO_ROOT / ".claude" / "skills" / f"rfe-{stage}" / "SKILL.md").read_text()
+            commands = [
+                ln
+                for ln in body.splitlines()
+                if ln.startswith("python3 scripts/type_registry.py resolve ")
+            ]
+            assert len(commands) == 1, (stage, commands)
+            assert "[--type <t>] [--project <KEY>]" in commands[0], (stage, commands[0])
+            assert "`--project <KEY>`" in body, stage
+            assert ("[--parent <KEY>]" in commands[0]) == (stage == "create"), stage
+            assert ('[--jql "<query>"]' in commands[0]) == (stage == "auto-fix"), stage
+        autofix = AUTOFIX_BODY.read_text()
+        assert "never `--jql`" not in autofix
+        assert (
+            'the query itself as `--jql "<query>"` (as ONE shell argument, the text unchanged '
+            "— single-quote it when the query itself contains double quotes" in autofix
+        )
+        assert "picks the member of a type family (`jql project`)" in autofix
+        # exit 3 is explained for both shapes: the production sandbox runs with no headless
+        # marker, so the stdout line is what it sees; either way the skill stops
+        assert "`TYPE AMBIGUOUS: <a>, <b> - pass --type` on stdout" in autofix
+        assert "on stderr under `--headless` or a CI marker" in autofix
 
     def test_the_headless_and_resolution_sentences_did_not_move(self):
         body = CREATE_BODY.read_text()

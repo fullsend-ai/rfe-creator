@@ -21,6 +21,7 @@ If `${CLAUDE_SKILL_DIR}` reaches you unsubstituted (no substitution, or a Read o
 
 Parse `$ARGUMENTS` for:
 - `--type <t>`: an explicit type — always wins
+- `--project <KEY>`: the Jira project key of the member to create in, when `--type` names a type family with several members (`--type <t> --project <KEY>` is exact; with a type that is no family it only has to agree with that type's project)
 - `--headless`: Ask no clarifying questions — generate items directly from the input (the guidance in Step 2 is still read)
 - `--priority <value>`: Override default priority (Blocker, Critical, Major, Normal, Minor)
 - `--labels <comma-separated>`: Labels to apply to created items
@@ -28,15 +29,15 @@ Parse `$ARGUMENTS` for:
 - `--parent <KEY>`: parent key to set on the created item — only for a type whose batch entries carry `parent_key` (`PARENT_FLAG={PARENT_FLAG}` in the launch block; the type's `batch.extra_fields` and `conventions.parent_key_patterns` say what an item of this type links to)
 - Remaining arguments: the problem statement / idea / objective text
 
-Resolve the work-item type — forward only `--type <t>` (when given) and `--headless` (when given); never the text, the priority, the labels, the id or the parent:
+Resolve the work-item type — forward `--type <t>`, `--project <KEY>`, `--parent <KEY>` and `--headless` (each when given; the parent is forwarded as a signal of the member it belongs to, it is written in Step 4); never the text, the priority, the labels or the id:
 
 ```bash
-python3 scripts/type_registry.py resolve [--type <t>] [--headless]
+python3 scripts/type_registry.py resolve [--type <t>] [--project <KEY>] [--parent <KEY>] [--headless]
 ```
 
-It prints `TYPE RESOLVED: <type> (<how>)`. Interactive and unresolved, it asks you to pick a type — offer the registered types (`python3 scripts/type_registry.py list`) to the user with AskUserQuestion and re-run with `--type`.
+It prints `TYPE RESOLVED: <type> (<how>)`, or `TYPE AMBIGUOUS: <a>, <b> - pass --type` and exits 3 when more than one type is still possible — a type family named by `--type` whose member nothing decided. Interactive, the types on that line are the candidates: the classification step below decides among them from the idea, or asks once the same way when there is no idea — never offer `python3 scripts/type_registry.py list`. Headless, exit 3 is an error: stop and report the line, and that `--type <member>`, or the family name with `--project <KEY>`, decides it. Any other non-zero exit is an error: stop and report it.
 
-**Classification of a free-text idea (interactive runs only).** When the rule in the line's parentheses is `legacy default` (alone, or followed by a `; binding override …` clause), `--headless` is absent and the remaining arguments are an idea rather than ids, decide the type from the idea before going on: run `python3 scripts/type_registry.py classification`; if its first line starts with `HEADLESS` (a CI run is headless whatever the flags), the step is over and the resolved type stands; otherwise read the idea against each listed type's summary, signals, counter-signals and examples. A clear match: print `Type: <t> — pass --type to override` and, when `<t>` is not the resolved type, re-run `python3 scripts/type_registry.py resolve --type <t>` so the rest of the run uses it. No clear match: ask once with AskUserQuestion, one option per listed type (label: its entity; description: its summary and one of its examples), then re-run `resolve --type <chosen>`. An explicit `--type` skips this step; a headless run never asks and the resolved type stands.
+**Classification of a free-text idea (interactive runs only).** When the rule in the line's parentheses is `legacy default` (alone, or followed by a `; binding override …` clause) — or the line is `TYPE AMBIGUOUS` after a `--type` that named a type family, in which case only the candidates on that line count (with that line and no idea at all the step still runs: run the digest command, skip the reading and go straight to the one question below) — and `--headless` is absent and the remaining arguments are an idea rather than ids (or, after that `TYPE AMBIGUOUS` line, nothing at all), decide the type from the idea before going on: run `python3 scripts/type_registry.py classification`; if its first line starts with `HEADLESS` (a CI run is headless whatever the flags), the step is over and the resolved type stands; otherwise read the idea against each listed type's summary, signals, counter-signals and examples — a row with a `Family:` line is a member of a type family: its `Signals:` are the family's shape plus its own, and its `Member signals:` and `Examples:` are what tells it from its siblings. A clear match: print `Type: <t> — pass --type to override` and, when `<t>` is not the resolved type, re-run `python3 scripts/type_registry.py resolve --type <t>` so the rest of the run uses it. No clear match: ask once with AskUserQuestion, one option per listed type in the digest's order (after a `TYPE AMBIGUOUS` line, only the line's candidates; label: its entity; description: its summary and one of its examples — for a member of a type family the `Label:` line is the label and its `Member signals:` join the description), then re-run `resolve --type <chosen>`. An explicit `--type` skips this step unless it named a type family the `TYPE AMBIGUOUS` line answered; a headless run never asks and the resolved type stands.
 
 Then print the stage's launch block and keep it: every `{VAR}` in this skill is the value of that `VAR=` line:
 

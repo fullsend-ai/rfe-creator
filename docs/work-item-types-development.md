@@ -125,7 +125,11 @@ pin.
   `parse_type_arg`, `resolve`, the readers, `validate_all(only=)`, `generate_eval_config._select`,
   `bootstrap.sh`, the `canonical` CLI), derived the eval identity from the family (`eval_stem`) and
   parameterised the Initiative prose through the `PROJECT` and `PARENT_KEY_PREFIX` launch vars;
-  AISDLC-852 repoints the autofixer to the member; AISDLC-853 adds `--project` and member signals.
+  AISDLC-852 repoints the autofixer to the member; AISDLC-853 added the member ladder under
+  `--type <family>` (`--project`, the `parent key` and `jql project` rungs, the family-scoped
+  exit 3), member rows in the classification digest (`label`, `own_signals`, `family`,
+  `project`) and family-level `--others`, with the JQL clause parser moved into the registry
+  (re-exported by `snapshot_fetch.py`).
 - **Reserved vocabulary.** The `schema.task.priority.enum` beside the reserved `map_to_tracker`
   feeds `artifact_utils.SCHEMAS` since PR-2b and `validate_batch_input.ALLOWED_PRIORITIES` per
   type since PR-3b.

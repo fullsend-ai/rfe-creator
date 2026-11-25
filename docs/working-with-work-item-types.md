@@ -43,25 +43,43 @@ dashed names in anything new.
 Every run works on exactly one type. The skill decides which one from your arguments, in this
 order; the first signal present wins:
 
-1. **`--type rfe` or `--type initiative`** on the command line. Always wins. An unknown name is
-   an error that lists the registered types. `initiative` is the short name of the Initiative
-   type family; its one member, `initiative-rhaistrat` (the Initiative type bound to the
-   RHAISTRAT project), is what the run resolves to, so `--type initiative-rhaistrat` means the
-   same thing and is the name the run's files and reports record.
+1. **`--type rfe`, `--type initiative`, or `--type initiative --project <KEY>`** on the command
+   line. Always wins. An unknown name is an error that lists the registered types. `initiative`
+   is the short name of the Initiative type family; `initiative-rhaistrat` (the Initiative type
+   bound to the RHAISTRAT project) is its member and the name the run's files and reports
+   record, so `--type initiative-rhaistrat` is exact. While the family has one member,
+   `--type initiative` resolves to it directly. Once it has several — one per Jira project —
+   `--type initiative` alone narrows the run to the family's members and the member comes from
+   what the run carries — a key in a member's project, a `--parent` in a member's Outcome
+   family, the `project` clause of a batch query (any one decides; two that disagree are an
+   error) — else, in a terminal, from your idea read against each member's description, then
+   from one question with one option per member; `--type initiative --project <KEY>` and
+   `--type <member>` skip all of that.
 2. **The batch file's `type:`** (`/rfe-speedrun --input <file>`), when the file is written as
-   `type: initiative` followed by `items:`. A `--type` that disagrees with it is an error.
+   `type: initiative` followed by `items:`; an optional `project: <KEY>` line beside it names
+   the member of a type family. A `--type` or `--project` that disagrees with the file is an
+   error.
 3. **What you pass.** A Jira key or local id names its type on its own: `RHAIRFE-` and `RFE-`
-   ids are RFEs, `RHAISTRAT-` and `INIT-` ids are Initiatives. An item file (not reachable from
-   the skills, which take ids) names its type through its `type:` field, or failing that
-   through the folder it sits in (`artifacts/rfe-tasks/` is RFE, `artifacts/initiatives/` is
-   Initiative).
+   ids are RFEs, `RHAISTRAT-` and `INIT-` ids are Initiatives. A `--parent` key (or, in a batch
+   file whose `type:` names a type family, an entry's `parent_key`) names the member whose
+   parent-key family (its Outcome keys or its own ids) it belongs to; a batch query
+   (`/rfe-auto-fix --jql`) with a `project =` or `project in (...)` clause names the member
+   bound to that project — a query naming two projects, or a key and a parent that name two
+   different members, is an error, never a question: the signals are checked against each
+   other, none is taken first. An item file (not reachable from the skills, which take ids)
+   names its type through its `type:` field, or failing that through the folder it sits in
+   (`artifacts/rfe-tasks/` is RFE, `artifacts/initiatives/` is Initiative).
 4. **Nothing at all**: the run is an RFE run, the historical default. In a terminal,
    `/rfe-create` then reads your idea against each type's description (the descriptor's
    `classification` block) before asking anything else: a clear match prints
    `Type: rfe — pass --type to override`, or `Type: initiative — pass --type to override` and
    switches the run to Initiatives; an idea that could be either asks you one question, with one
-   option per type. A headless or CI run never asks and stays an RFE run, so a new Initiative
-   there still needs `--type initiative`.
+   option per type. The same reading decides between the members of a type family when
+   `--type initiative` alone did not: each member's own signals and examples are what tells it
+   from its siblings, and the question then has one option per member, labelled by the member's
+   name for its project. A headless or CI run never asks: it stays an RFE run, and a type family
+   with several members needs `--type <member>`, `--type initiative --project <KEY>`, or a key, a
+   parent or a query that decides — otherwise it stops with the ambiguous error below.
 
 A review looks at the same descriptions the other way round: an item that reads as the other
 type (an Initiative filed as an RFE, or an RFE filed as an Initiative) is flagged for attention
@@ -70,7 +88,9 @@ file it under the right type. It judges the substance of the text, not its shape
 follows its type's template, so the headings prove nothing, while the teams, the time span and
 the distinct deliverables the text names do. One team, one release and one capability is an
 RFE however it is laid out; several teams over several quarters under an Outcome is an
-Initiative. The review does not move, relabel or retype it; that stays a human decision.
+Initiative. The review does not move, relabel or retype it; that stays a human decision. An
+item of one member of a type family filed under a sibling's project is a project misfile, not
+a type misfile: the review does not flag it as the wrong type.
 
 ### The `TYPE RESOLVED` line
 
@@ -80,6 +100,8 @@ which type it settled on and which rule decided it:
 ```
 TYPE RESOLVED: initiative-rhaistrat (--type)
 TYPE RESOLVED: initiative-rhaistrat (id grammar)
+TYPE RESOLVED: initiative-rhaistrat (--project)
+TYPE RESOLVED: initiative-rhaistrat (jql project)
 TYPE RESOLVED: rfe (legacy default)
 ```
 
@@ -101,8 +123,8 @@ ERROR: conflicting type signals: RHAIRFE-123 -> rfe, RHAISTRAT-456 -> initiative
 
 The fix is what the message says: run the RFEs and the Initiatives as separate invocations. A
 `--type initiative` you passed is printed as `--type initiative-rhaistrat`, the member it resolved
-to.
-Three more shapes you may meet:
+to. A family name that did not resolve to a member is printed as given, `--type initiative`.
+Five more shapes you may meet:
 
 - `ERROR: unknown type 'epic' (--type); registered types: rfe, initiative-rhaistrat`: a `--type`
   that is not registered.
@@ -110,6 +132,16 @@ Three more shapes you may meet:
   `TYPE AMBIGUOUS: rfe, initiative-rhaistrat - pass --type` and stops; re-run with `--type`. In a
   headless or CI run it stops with `ERROR: ambiguous type for FOO-1: candidates rfe,
   initiative-rhaistrat — pass --type`, because a headless run never guesses.
+- `--type initiative` naming a type family with several members, with nothing that decides the
+  member: in a terminal the skill prints `TYPE AMBIGUOUS: <member>, <member> - pass --type` —
+  `/rfe-create` goes on to read your idea or ask, every other skill stops and nothing is fetched
+  or written until you pass `--type <member>` or `--type initiative --project <KEY>`; under
+  `--headless` or a CI marker every skill, `/rfe-create` included, stops with `ERROR: ambiguous
+  type for --type initiative: candidates <member>, <member> — pass --type <member> or --project
+  <KEY>`.
+- `--project KONFLUX` naming a project no type is bound to: `ERROR: --project KONFLUX names no
+  registered type's project (rfe: RHAIRFE, initiative-rhaistrat: RHAISTRAT)`; a `--project` that
+  disagrees with the member you named is a conflict like the ones above.
 - A batch file with a `type` on an individual entry is rejected: a batch is single-typed, so
   split it into one file per type.
 
@@ -117,7 +149,7 @@ Three more shapes you may meet:
 
 | | RFE | Initiative |
 |---|---|---|
-| Jira ticket | project RHAIRFE, issue type Feature Request | project RHAISTRAT, issue type Initiative |
+| Jira ticket | project RHAIRFE, issue type Feature Request | project RHAISTRAT (one member per project once the family has several), issue type Initiative |
 | Template | Summary, Affected Customers, Business Justification, Acceptance Criteria; medium items add Problem Statement and Success Criteria; large items add User Scenarios, Scope and Open Questions. Sized S, M, L or XL by the number of acceptance criteria. | Objective, Problem Statement, Scope. Prose is fine; there is no size. |
 | Clarifying questions (two to five) | Who are the affected customers? What is the business justification? What is the user's problem? How big is this? What does success look like? | What is the objective? What problem does it solve, with what evidence? What is in and out of scope? Is there a parent RHAISTRAT Outcome? |
 | Parent | none | `--parent RHAISTRAT-NNNN` on create, `parent_key` in a batch entry; links the ticket to the Outcome |
@@ -134,7 +166,8 @@ Three more shapes you may meet:
 
 For either type, the batch query is checked against the type's project before anything is
 fetched: a `project =` clause that names another project is refused with an error naming the
-expected one, and a query that names no project is not checked.
+expected one, a query that names no project is not checked, and for a type family with
+several members the clause is what picks the member.
 
 ### Labels in Jira
 
@@ -204,7 +237,8 @@ What to do:
 ```
 
 Add `--parent RHAISTRAT-1234` when you know the Outcome it rolls up to, and `--priority Critical`
-(Blocker, Critical, Major, Normal or Minor; the default is Normal) when the default is wrong.
+(Blocker, Critical, Major, Normal or Minor; the default is Normal) when the default is wrong. A
+parent in a member's Outcome family also picks the member of a type family, without asking.
 
 The run prints `TYPE RESOLVED: initiative-rhaistrat (--type)`, asks two to five questions (the objective,
 the problem and its evidence, the scope boundary, the parent Outcome) and writes
@@ -280,6 +314,7 @@ A batch file for Initiatives:
 
 ```yaml
 type: initiative
+project: RHAISTRAT   # optional: the member's Jira project, when type: names a type family
 items:
   - prompt: "Cut the cold-start time of model serving in half for the next release"
     priority: Major

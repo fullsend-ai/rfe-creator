@@ -183,9 +183,9 @@ mapping and `extends` the family name (`None`, `data` and `None` on any other de
 `get()`, iteration, `len`, `in`, `bindings()`, `detect()` and `candidates()` see concrete types only.
 `python3 scripts/type_registry.py families` prints `<family>: <member> <member>` (`--json` a
 mapping), `show <family>` the family file as written, `show <member>` the merged data, `canonical
-<name>` the concrete name (exit 1 with the reason otherwise). The family-name alias is
-single-member-only, on purpose, and goes through one seam, `canonical()`: a family with exactly one
-member is answered by that member everywhere a type NAME crosses a boundary — the `get`, `binding`,
+<name>` the concrete name (exit 1 with the reason otherwise). The family-name alias goes
+through one seam, `canonical()`: a family with exactly one member is answered by that member
+everywhere a type NAME crosses a boundary — the `get`, `binding`,
 `launch-vars` (one `# <family>: a type family; answered by its sole member <member>` line on
 stderr) and `canonical` CLI commands; every script's `--type` (the
 argparse converter `type_registry.type_arg`, used beside the registered `choices`, and
@@ -198,13 +198,22 @@ readers of a stored type name — an artifact's `type:` (`frontmatter.py`, the `
 routers and the rename's declared-type check, `--schema-type <family>-<kind>` too), a run report's
 `type:` (`bootstrap_snapshot.py`) and `tmp/pipeline-state.yaml` — which compare canonical names and
 never rewrite the artifact or the report (the state file is canonicalised in memory and carries the
-concrete name from its next save). A family with two or more members is refused by all of them: `canonical()`'s text names the
-members on the `--type`, `resolve`, `--verify`, eval-generator, bindings and CLI paths, while the
-tolerant readers (`try_canonical`) and the argparse converter answer with the registered list or
-the expected member instead; the Python `get()`,
-`names()`, `in`, iteration, `bindings()`, `detect()` and `candidates()` see concrete types only, and
-every import-time table (the artifact schemas, the poll phases, the snapshot and Jira write tables)
-is keyed by concrete name, which is why a family is kept out of `names()` rather than aliased there.
+concrete name from its next save). A family with two or more members is a SCOPE for `resolve`
+(AISDLC-853): the run is narrowed to its members and a `--project <KEY>`, a key in a member's
+project, a `--parent` or batch `parent_key` in a member's parent-key family, or a `--jql` `project`
+clause picks the member — nothing deciding is the ambiguous verdict (exit 3; interactively the
+create body's member question). `parse_type_arg` (the three gates) accepts it only beside
+`--project <KEY>` and otherwise exits 2 naming the members and the flag (an id narrows nothing
+there). Every other boundary still needs one concrete type: the `canonical()` paths — `get` /
+`binding` / `launch-vars`, the `canonical` CLI, `validate_types.py --verify --type` — refuse it
+naming the members; the argparse converter (`type_arg` beside the registered `choices`, every
+script's `--type`), `bootstrap.sh --type`, `generate_eval_config.py --type` and a workspace
+`bindings.<family>` key answer with the registered list; the stored-name readers (`try_canonical`)
+answer None, so a stored family name is reported against the expected member. The Python `get()`,
+`names()`, `in`, iteration, `bindings()`, `detect()` and `candidates()` see concrete types only,
+and every import-time table (the artifact schemas, the poll phases, the snapshot and Jira write
+tables) is keyed by concrete name, which is why a family is kept out of `names()` rather than
+aliased there.
 New artifacts and run reports are stamped with the concrete name (the `TYPE` launch var, the
 resolved type in the writers and the report), never a family's. The shipped tree has one family,
 `initiative` (`types/initiative/type.yaml`, `abstract: true`), with the one member
@@ -232,18 +241,26 @@ member; a second member revisits them rather than inheriting them. The eval iden
 family's (`generate_eval_config.eval_stem`): two members would share the run name
 `<family>-speedrun`, the judge key `<family>_quality` and the MLflow experiment, so the generator
 needs a per-member identity decision first. The classification digest renders the sole member under
-the family's name: with two members each renders under its own, and the create step's `Type:` line
-and the review's misfiled-item sentence name a member. The four prefixes the shipped member inherits
+the family's name: with two members each renders under its own with a `Label:` (declare
+`display.entity` on the member — `Red Hat AI Initiative` for the shipped one — or the label is
+`<entity> (<project>)`), and the create step's `Type:` line and the review's misfiled-item
+sentence name a member. The four prefixes the shipped member inherits
 — `pipeline.{poll_prefix,state_prefix}` and `snapshot.{prefix,report_prefix}`, all `initiative-` —
 must be owned by a second member (the cross-type rules keep them unique), while the shipped member
 keeps its inherited `initiative-run-` / `initiative-snapshot-` values: changing them orphans every
 run report and snapshot already under `initiative-rhaistrat/` in the results repository. Two more
 facts to know: the interactive poll files are already per member, `tmp/<member>-poll-*`
 (`POLL_FILE_PREFIX` is derived from the member's name, never inherited, so the sole member uses
-`tmp/initiative-rhaistrat-poll-*` today), and with a second member the family name stops
-resolving (`canonical()` refuses it, naming the members), so `TYPE RESOLVED:` no longer answers
-`--type <family>` and every caller that passes it — the autofixer until AISDLC-852 — must name a
-member.
+`tmp/initiative-rhaistrat-poll-*` today), and with a second member `--type <family>` resolves
+through the member ladder ("Resolution" below): a headless caller passes a deciding signal —
+`--type <member>`, `--project <KEY>`, or a `--jql` with a positive `project` clause (the
+autofixer's `QUERY_DEFAULT` carries one) — or stops with exit 3, while `bootstrap.sh --type
+<family>` and every script's argparse `--type` still need the member (AISDLC-852 names it). The
+eval dataset's `expected_classification` annotations and the `classification_signal` judge match
+the MEMBER name once two members render: the review's misfiled sentence becomes `consider
+/rfe-create --type <member>` and the judge's `--type {expected_classification}(?![a-z0-9_-])`
+regex (`eval/config/skeleton.yaml`), built from `expected_classification: initiative` today,
+stops matching — re-annotate the cases (case-027 and any Initiative-expected case) in the same PR.
 
 `tests/fixtures/type-families/` is the two-member reference family (`brief` with `brief-acme` and
 `brief-globex`): the family carries every typed file and the eval prose, the members only
@@ -413,7 +430,12 @@ held to that rule. Provisional-only candidates (a key from a project no type is 
 resolve when they single out one type; otherwise the run is **ambiguous**: headless → `ERROR:
 ambiguous type ... pass --type` on stderr, exit 3; interactive → `TYPE AMBIGUOUS: rfe, initiative-rhaistrat -
 pass --type` on stdout, exit 3 (the hook for the interactive picker; for a free-text idea the
-create body fills it through the `classification` digest, "Classification block" above).
+create body fills it through the `classification` digest, "Classification block" above). A
+`--type <family>` with two or more members and no deciding signal is ambiguous the same way:
+headless → `ERROR: ambiguous type for --type <family>: candidates <m1>, <m2> — pass --type
+<member> or --project <KEY>` on stderr, exit 3; interactive → `TYPE AMBIGUOUS: <m1>, <m2> - pass
+--type` on stdout, exit 3 (the create body's member question reads the digest's `Label:` /
+`Member signals:` lines).
 Headless means `is_headless(env, flag)`: `RFE_CREATOR_HEADLESS` (exported by the headless pipeline),
 `CI` or `GITHUB_ACTIONS` set, or `--headless` passed (`load(headless=True)` in code) — one
 predicate for the extra-roots seam, the workspace file and resolve (D4). `python3 scripts/type_registry.py candidates <ID>` prints the rung
@@ -524,7 +546,7 @@ behind `resolve` (rung 2), `validate_batch_input.py` and `next_rfe_id.py --from-
 | Form | Root | Type |
 |---|---|---|
 | legacy list | a bare list of entries | `--type`, else the legacy default `rfe` (no signal — silent) |
-| mapping | `{type: <t>, items: [...]}`, those two keys plus an optional `project:` | `type:` (rung 2); `--type`, when given, must agree; `project:` picks the member of a family (the file's `--project`) |
+| mapping | `{type: <t>, items: [...]}`, those two keys plus an optional `project:` | `type:` (rung 2); `--type`, when given, must agree; `project:` picks the member of a family (the file's `--project`); a CLI `--project` that disagrees is an error |
 
 The rules are `resolve`'s, so the two scripts cannot drift from the ladder:
 
@@ -535,6 +557,10 @@ The rules are `resolve`'s, so the two scripts cannot drift from the ladder:
   the batch by type, one typed run per workspace.
 - An unknown mapping type is an error naming the registered types; a root that is neither form (a
   missing or extra key, a non-list `items`) is a shape error.
+- While `type:` names a family with several members (and no `project:` fixed the member), entries'
+  `parent_key` values are parent-key signals of the member (rung `parent key`); a batch whose
+  entries name two members conflicts here before the validator refuses them. Under a concrete
+  `type:` they are not read by `resolve`: the validator's per-entry check is the verdict, as before.
 - **Stderr rule (D3) for the two protocol scripts.** Their stdout is machine-read
   (`ERROR_COUNT=`/`WARNING_COUNT=`/`VALID=` lines; one id per line), so the resolve line
   `TYPE RESOLVED: <type> (--type)` / `(batch type)` goes to **stderr**, and only when a non-default
@@ -690,7 +716,11 @@ renders for each member's own project and names no project and no task or review
 itself. The parent's
 issue type is not consulted (the schema's note that `parent_is_outcome` is deliberately not
 expressible stands): a RHAISTRAT Feature parent is recorded like an Outcome and the alignment agent
-judges what it fetches.
+judges what it fetches. The same patterns and prefixes select the member of a type family at
+resolve time: `--parent <KEY>` (the create skill forwards it) or, in a batch whose `type:` names a
+family with several members, an entry's `parent_key` names the parent-bearing member whose
+patterns admit it (rung `parent key`); a type whose `batch.extra_fields` has no `parent_key`
+(`rfe`) never claims one.
 
 A parent that is NOT recorded is noted once on stderr (`Note: <key>: parent <P> not recorded as
 parent_key - ...`, never fatal) and left in Jira:
