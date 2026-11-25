@@ -14,8 +14,9 @@ alias-free apart from ``initiative`` (one member, ``initiative-rhaistrat``), so 
 exercised on the reference
 family (tests/fixtures/type-families) with ``brief-globex`` removed: ``brief`` then names
 ``brief-acme``. The two-member fixture pins that a family with several members is still
-refused with ``canonical()``'s own text, and the derived tables are pinned to the shipped
-registry.
+refused with ``canonical()``'s own text by every boundary that needs one concrete type —
+``resolve`` and ``parse_type_arg`` take it as a SCOPE since AISDLC-853 (the member ladder,
+tests/test_family_resolution.py) — and the derived tables are pinned to the shipped registry.
 
 Module-level registries are built from ``types/`` at import, so the Python readers are tested
 the way their own test modules do it: the module's ``_TYPES`` (and the table projected from
@@ -299,10 +300,12 @@ class TestParseTypeArg:
         )
         assert type_registry.parse_type_arg(single_reg, ["--type", MEMBER]) == (MEMBER, [])
 
-    def test_a_two_member_family_is_canonicals_text_with_exit_2(self, two_reg):
+    def test_a_two_member_family_alone_is_a_usage_error_naming_the_project_escape(self, two_reg):
+        # AISDLC-853: the gates take explicit arguments only, so a bare family stays exit 2; the
+        # hint now names the `--project <KEY>` escape (the ladder: tests/test_family_resolution).
         with pytest.raises(ResolveError) as exc:
             type_registry.parse_type_arg(two_reg, ["--type", FAMILY])
-        assert exc.value.args[0] == TWO_MEMBER_TEXT
+        assert exc.value.args[0] == TWO_MEMBER_TEXT + " or add --project <KEY>"
         assert exc.value.exit_code == 2
 
     def test_an_unknown_name_keeps_the_registered_list_text(self, single_reg):
@@ -385,11 +388,18 @@ class TestResolve:
             "ERROR: unknown type 'brief-globex' (--type); registered types: brief-acme\n"
         )
 
-    def test_rung_2_a_two_member_family_in_a_batch_is_refused(self, tmp_path):
+    def test_rung_2_a_family_batch_under_a_member_type_agrees_and_its_ids_are_checked(
+        self, tmp_path
+    ):
+        # AISDLC-853 (D1 relaxed): `--type brief-globex` names a member of the file's `type:
+        # brief`, so the two agree and the member is chosen; the ACME id then conflicts with it.
         batch = _write_text(tmp_path / "batch.yaml", "type: brief\nitems:\n  - ACME-1\n")
         result = _registry("resolve", "--batch", str(batch), "--type", OTHER)
         assert (result.returncode, result.stdout) == (1, "")
-        assert result.stderr == f"ERROR: {TWO_MEMBER_TEXT}\n"
+        assert result.stderr == (
+            "ERROR: conflicting type signals: --type brief-globex vs ACME-1 -> brief-acme; a run "
+            "is single-typed — split the input by type\n"
+        )
 
     def test_rung_3_frontmatter_family_type_resolves_the_member(self, single_root, tmp_path):
         path = _task_file(tmp_path)
@@ -419,10 +429,15 @@ class TestResolve:
             "a run is single-typed — split the input by type\n"
         )
 
-    def test_rung_1_two_member_family_is_refused(self):
+    def test_rung_1_two_member_family_is_a_scope_ambiguous_until_a_member_is_picked(self):
+        # AISDLC-853: the family narrows the run to its members; with nothing that picks one the
+        # verdict is the ambiguous one ids already get (exit 3), never canonical()'s refusal.
         result = _registry("resolve", "--type", FAMILY)
-        assert (result.returncode, result.stdout) == (1, "")
-        assert result.stderr == f"ERROR: {TWO_MEMBER_TEXT}\n"
+        assert (result.returncode, result.stdout, result.stderr) == (
+            3,
+            "TYPE AMBIGUOUS: brief-acme, brief-globex - pass --type\n",
+            "",
+        )
 
 
 # ── workspace bindings: a family key binds its member ───────────────────────────

@@ -1577,11 +1577,15 @@ class TestRegistryCli:
         assert by_id.stdout.startswith("TYPE RESOLVED: brief-globex")
 
     def test_resolve_a_two_member_family_names_the_members(self):
-        # A family name resolves only while the family has one member; with two, rung 1 says
-        # which members there are (canonical's text), never "unknown type".
+        # A family name resolves to a type only while the family has one member; with two, rung
+        # 1 narrows the run to the members and nothing else deciding is the ambiguous verdict
+        # naming them (exit 3; AISDLC-853, tests/test_family_resolution.py), never "unknown type".
         result = _registry("resolve", "--type", FAMILY)
-        assert result.returncode == 1
-        assert result.stderr == f"ERROR: {TWO_MEMBER_TEXT}\n"
+        assert (result.returncode, result.stdout, result.stderr) == (
+            3,
+            "TYPE AMBIGUOUS: brief-acme, brief-globex - pass --type\n",
+            "",
+        )
 
     def test_resolve_a_single_member_family_answers_through_its_member(self, families_copy):
         shutil.rmtree(families_copy / "brief-globex")

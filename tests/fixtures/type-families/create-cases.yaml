@@ -1,0 +1,204 @@
+# tests/fixtures/type-families/create-cases.yaml — the five create-stage cases of AISDLC-853 (the
+# story's Scope), one row per (case, root), driven by tests/test_create_stage_family.py.
+#
+# `root` is `brief` (this committed family, `--root tests/fixtures/type-families`) or
+# `two-initiative` (a tmp root the test builds: the shipped rfe / initiative / initiative-rhaistrat
+# plus a synthetic second member, initiative-globex — never committed under types/). `args` are
+# the `type_registry.py resolve` arguments; `env` adds headless markers; `resolve` is the exact
+# stdout / stderr / rc. `idea` is the free text the create body would read against the digest —
+# never forwarded to `resolve`; absent when the case does not depend on it.
+#
+# The text rows carry the LEXICAL ORACLE's expectations. A PHRASE is each piece of a member's OWN
+# `classification.signals` / `classification.examples` (Descriptor.own — never the merged lists)
+# split on ", " and "; ", stripped and casefolded; it HITS an idea when it is a substring of the
+# casefolded idea. `hits` maps every own phrase found to its member; `family_hits` lists the
+# family's shape-signal pieces found; `member` is the clear match (absent when the body asks) and
+# `asks` whether the one question is due. Every row carries a `requires:` list: `[]`, or
+# `[digest-member-rows]` for the assertions that need the PR-2 digest rows (`label`, `own_signals`,
+# the question's option labels under `options`): the test skips them while a digest row carries no
+# `label` key, so PR-1 and PR-2 land in either order.
+cases:
+  - name: clear-rhai
+    root: two-initiative
+    args: ["--type", "initiative"]
+    idea: "A Red Hat AI platform commitment for the RHOAI product: an objective with a measurable target over two quarters, spanning the serving and training components, that hangs from a RHAISTRAT Outcome in the Red Hat AI strategy project"
+    resolve:
+      rc: 3
+      stdout: "TYPE AMBIGUOUS: initiative-globex, initiative-rhaistrat - pass --type\n"
+      stderr: ""
+    member: initiative-rhaistrat
+    asks: false
+    hits:
+      a red hat ai platform commitment: initiative-rhaistrat
+      hangs from a rhaistrat outcome in the red hat ai strategy project: initiative-rhaistrat
+    requires: []
+
+  - name: clear-second-member
+    root: two-initiative
+    args: ["--type", "initiative"]
+    idea: "Give the Globex build farms a shared GPU scheduler so tenant teams stop over-provisioning, a multi-team effort over three quarters under a GLOBEXOUT Outcome"
+    resolve:
+      rc: 3
+      stdout: "TYPE AMBIGUOUS: initiative-globex, initiative-rhaistrat - pass --type\n"
+      stderr: ""
+    member: initiative-globex
+    asks: false
+    hits:
+      give the globex build farms a shared gpu scheduler so tenant teams stop over-provisioning: initiative-globex
+    requires: []
+
+  - name: clear-second-member
+    root: brief
+    args: ["--type", "brief"]
+    idea: "Write the Globex launch brief for the onboarding team's quarter"
+    resolve:
+      rc: 3
+      stdout: "TYPE AMBIGUOUS: brief-acme, brief-globex - pass --type\n"
+      stderr: ""
+    member: brief-globex
+    asks: false
+    hits:
+      write the globex launch brief: brief-globex
+    requires: []
+
+  - name: ambiguous-asks
+    root: two-initiative
+    args: ["--type", "initiative"]
+    idea: "An objective with a measurable target over a quarter or more, spanning several teams and components, with explicit scope boundaries"
+    resolve:
+      rc: 3
+      stdout: "TYPE AMBIGUOUS: initiative-globex, initiative-rhaistrat - pass --type\n"
+      stderr: ""
+    asks: true
+    hits: {}
+    family_hits:
+      - an objective with a measurable target over a quarter or more
+      - explicit scope boundaries
+    requires: [digest-member-rows]
+    options:
+      labels: ["Globex Initiative", "Initiative (RHAISTRAT)"]
+
+  - name: ambiguous-asks
+    root: brief
+    args: ["--type", "brief"]
+    idea: "A one-quarter plan for one team, nothing more decided"
+    resolve:
+      rc: 3
+      stdout: "TYPE AMBIGUOUS: brief-acme, brief-globex - pass --type\n"
+      stderr: ""
+    asks: true
+    hits: {}
+    family_hits:
+      - a one-quarter plan for one team
+    requires: [digest-member-rows]
+    options:
+      labels: ["Brief (ACME)", "Globex Brief"]
+
+  - name: parent-decides
+    root: two-initiative
+    args: ["--type", "initiative", "--parent", "GLOBEXOUT-7"]
+    resolve: {rc: 0, stdout: "TYPE RESOLVED: initiative-globex (parent key)\n", stderr: ""}
+    requires: []
+  - name: parent-decides
+    variant: shipped-member
+    root: two-initiative
+    args: ["--type", "initiative", "--parent", "RHAISTRAT-3"]
+    resolve: {rc: 0, stdout: "TYPE RESOLVED: initiative-rhaistrat (parent key)\n", stderr: ""}
+    requires: []
+  - name: parent-decides
+    variant: unclaimed
+    root: two-initiative
+    args: ["--type", "initiative", "--parent", "KONFLUX-1"]
+    resolve:
+      rc: 1
+      stdout: ""
+      stderr: "ERROR: --parent KONFLUX-1 matches no parent-key pattern of initiative-globex (^(GLOBEXOUT-\\d+|INITG-\\d+)$), initiative-rhaistrat (^(RHAISTRAT-\\d+|INIT-\\d+)$)\n"
+    requires: []
+  - name: parent-decides
+    root: brief
+    args: ["--type", "brief", "--parent", "GLOBEXOUT-7"]
+    resolve: {rc: 0, stdout: "TYPE RESOLVED: brief-globex (parent key)\n", stderr: ""}
+    requires: []
+  - name: parent-decides
+    variant: split-parent
+    root: brief
+    args: ["--type", "brief", "--parent", "BRA-2"]
+    resolve: {rc: 0, stdout: "TYPE RESOLVED: brief-acme (parent key)\n", stderr: ""}
+    requires: []
+  - name: parent-decides
+    variant: unclaimed
+    root: brief
+    args: ["--type", "brief", "--parent", "KONFLUX-1"]
+    resolve:
+      rc: 1
+      stdout: ""
+      stderr: "ERROR: --parent KONFLUX-1 matches no parent-key pattern of brief-acme (^(ACMEOUT-\\d+|BRA-\\d+)$), brief-globex (^(GLOBEXOUT-\\d+|BRG-\\d+)$)\n"
+    requires: []
+  - name: parent-decides
+    variant: key-and-parent-disagree
+    root: brief
+    args: ["--type", "brief", "ACME-1", "--parent", "GLOBEXOUT-2"]
+    resolve:
+      rc: 1
+      stdout: ""
+      stderr: "ERROR: conflicting type signals: ACME-1 -> brief-acme, --parent GLOBEXOUT-2 -> brief-globex; a run is single-typed — split the input by type or pass --type\n"
+    requires: []
+
+  - name: headless-exit-3
+    root: two-initiative
+    args: ["--type", "initiative", "--headless"]
+    resolve:
+      rc: 3
+      stdout: ""
+      stderr: "ERROR: ambiguous type for --type initiative: candidates initiative-globex, initiative-rhaistrat — pass --type <member> or --project <KEY>\n"
+    requires: []
+  - name: headless-exit-3
+    root: brief
+    args: ["--type", "brief", "--headless"]
+    resolve:
+      rc: 3
+      stdout: ""
+      stderr: "ERROR: ambiguous type for --type brief: candidates brief-acme, brief-globex — pass --type <member> or --project <KEY>\n"
+    requires: []
+  - name: headless-exit-3
+    variant: ci-marker
+    root: brief
+    args: ["--type", "brief"]
+    env: {CI: "true"}
+    resolve:
+      rc: 3
+      stdout: ""
+      stderr: "ERROR: ambiguous type for --type brief: candidates brief-acme, brief-globex — pass --type <member> or --project <KEY>\n"
+    requires: []
+  - name: headless-exit-3
+    variant: github-actions-marker
+    root: brief
+    args: ["--type", "brief"]
+    env: {GITHUB_ACTIONS: "1"}
+    resolve:
+      rc: 3
+      stdout: ""
+      stderr: "ERROR: ambiguous type for --type brief: candidates brief-acme, brief-globex — pass --type <member> or --project <KEY>\n"
+    requires: []
+  - name: headless-exit-3
+    variant: pipeline-marker
+    root: brief
+    args: ["--type", "brief"]
+    env: {RFE_CREATOR_HEADLESS: "1"}
+    resolve:
+      rc: 3
+      stdout: ""
+      stderr: "ERROR: ambiguous type for --type brief: candidates brief-acme, brief-globex — pass --type <member> or --project <KEY>\n"
+    requires: []
+  - name: headless-exit-3
+    variant: project-escape
+    root: brief
+    args: ["--type", "brief", "--project", "ACME", "--headless"]
+    resolve: {rc: 0, stdout: "TYPE RESOLVED: brief-acme (--project)\n", stderr: ""}
+    requires: []
+  - name: headless-exit-3
+    variant: member-escape
+    root: brief
+    args: ["--type", "brief-acme", "--headless"]
+    resolve: {rc: 0, stdout: "TYPE RESOLVED: brief-acme (--type)\n", stderr: ""}
+    requires: []

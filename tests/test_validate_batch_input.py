@@ -456,7 +456,8 @@ class TestMappingForm:
             ("items:\n- prompt: x\n", r"expected a list of items .* got a mapping with keys items"),
             (
                 "type: initiative\nitems:\n- prompt: x\nextra: 1\n",
-                r"exactly the keys 'type' and 'items'; unexpected key\(s\): extra",
+                r"takes the keys 'type' and 'items' \(and optionally 'project'\); "
+                r"unexpected key\(s\): extra",
             ),
             ("type: initiative\nitems: nope\n", r"'items' must be a list, got str"),
             ("type: initiative\nitems:\n  prompt: x\n", r"'items' must be a list, got"),

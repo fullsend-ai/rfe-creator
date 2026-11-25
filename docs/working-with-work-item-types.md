@@ -83,8 +83,10 @@ TYPE RESOLVED: initiative-rhaistrat (id grammar)
 TYPE RESOLVED: rfe (legacy default)
 ```
 
-The words in parentheses name the rule: `--type`, `batch type`, `frontmatter type` (the file's
-`type:` field), `artifact dir` (the folder), `id grammar` (the id you passed) or
+The words in parentheses name the rule: `--type`, `--project` (the project you named for a type
+family), `batch type`, `frontmatter type` (the file's `type:` field), `artifact dir` (the
+folder), `id grammar` (the id you passed), `parent key` (the `--parent` you passed or a batch
+entry's `parent_key`), `jql project` (the `project` clause of the batch query) or
 `legacy default` (nothing decided it, so RFE). Read this line first when a run surprises you.
 
 ### Conflicts are errors, not questions
