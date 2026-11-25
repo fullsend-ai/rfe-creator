@@ -27,7 +27,7 @@ Parse `$ARGUMENTS` for:
 
 ### 0. Resolve the type
 
-Forward to `resolve` `--type <t>`, `--project <KEY>` and `--headless` (each when given), the explicit IDs and, in JQL mode, the query itself as `--jql "<query>"` (as ONE shell argument, the text unchanged — single-quote it when the query itself contains double quotes, exactly as for the `snapshot_fetch.py fetch "<query>"` call below) — never `--data-dir`, `--limit`, `--batch-size`, `--announce-complete`, `--reprocess` or `--random`:
+Forward to `resolve` `--type <t>`, `--project <KEY>` and `--headless` (each when given), the explicit IDs and, in JQL mode, the query itself as `--jql "<query>"` (as ONE shell argument, the text unchanged: double-quoted when the query holds no `"`, `$`, backtick or backslash — a single quote inside it is then literal, so a caller's double-quoted argument is copied as written — otherwise single-quoted, `--jql '<query>'`, with each single quote inside it written as `'\''`, which also keeps `$(...)` and backticks literal; the `snapshot_fetch.py fetch "<query>"` call below takes the query in the same form) — never `--data-dir`, `--limit`, `--batch-size`, `--announce-complete`, `--reprocess` or `--random`:
 
 ```bash
 python3 scripts/type_registry.py resolve [--type <t>] [--project <KEY>] [--headless] [--jql "<query>"] <IDs>
@@ -57,7 +57,7 @@ The `tmp/pipeline-*` files in this skill take no type prefix (`STATE_PREFIX` is 
 python3 scripts/snapshot_fetch.py fetch "<query>" {TYPE_FLAG} --ids-file tmp/pipeline-all-ids.txt --changed-file tmp/pipeline-changed-ids.txt [--limit N] [--data-dir "<path>"] [--reprocess] [--random N]
 ```
 
-Print `[AUTOFIX] JQL: <jql>` from stderr output. Pass `--reprocess` if set.
+Quote `<query>` as in Step 0. Print `[AUTOFIX] JQL: <jql>` from stderr output. Pass `--reprocess` if set.
 
 **Reprocess-only mode** (`--reprocess` without `--jql`):
 

@@ -253,9 +253,15 @@ facts to know: the interactive poll files are already per member, `tmp/<member>-
 (`POLL_FILE_PREFIX` is derived from the member's name, never inherited, so the sole member uses
 `tmp/initiative-rhaistrat-poll-*` today), and with a second member `--type <family>` resolves
 through the member ladder ("Resolution" below): a headless caller passes a deciding signal —
-`--type <member>`, `--project <KEY>`, or a `--jql` with a positive `project` clause (the
-autofixer's `QUERY_DEFAULT` carries one) — or stops with exit 3, while `bootstrap.sh --type
-<family>` and every script's argparse `--type` still need the member (AISDLC-852 names it). The
+`--type <member>`, `--project <KEY>`, or a `--jql` with a positive `project` clause — or stops
+with exit 3. `resolve` never reads `conventions.query_default`: a bare family name with no
+`--jql` and no other signal is exit 3 whatever project the descriptor's query names. The
+production autofixer's Initiative job composes its `--jql` from the type's
+`conventions.query_default` (which names the project; the job reads it through
+`type_registry.py get <type>`, which refuses a family name once it has two members) and its RFE
+job's `--jql` is a literal naming RHAIRFE — `resolve` would take the member from either clause,
+but the Initiative job also hands its `--type` to `bootstrap.sh --type`, to that `get` and to the
+scripts' argparse `--type` (`submit.py`), which need the member (AISDLC-852 names it). The
 eval dataset's `expected_classification` annotations and the `classification_signal` judge match
 the MEMBER name once two members render: the review's misfiled sentence becomes `consider
 /rfe-create --type <member>` and the judge's `--type {expected_classification}(?![a-z0-9_-])`
@@ -281,11 +287,12 @@ block omitted. Its first reader is the generic create body (stage 1,
 AISDLC-190): an interactive run whose type came from the legacy default reads
 `python3 scripts/type_registry.py classification`, the digest of every create-stage type's block
 (a new type appears in it as soon as it is registered), and either prints
-`Type: <t> — pass --type to override` on a clear match, re-running `resolve --type <t>` when that
-is not the resolved type, or asks one question built from the types' `display.entity` (for a
-member of a family with several members, its `label`), `summary` and `examples`; `--type` skips
-the step and a headless run never asks (under `--headless` or the CI markers the digest answers
-one `HEADLESS:` line and nothing else). The review agent is its second reader (stage 2,
+`Type: <t> — pass --type to override` on a clear match, re-running `resolve --type <t>` with the
+invocation's `--project`/`--parent` when that is not the resolved type, or asks one question
+built from the types' `display.entity` (for a member of a family with several members, its
+`label`), `summary` and `examples`; `--type` skips the step and a headless run never asks (under
+`--headless` or the CI markers the digest answers one `HEADLESS:` line and nothing else). The
+review agent is its second reader (stage 2,
 AISDLC-191): it runs `classification --others <type>`, the blocks of every create-stage type
 outside `<type>`'s family (allowed in headless runs: it asks nothing), and when the type's
 review rules say the item reads as one of them it flags the item with
