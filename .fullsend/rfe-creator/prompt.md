@@ -67,8 +67,16 @@ generate local artifacts but do not POST/PUT/DELETE against Jira.
 `/rfe-speedrun` (the dotted forms `/rfe.review` etc. are compatibility aliases).
 Every skill accepts `--type <name>` for any type in `python3
 scripts/type_registry.py list` (`rfe` by default; `initiative-rhaistrat` for RHAISTRAT
-Initiatives, which `--type initiative` also names; `react-shopping-cart` for TSTAPP Shop RFEs). Review dimensions and scoring agents are launched by the skills
-themselves, not by this prompt.
+Initiatives, which `--type initiative` also names; `react-shopping-cart` for TSTAPP Shop RFEs)
+and, for a type family with several
+members, `--type <family> --project <KEY>` to name the member by its Jira project. When
+nothing decides the member of a family name, every skill but `/rfe-create` stops with
+exit 3 and no `TYPE RESOLVED:` line — `TYPE AMBIGUOUS: <a>, <b> - pass --type` on stdout,
+or `ERROR: ambiguous type ...` on stderr under `--headless` or a CI marker (report
+`action: failed` with that line in `errors`); `/rfe-create` reads the idea against the
+members and may ask, so give it `--headless` (it then stops like the others) or
+`--type <member>` / `--project <KEY>`. Review dimensions and scoring agents are launched
+by the skills themselves, not by this prompt.
 
 Follow the matching skill's `SKILL.md`. Do not reimplement a skill in this
 prompt.

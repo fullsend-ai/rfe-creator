@@ -42,7 +42,7 @@ Works for every registered type: RFEs by default, Initiatives with --type initia
 /rfe-creator.update-deps   # Force update vendored dependencies
 ```
 
-Every skill takes `--type <type>` (`rfe`, `initiative`, `initiative-rhaistrat` or `react-shopping-cart`); `initiative` is the Initiative type family and names its one member, `initiative-rhaistrat`, so the two spellings run the same pipeline. Without the flag the type is resolved from the ids you pass (`RHAIRFE-*` / `RFE-*` are RFEs, `RHAISTRAT-*` / `INIT-*` are Initiatives, `TSTAPP-*` / `RSC-*` are Shop RFEs) and defaults to `rfe`. The dotted names of the original RFE skills (`/rfe.create`, `/rfe.review`, `/rfe.split`, `/rfe.submit`, `/rfe.speedrun`, `/rfe.auto-fix`) remain as compatibility aliases that run the same bodies. See [docs/working-with-work-item-types.md](docs/working-with-work-item-types.md) for how the type is chosen and what changes with it.
+Every skill takes `--type <type>` (`rfe`, `initiative`, `initiative-rhaistrat` or `react-shopping-cart`); `initiative` is the Initiative type family and `initiative-rhaistrat` its member for the RHAISTRAT project, so the two spellings run the same pipeline while the family has one member; with several, `--type initiative --project <KEY>` or `--type <member>` names the member exactly and `--type initiative` alone resolves it from the ids, the parent, the query or your idea. Without the flag the type is resolved from the ids you pass (`RHAIRFE-*` / `RFE-*` are RFEs, `RHAISTRAT-*` / `INIT-*` are Initiatives, `TSTAPP-*` / `RSC-*` are Shop RFEs) and defaults to `rfe`. The dotted names of the original RFE skills (`/rfe.create`, `/rfe.review`, `/rfe.split`, `/rfe.submit`, `/rfe.speedrun`, `/rfe.auto-fix`) remain as compatibility aliases that run the same bodies. See [docs/working-with-work-item-types.md](docs/working-with-work-item-types.md) for how the type is chosen and what changes with it.
 
 The `react-shopping-cart` type writes Shop RFEs for the [react-shopping-cart](https://github.com/fullsend-ai/react-shopping-cart) demo storefront, filed as Stories in the TSTAPP Jira project.
 
@@ -53,7 +53,7 @@ RFE and Initiative are the two registered work item types:
 | Type | Jira project | Jira issue type | Flag | Id before submit |
 |---|---|---|---|---|
 | RFE | RHAIRFE | Feature Request | `--type rfe` (the default) | `RFE-001` |
-| Initiative | RHAISTRAT | Initiative | `--type initiative` (the family name) or `--type initiative-rhaistrat` (its one member) | `INIT-001` |
+| Initiative | RHAISTRAT | Initiative | `--type initiative` (the family name) or `--type initiative-rhaistrat` (its member for RHAISTRAT; `--type initiative --project RHAISTRAT` is the same) | `INIT-001` |
 
 The skill bodies are shared; each type's judgement — template, clarifying questions, review rules, split rules and review dimensions — lives under `types/<type>/`, next to a data-only descriptor, `types/<type>/type.yaml`, which `python3 scripts/validate_types.py` lints and `python3 scripts/type_registry.py` reads. The field reference is [types/README.md](types/README.md), the guide to adding a type is [docs/type-provider-guide.md](docs/type-provider-guide.md), and the mechanism's development notes (which scripts read the registry, its delivery history) are in [docs/work-item-types-development.md](docs/work-item-types-development.md).
 

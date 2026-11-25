@@ -298,10 +298,18 @@ that `extends` it, and the registry merges the family under the member before an
    member (`canonical()`: every script's `--type`, `resolve`, `validate_types.py --verify --type`,
    `generate_eval_config.py --type`, a workspace `bindings:` key, `bootstrap.sh --type`, the
    artifact and report readers; the `get` / `binding` / `launch-vars` CLI adds a stderr note naming
-   the member) and refused when it has two or more (`canonical()`'s text names the members; the
-   tolerant readers answer with the registered list or the expected member); the family itself is
-   never runnable, so `/rfe-review --type <family>` runs the member or fails naming the members. New
-   artifacts and run reports carry the member's name either way.
+   the member). With two or more members `resolve` takes it as a scope: the run is narrowed to the
+   members and a `--project <KEY>`, a key in a member's project, a `--parent` or batch `parent_key`
+   in a member's parent-key family, or a `--jql` `project` clause picks the member — nothing
+   deciding is the ambiguous verdict (exit 3); `parse_type_arg` (the three gates) accepts it only
+   beside `--project <KEY>` and otherwise exits 2 naming the members and the flag; every other
+   boundary still needs one concrete type — the `canonical()` paths (`get` / `binding` /
+   `launch-vars`, `--verify --type`) refuse it naming the members, the argparse converter, the eval
+   generator, a workspace `bindings:` key and `bootstrap.sh --type` answer with the registered
+   list, the stored-name readers answer None. The family itself is never runnable, so
+   `/rfe-review --type <family> <KEY>` runs the member the key names, `/rfe-create --type <family>
+   <idea>` reads the idea against the members and asks once, and a headless run with no deciding
+   signal stops with exit 3. New artifacts and run reports carry the member's name either way.
 
 For a family that lands under `types/`: `scripts/bootstrap.sh` reads the type through the registry
 and, without Python, through the shipped root (`registered_types_from_root`, which a drop-in root
@@ -471,17 +479,22 @@ resolve clause) and the dry-run plan of a stock deployment, byte for byte.
 
 ## Resolution
 
-`python3 scripts/type_registry.py resolve [--type T] [--batch FILE] [--artifact PATH] [--headless]
-[--workspace-root DIR] [--json] [ID ...]` decides the type of a run and prints
-`TYPE RESOLVED: <type> (<rung>[; binding override project=...])`. Rungs: `--type` > batch mapping
-`type:` > deterministic signals (artifact frontmatter `type:`, the artifact's directory, id grammar
-through `candidates()` over effective bindings, with the Jira key grammar as a provisional last
-rung) > the legacy `rfe` default. An unknown type, a `--type` disagreeing with the batch `type:`
-(D1), a per-item `type` key (D2) and conflicting deterministic signals exit 1 with an `ERROR:`
-line; an ambiguous run exits 3 (`TYPE AMBIGUOUS: rfe, initiative-rhaistrat - pass --type` interactively, an
-`ERROR:` line when headless). A batch file is either the legacy bare list (the type is `--type`, else
-`rfe`) or `{type: <t>, items: [...]}`; `validate_batch_input.py` and `next_rfe_id.py --from-batch`
-accept both through `type_registry.read_batch` — read once, then `resolve(..., batch_items=,
+`python3 scripts/type_registry.py resolve [--type T] [--project KEY] [--parent KEY ...] [--jql QUERY]
+[--batch FILE] [--artifact PATH] [--headless] [--workspace-root DIR] [--json] [ID ...]` decides the
+type of a run and prints `TYPE RESOLVED: <type> (<rung>[; binding override project=...])`. Rungs:
+`--type` (a family with two or more members narrows the run to its members) > `--project` > batch
+mapping `type:` (and its optional `project:`) > deterministic signals (artifact frontmatter `type:`,
+the artifact's directory, id grammar through `candidates()` over effective bindings — with the Jira
+key grammar as a provisional last rung — the parent key against `parent_key_pattern_effective`, the
+JQL's positive `project` clause) > the legacy `rfe` default. An unknown type, a `--type` disagreeing
+with the batch `type:` (D1), a per-item `type` key (D2) and conflicting deterministic signals exit 1
+with an `ERROR:` line; an ambiguous run exits 3 (`TYPE AMBIGUOUS: rfe, initiative-rhaistrat - pass
+--type` interactively, an `ERROR:` line when headless; a type family named by `--type` whose member
+nothing decided takes the same exit, its headless line naming `--type <member> or --project <KEY>`).
+A batch file is either the legacy bare list (the type is `--type`, else `rfe`) or
+`{type: <t>, items: [...]}` with an optional `project: <KEY>`; `validate_batch_input.py` and
+`next_rfe_id.py --from-batch` accept both through `type_registry.read_batch` — read once as
+`(type, project, items)`, then `resolve(..., batch_items=,
 items_are_ids=False, binding=False)`: string items are entries, not ids, and the binding is not
 evaluated — and print the resolve line on stderr only for a non-default rung (`types/README.md`
 "Batch input forms"). Headless is `is_headless(env, flag)`: `RFE_CREATOR_HEADLESS` (the
