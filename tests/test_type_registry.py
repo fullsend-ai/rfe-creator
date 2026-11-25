@@ -2410,12 +2410,17 @@ class TestResolve:
         assert ambiguous["candidates"] == ["rfe", MEMBER, RSC]
 
     def test_rung_vocabulary_is_pinned(self):
+        # AISDLC-853 added `--project`, `parent key` and `jql project` (the member ladder under
+        # `--type <family>`); the user guide names every rung in this order (test_user_guide_doc).
         assert type_registry.RESOLVE_RUNGS == (
             "--type",
+            "--project",
             "batch type",
             "frontmatter type",
             "artifact dir",
             "id grammar",
+            "parent key",
+            "jql project",
             "legacy default",
         )
         assert type_registry.LEGACY_DEFAULT_TYPE == "rfe"
@@ -2611,6 +2616,9 @@ class TestResolveCli:
         assert result.returncode == 0
         for option in (
             "--type",
+            "--project",
+            "--parent",
+            "--jql",
             "--batch",
             "--artifact",
             "--headless",
@@ -2827,17 +2835,17 @@ class TestReadBatch:
         items = [{"prompt": "x"}, "RHAISTRAT-1", {"prompt": "y", "type": "rfe"}]
         batch = _write_yaml(tmp_path / "b.yaml", items)
         # The per-item type key is NOT read_batch's business (resolve rejects it, D2).
-        assert read_batch(batch) == (None, items)
-        assert read_batch(str(batch)) == (None, items)
+        assert read_batch(batch) == (None, None, items)
+        assert read_batch(str(batch)) == (None, None, items)
 
     def test_mapping_form_returns_the_stripped_type_and_its_items(self, tmp_path):
         data = {"type": " initiative ", "items": [{"prompt": "x"}, "RFE-1"]}
         batch = _write_yaml(tmp_path / "b.yaml", data)
-        assert read_batch(batch) == ("initiative", [{"prompt": "x"}, "RFE-1"])
+        assert read_batch(batch) == ("initiative", None, [{"prompt": "x"}, "RFE-1"])
 
     def test_mapping_form_may_be_empty_and_its_type_is_not_validated_here(self, tmp_path):
         batch = _write_yaml(tmp_path / "b.yaml", {"type": "epic", "items": []})
-        assert read_batch(batch) == ("epic", [])
+        assert read_batch(batch) == ("epic", None, [])
         with pytest.raises(ResolveError, match="unknown type 'epic'"):
             resolve(_shipped(), batch=batch, env={})
 
@@ -2853,8 +2861,8 @@ class TestReadBatch:
             ("type: ''\nitems: []\n", "'type' must be a non-empty string"),
             (
                 "type: rfe\nitems: []\nextra: 1\n",
-                "the mapping form takes exactly the keys 'type' and 'items'; unexpected "
-                "key\\(s\\): extra",
+                "the mapping form takes the keys 'type' and 'items' \\(and optionally "
+                "'project'\\); unexpected key\\(s\\): extra",
             ),
             ("- [unclosed\n", "invalid YAML in batch file"),
         ],
@@ -2874,7 +2882,10 @@ class TestReadBatch:
         batch = _write_yaml(
             tmp_path / "b.yaml", {"type": "rfe", "items": [{"prompt": "x"}], "labels": ["a"]}
         )
-        match = "exactly the keys 'type' and 'items'; unexpected key\\(s\\): labels"
+        match = (
+            "takes the keys 'type' and 'items' \\(and optionally 'project'\\); unexpected "
+            "key\\(s\\): labels"
+        )
         with pytest.raises(ResolveError, match=match):
             resolve(_shipped(), batch=batch, env={})
         result = _cli("resolve", "--batch", str(batch))

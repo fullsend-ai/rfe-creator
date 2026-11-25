@@ -11,9 +11,9 @@ Usage:
 Batch root forms (design work-item-types-unified.md §5 rung 2; PR-3b):
     - a bare list of entries (legacy form) — the type is --type, else the
       grandfathered default rfe;
-    - a mapping with exactly the keys ``type`` and ``items`` (mapping form) —
-      the type is ``type:``; --type may be omitted and, when given, must agree
-      with it (PR-3 D1).
+    - a mapping with the keys ``type`` and ``items`` (mapping form; an optional
+      ``project`` names the member of a type family, AISDLC-853) — the type is
+      ``type:``; --type may be omitted and, when given, must agree with it (PR-3 D1).
     An entry carrying its own ``type`` key is an error in either form: a run is
     single-typed, so a mixed batch must be split by type (PR-3 D2).
 
@@ -233,7 +233,7 @@ def main():
     # The file's own shape (unreadable, invalid YAML, a root that is neither form) is a usage
     # error; the ladder's verdicts on its content (type) go through the protocol below.
     try:
-        _batch_type, entries = type_registry.read_batch(args.path)
+        _batch_type, _project, entries = type_registry.read_batch(args.path)
     except type_registry.ResolveError as exc:
         print(f"ERROR: {exc.args[0]}", file=sys.stderr)
         sys.exit(2)
@@ -246,7 +246,7 @@ def main():
             _TYPES,
             explicit_type=args.type,
             batch=args.path,
-            batch_items=(_batch_type, entries),
+            batch_items=(_batch_type, _project, entries),
             items_are_ids=False,
             env=os.environ,
             binding=False,
@@ -261,7 +261,12 @@ def main():
     if resolution.ambiguous:
         candidates = ", ".join(resolution.candidates)
         _report(
-            [f"batch: ambiguous type (candidates: {candidates}) - pass --type"], [], args.strict
+            [
+                f"batch: ambiguous type (candidates: {candidates}) - pass --type <member> or add "
+                f"project: <KEY> to the batch root"
+            ],
+            [],
+            args.strict,
         )
     # D3: the resolve line only when a non-default rung decided, and never on stdout.
     if resolution.rung != type_registry.LEGACY_DEFAULT_RUNG:

@@ -48,8 +48,9 @@ def _cli(*args, **extra_env):
 
 class TestOthersDigest:
     def test_lists_every_create_stage_type_but_the_given_one(self):
-        # the digest rows are FAMILY-named (--others <member> excludes the member's family row,
-        # and --others <family> is the alias)
+        # the digest rows are FAMILY-named while the family has one member, and --others NAME
+        # drops NAME's whole family (a member and the family name name the same rows,
+        # AISDLC-853), so a member and its family name answer the same other types
         for mine, others, entity in (
             ("rfe", ["initiative", "react-shopping-cart"], "Initiative"),
             ("initiative", ["rfe", "react-shopping-cart"], "RFE"),

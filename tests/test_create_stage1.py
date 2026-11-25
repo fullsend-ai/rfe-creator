@@ -28,6 +28,88 @@ SPEEDRUN_BODY = REPO_ROOT / ".claude" / "skills" / "rfe-speedrun" / "SKILL.md"
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 import type_registry  # noqa: E402
 
+# The shipped digest as released at 0.5.0 (81139e8), committed verbatim: the member rows of
+# AISDLC-853 (``Label:``, ``Family:``, ``Project:``, ``Member signals:``) render for a family
+# with two or more members only, so the shipped text — one standalone type and a family's sole
+# member — is byte-identical to this, under ``classification`` and every ``--others`` form.
+RFE_BLOCK = (
+    "## rfe (RFE)\n"
+    "Summary: A product capability a customer or user needs — the WHAT and WHY of "
+    "one business need, sized to land in a release\n"
+    "Driver: a Product Manager relaying customers, partners or field evidence\n"
+    "Signals: a named customer, partner, segment or field escalation behind the ask; "
+    "a user cannot do something today, or finds it painful; acceptance criteria from "
+    'the user\'s perspective ("the user can ..."); one capability of one product area '
+    "or component; a need that fits one release or a few sprints; a competitive gap, "
+    "a customer commitment, a deal or a renewal at stake\n"
+    "Counter-signals: a multi-quarter objective or a program spanning several teams; "
+    "a measurable outcome a team commits to deliver rather than a capability a user "
+    "asks for; a strategic theme, a portfolio bet or a parent Outcome to roll up to; "
+    "a list of deliverables or epics to be broken down later\n"
+    "Examples:\n"
+    "- Customers deploying models on KServe need signature verification at serving "
+    "time so an unsigned model cannot be served\n"
+    "- Data scientists need Ray clusters that scale with the workload instead of a "
+    "fixed node count\n"
+    "- Platform engineers need a command-line interface to create and inspect Ray "
+    "clusters without the dashboard\n"
+)
+INITIATIVE_BLOCK = (
+    "## initiative (Initiative)\n"
+    "Summary: A scoped body of work a team commits to deliver toward a strategic "
+    "Outcome — its objective, the problem it answers and its boundaries, not one "
+    "user-facing capability\n"
+    "Driver: a team lead or Product Manager answering a strategic goal, usually "
+    "under a strategic Outcome\n"
+    "Signals: an objective with a measurable target over a quarter or more; an "
+    "effort spanning several teams, components or releases; rolls up to a parent "
+    "Outcome or a strategic theme; explicit scope boundaries, what is in and what is "
+    "out, for a body of work; several deliverables or workstreams to be broken into "
+    "epics later; the team's response to a market, platform or competitive "
+    "direction; a Red Hat AI platform commitment, framed for the RHOAI product and "
+    "its components; hangs from a RHAISTRAT Outcome in the Red Hat AI strategy project\n"
+    "Counter-signals: one user-facing capability with acceptance criteria; a single "
+    "customer's request, escalation or commitment; a need that fits one release or "
+    "one component; an implementation task, a chore or a bug\n"
+    "Examples:\n"
+    "- Deliver GPU utilization observability for the training and inference pools, "
+    "dashboards and alerting included, so teams can right-size\n"
+    "- Shift platform testing left so every component ships with its own scale-up "
+    "test matrix before the release branch\n"
+    "- Federate the platform's model registries so one search spans every registered "
+    "model\n"
+)
+# The Shop RFE (react-shopping-cart) is a standalone type registered after 0.5.0: its block is
+# appended in registry order and, being standalone, carries none of the member lines either.
+SHOP_BLOCK = (
+    "## react-shopping-cart (Shop RFE)\n"
+    "Summary: A change a store owner or merch team wants in the react-shopping-cart "
+    "storefront — the WHAT and WHY of one shopper-facing need, small enough to ship as "
+    "one pull request\n"
+    "Driver: the store owner or merch team running the react-shopping-cart demo store\n"
+    "Signals: names the shop, its catalog, a product, the product filter, sizes or the "
+    "shopping cart; a shopper cannot find, filter, compare or buy something in the store "
+    "today; a product the merch team wants listed, priced or presented differently; what "
+    "the shopper sees on the storefront once it ships\n"
+    "Counter-signals: an AI platform capability for customers deploying models, pipelines "
+    "or clusters; a store-wide relaunch, a new region or a program spanning several "
+    "quarters; exact catalog JSON, file paths or component code with no shopper need "
+    "behind it\n"
+    "Examples:\n"
+    "- Shoppers should see how close their cart is to free shipping\n"
+    "- The merch team wants accessories such as backpacks listed without a size\n"
+    "- Shoppers want to narrow the catalog to Red Hat branded products\n"
+)
+SHIPPED_DIGEST = (
+    "TYPES: rfe, initiative, react-shopping-cart\n\n"
+    + RFE_BLOCK
+    + "\n"
+    + INITIATIVE_BLOCK
+    + "\n"
+    + SHOP_BLOCK
+)
+MEMBER_LINES = ("Label: ", "Family: ", "Project: ", "Member signals: ")
+
 
 def _env(**extra):
     env = {
@@ -111,16 +193,62 @@ class TestClassificationDigest:
         rows = json.loads(result.stdout)
         assert [r["type"] for r in rows] == ["rfe", "initiative", "react-shopping-cart"]
         for row in rows:
+            # the seven of AISDLC-190 plus the four member keys of AISDLC-853
             assert set(row) == {
                 "type",
                 "entity",
+                "label",
+                "family",
+                "project",
                 "summary",
                 "driver",
                 "signals",
+                "own_signals",
                 "counter_signals",
                 "examples",
             }
             assert row["signals"] and 1 <= len(row["examples"]) <= 5
+
+    def test_json_member_keys_on_the_shipped_rows(self):
+        """AISDLC-853: a standalone type's ``own_signals`` are its signals and its label its
+        entity; the family's sole member keeps the family's label and entity while its
+        ``own_signals`` are the two phrases its own file declares (the domain signals)."""
+        rfe, initiative, shop = json.loads(_cli("--json", "classification").stdout)
+        assert (shop["family"], shop["project"], shop["label"]) == (
+            None,
+            "TSTAPP",
+            "Shop RFE",
+        )
+        assert shop["own_signals"] == shop["signals"]
+        assert (rfe["family"], rfe["project"], rfe["label"]) == (None, "RHAIRFE", "RFE")
+        assert rfe["own_signals"] == rfe["signals"]
+        assert (initiative["family"], initiative["project"], initiative["label"]) == (
+            "initiative",
+            "RHAISTRAT",
+            "Initiative",
+        )
+        own = yaml.safe_load((TYPES_ROOT / "initiative-rhaistrat" / "type.yaml").read_text())
+        assert initiative["own_signals"] == own["classification"]["signals"]
+        assert len(initiative["own_signals"]) == 2
+        assert initiative["signals"][-2:] == initiative["own_signals"]
+
+    def test_the_shipped_text_is_the_0_5_0_golden(self):
+        """The member rows of AISDLC-853 change nothing on the shipped tree: the text is the
+        0.5.0 digest byte for byte, under the plain form and every ``--others`` form, and none
+        of the member lines appears in it."""
+        assert _cli("classification").stdout == SHIPPED_DIGEST
+        assert _cli("classification", "--others", "rfe").stdout == (
+            "TYPES: initiative, react-shopping-cart\n\n" + INITIATIVE_BLOCK + "\n" + SHOP_BLOCK
+        )
+        for mine in ("initiative", "initiative-rhaistrat"):
+            assert _cli("classification", "--others", mine).stdout == (
+                "TYPES: rfe, react-shopping-cart\n\n" + RFE_BLOCK + "\n" + SHOP_BLOCK
+            ), mine
+        assert _cli("classification", "--others", "react-shopping-cart").stdout == (
+            "TYPES: rfe, initiative\n\n" + RFE_BLOCK + "\n" + INITIATIVE_BLOCK
+        )
+        for line in MEMBER_LINES:
+            assert line not in SHIPPED_DIGEST, line
 
     def test_a_drop_in_with_a_block_joins_the_digest(self, tmp_path):
         extra = _drop_in(tmp_path / "extra")
