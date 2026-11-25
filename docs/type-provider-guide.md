@@ -92,6 +92,11 @@ block and everything in this paragraph; `validate_types.py` and `generate_eval_c
 
 Rules that are easy to trip:
 
+- **Context-source args are plain words.** Each `pipeline.context_sources[].args` item must
+  match `^(?!.*\.\.)[A-Za-z0-9._:/@=+-]+$`: no whitespace, quotes, shell metacharacters, braces
+  or `..`. A descriptor whose args do not fit fails `validate_types.py`. The fetch for an
+  application's own architecture docs is `--repo <url> --path <dir> --dest .context/<dir>`, and
+  omitting `context_sources` keeps the rubric bootstrap plus the default RHOAI fetch.
 - **The eval config is generated.** Never edit `eval.config` by hand: the shared structure and
   every check live in `eval/config/skeleton.yaml`, your type's prose in `eval/fragment.yaml`,
   the facts and thresholds in `type.yaml`. `generate_eval_config.py --check` (gate 1, `make lint`,
