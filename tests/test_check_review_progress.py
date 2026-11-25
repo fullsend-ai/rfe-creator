@@ -1046,14 +1046,20 @@ class TestSkillBarrierUsage:
         assert self._dimension_polls(self._rendered(t, "review"))
         assert f"{pp}create" in _phases_used_rendered(self._rendered(t, "speedrun"))
 
-    # Only the types that predate the generic bodies have legacy bodies to compare against.
+    # Only the types that predate the generic bodies have legacy bodies to compare against; a
+    # family member reads its family's corpus (as _legacy_text does).
     @pytest.mark.parametrize(
         "t",
         [
             n
             for n in REG.names()
             if os.path.isdir(
-                os.path.join(os.path.dirname(__file__), "fixtures", "legacy-prompts", n)
+                os.path.join(
+                    os.path.dirname(__file__),
+                    "fixtures",
+                    "legacy-prompts",
+                    REG.get(n).extends or n,
+                )
             )
         ],
     )
