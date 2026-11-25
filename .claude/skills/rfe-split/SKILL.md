@@ -21,16 +21,17 @@ If `${CLAUDE_SKILL_DIR}` reaches you unsubstituted (no substitution, or a Read o
 
 Parse `$ARGUMENTS` for flags and IDs:
 - Strip `--type <t>` if present (an explicit type — always wins)
+- Strip `--project <KEY>` if present (the member of a type family, by its Jira project)
 - Strip `--headless` flag if present (suppresses end-of-run summary)
 - Remaining arguments are one or more space-separated item IDs (`{ID_GRAMMAR}` once resolved)
 
-Resolve the work-item type — forward only `--type <t>` (when given), `--headless` (when given) and the explicit IDs:
+Resolve the work-item type — forward only `--type <t>` (when given), `--project <KEY>` (when given), `--headless` (when given) and the explicit IDs:
 
 ```bash
-python3 scripts/type_registry.py resolve [--type <t>] [--headless] <IDs>
+python3 scripts/type_registry.py resolve [--type <t>] [--project <KEY>] [--headless] <IDs>
 ```
 
-It prints `TYPE RESOLVED: <type> (<how>)`; a non-zero exit is an error — stop and report it. Then print the stage's launch block and keep it: every `{VAR}` in this skill is the value of that `VAR=` line, and every agent you launch gets the whole block prepended to its prompt:
+It prints `TYPE RESOLVED: <type> (<how>)`; a non-zero exit (unknown type, ambiguous ids, or exit 3 after a `--type` that named a type family with several members and nothing that named one — name the member with `--type`, or add `--project <KEY>`) is an error — stop and report it. Then print the stage's launch block and keep it: every `{VAR}` in this skill is the value of that `VAR=` line, and every agent you launch gets the whole block prepended to its prompt:
 
 ```bash
 python3 scripts/type_registry.py launch-vars <type> split

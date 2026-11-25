@@ -20,37 +20,37 @@ bash "${CLAUDE_SKILL_DIR}/../../../scripts/bootstrap.sh" --layout
 If `${CLAUDE_SKILL_DIR}` reaches you unsubstituted (no substitution, or a Read of this file), use this skill file's directory instead. It links the plugin's `scripts/` and `types/` in; on any nonzero exit stop and show its message (exit 3 means the directory already carries its own). Every command below then runs exactly as written.
 
 Parse `$ARGUMENTS` for flags and IDs:
-- Strip `--type <t>` if present (an explicit type — always wins)
+- Strip `--type <t>` (an explicit type — always wins) and `--project <KEY>` (a type family's member, by Jira project) if present
 - Strip `--headless` flag if present (suppresses end-of-run summary)
-- Strip `--caller <name>` flag if present (identifies calling skill for headless return)
-- Remaining arguments are one or more space-separated item IDs (the type's Jira key form or local id form — `{ID_GRAMMAR}` once resolved)
+- Strip `--caller <name>` if present (the calling skill, for the headless return)
+- Remaining arguments are one or more space-separated item IDs (`{ID_GRAMMAR}` once resolved)
 
-Resolve the work-item type. Forward only `--type <t>` (when given), `--headless` (when given) and the explicit IDs — never any other flag:
+Resolve the work-item type. Forward only `--type <t>`, `--project <KEY>` and `--headless` (each when given) and the explicit IDs — never any other flag:
 
 ```bash
-python3 scripts/type_registry.py resolve [--type <t>] [--headless] <IDs>
+python3 scripts/type_registry.py resolve [--type <t>] [--project <KEY>] [--headless] <IDs>
 ```
 
-A non-zero exit (unknown type, ambiguous ids) is an error — stop and report it. Then print the stage's launch block and keep it: every `{VAR}` in this skill is the value of that `VAR=` line, and every agent you launch gets the whole block prepended to its prompt:
+A non-zero exit (unknown type, ambiguous ids, or exit 3: an undecided type family — pass `--type <member>` or `--project <KEY>`) is an error — stop and report it. Then print the stage's launch block and keep it: every `{VAR}` in this skill is the value of that `VAR=` line, and every agent you launch gets the whole block prepended to its prompt:
 
 ```bash
 python3 scripts/type_registry.py launch-vars <type> review
 ```
 
-Persist the parsed flags and all IDs to disk (both survive context compression):
+Persist the parsed flags and all IDs (both survive context compression):
 
 ```bash
 python3 scripts/state.py init tmp/{STATE_PREFIX}review-config.yaml type={TYPE} headless=<true/false> caller=<split|none>
 python3 scripts/state.py write-ids tmp/{STATE_PREFIX}review-all-ids.txt <all_IDs>
 ```
 
-Check which IDs already have a task file locally, without reading or searching for the files:
+Check which IDs already have a task file (no reading or searching for it):
 
 ```bash
 python3 scripts/check_review_progress.py --phase {POLL_PREFIX}fetch --id-file tmp/{STATE_PREFIX}review-all-ids.txt --list-ids
 ```
 
-This is a one-shot existence check, not a wave poll: ignore the `NEXT_POLL` value it prints. Separate IDs by its output, `COMPLETED_IDS` and `PENDING_IDS`:
+One-shot existence check, not a wave poll: ignore its `NEXT_POLL`; split the IDs by `COMPLETED_IDS` and `PENDING_IDS`:
 - **Local**: task file exists — skip fetch
 - **Remote**: task file missing — needs Jira fetch
 
@@ -75,13 +75,13 @@ python3 scripts/state.py write-ids {POLL_FILE_PREFIX}fetch.txt <all_remote_IDs>
 python3 scripts/check_review_progress.py --phase {POLL_PREFIX}fetch --id-file {POLL_FILE_PREFIX}fetch.txt
 ```
 
-After the poll ends, run the same check once more with `--list-ids`; every ID under `PENDING_IDS` has no task file. For each, write an error to the review file:
+After the poll ends, re-run the check once with `--list-ids`; every ID under `PENDING_IDS` has no task file — for each, write an error to the review file:
 
 ```bash
 python3 scripts/frontmatter.py set {REVIEWS_DIR}/<ID>-review.md {ID_FIELD}=<ID> score=0 pass=false recommendation=revise feasibility=feasible auto_revised=false needs_attention=true {SCORE_ZERO_SET} error="fetch_failed: task file not created" type={TYPE}
 ```
 
-Remove failed IDs from the processing list and continue with remaining IDs.
+Remove failed IDs from the processing list and continue with the rest.
 
 ## Review Step 1.5: Setup
 
@@ -126,9 +126,9 @@ python3 scripts/check_review_progress.py --phase {POLL_PREFIX}assess --id-file {
 python3 scripts/check_review_progress.py --phase {POLL_PREFIX}<name> --id-file {POLL_FILE_PREFIX}<name>.txt
 ```
 
-A non-blocking dimension (`DIMENSION_<NAME>_BLOCKING=false`) is polled the same way (`--phase {POLL_PREFIX}<name>`) but only for the IDs it was launched for — skip its poll block when it was launched for none (the checker exits 2 on an empty ID list); it is informational, not blocking: if still PENDING after 5 minutes, stop polling and continue; the prerequisite check below records the missing file without failing the ID.
+A non-blocking dimension (`DIMENSION_<NAME>_BLOCKING=false`) is polled the same way (`--phase {POLL_PREFIX}<name>`) but only for the IDs it was launched for — skip its poll block when it was launched for none (the checker exits 2 on an empty ID list); informational, not blocking: if still PENDING after 5 minutes, stop polling and continue; the prerequisite check below records the missing file without failing the ID.
 
-After completion, run each of those polls once more with `--list-ids` and read its `PENDING_IDS`:
+After completion, re-run each poll once with `--list-ids` and read its `PENDING_IDS`:
 - An ID under `PENDING_IDS` for `{POLL_PREFIX}assess` has no assess result (`{ASSESS_STAGING}/<ID>.result.md`) → write error: `assess_failed`
 - An ID under `PENDING_IDS` for a blocking dimension's phase has no `DIMENSION_<NAME>_FILE` → write error: `<name>_failed`
 - An ID under `PENDING_IDS` for a non-blocking dimension whose agent was launched → note but do not treat as a blocking error
@@ -139,7 +139,7 @@ For any missing prerequisite:
 python3 scripts/frontmatter.py set {REVIEWS_DIR}/<ID>-review.md {ID_FIELD}=<ID> score=0 pass=false recommendation=revise feasibility=feasible auto_revised=false needs_attention=true {SCORE_ZERO_SET} error="<assess_failed or <name>_failed>: file not created" type={TYPE}
 ```
 
-Remove failed IDs from the processing list and continue with remaining IDs.
+Remove failed IDs from the processing list and continue with the rest.
 
 ## Review Step 3: Launch Review Agents
 

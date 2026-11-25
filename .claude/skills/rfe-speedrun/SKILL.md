@@ -21,6 +21,7 @@ If `${CLAUDE_SKILL_DIR}` reaches you unsubstituted (no substitution, or a Read o
 
 Parse `$ARGUMENTS` for:
 - `--type <t>`: an explicit type — always wins
+- `--project <KEY>`: the member of a type family, by its Jira project (`--type <t> --project <KEY>` is exact)
 - `--input <path>`: Path to a YAML file with batch entries
 - `--headless`: Suppress questions and confirmations (for CI / eval)
 - `--announce-complete`: Print completion marker when done (for CI / eval harnesses)
@@ -28,13 +29,13 @@ Parse `$ARGUMENTS` for:
 - `--batch-size N`: Override batch size (default 5), passed to auto-fix
 - Remaining arguments: either a single Jira key or a free-text idea / objective
 
-Resolve the work-item type. Forward only `--type <t>` (when given), `--batch <path>` for the `--input` file (its mapping form's `type:` decides — rung 2), `--headless` (when given) and an explicit Jira key (when given) — never the free text, the batch size or the dry-run / announce flags:
+Resolve the work-item type. Forward only `--type <t>` and `--project <KEY>` (each when given), `--batch <path>` for the `--input` file (its mapping form's `type:` decides — rung 2; its optional `project:` names a family's member), `--headless` (when given) and an explicit Jira key (when given) — never the free text, the batch size or the dry-run / announce flags:
 
 ```bash
-python3 scripts/type_registry.py resolve [--type <t>] [--batch <input_file>] [--headless] [<key>]
+python3 scripts/type_registry.py resolve [--type <t>] [--project <KEY>] [--batch <input_file>] [--headless] [<key>]
 ```
 
-It prints `TYPE RESOLVED: <type> (<how>)`; a non-zero exit is an error — stop and report it. Then print the stage's launch block and keep it: every `{VAR}` in this skill is the value of that `VAR=` line:
+It prints `TYPE RESOLVED: <type> (<how>)`; a non-zero exit is an error — stop and report it (exit 3 is an ambiguous key, or a type family with several members and nothing that named one: pass `--type <member>`, or — for a family — `--project <KEY>` or a `project:` line in the batch file). Then print the stage's launch block and keep it: every `{VAR}` in this skill is the value of that `VAR=` line:
 
 ```bash
 python3 scripts/type_registry.py launch-vars <type> speedrun
@@ -96,7 +97,7 @@ When the user doesn't specify, use these defaults:
   priority: Major
 ```
 
-The file may also be a mapping with the keys `type` and `items` — `type: {TYPE}` for this run, the same list of entries under `items`. The validator takes the type from the file: `{TYPE_FLAG}` on the validator below must agree with `type:` (a mapping whose `type:` is another type is rejected there, `ERROR: batch: --type {TYPE} disagrees with ...`, exit 1) before any ID is allocated or any agent runs. A per-item `type` key is rejected in either form because a run is single-typed — split such a batch by type and run each part separately. The validator prints one line, `TYPE RESOLVED: {TYPE} (--type)`, on stderr; stdout stays the `ERROR:`/`WARNING:` protocol.
+The file may also be a mapping with the keys `type` and `items` — `type: {TYPE}` for this run, the same list of entries under `items`, and optionally `project: <KEY>`, the Jira project of the member when `type:` names a type family. The validator takes the type from the file: `{TYPE_FLAG}` on the validator below must agree with `type:` (a mapping whose `type:` is another type is rejected there, `ERROR: batch: --type {TYPE} disagrees with ...`, exit 1) before any ID is allocated or any agent runs. A per-item `type` key is rejected in either form because a run is single-typed — split such a batch by type and run each part separately. The validator prints one line, `TYPE RESOLVED: {TYPE} (--type)`, on stderr; stdout stays the `ERROR:`/`WARNING:` protocol.
 
 Validate the batch file before spending any agent budget on it. Use `--strict` so unknown fields and duplicate prompts (typically typos or copy-paste mistakes) block the run too, not just hard errors:
 

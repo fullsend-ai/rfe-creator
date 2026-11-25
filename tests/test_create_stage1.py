@@ -4,10 +4,12 @@ every installed type's classification block, read through ``type_registry.py cla
 
 Pinned here: the digest command (every create-stage type with a block, in registry order; a
 drop-in joins it as soon as it is registered; a type without the block or the stage is left
-out), the three paths in the create body (notice, question, never headless), and what must not
-move: the headless sentence of the create body, the alias's forwarding paragraph and the
-speedrun's headless create launches — the production prompt strings the Epic's done-when
-keeps byte-stable."""
+out), the three paths in the create body (notice, question, never headless), the member hook
+of AISDLC-853 (a ``TYPE AMBIGUOUS`` line after ``--type <family>`` feeds the same step, read
+through the digest's member rows; every Step 0 forwards ``--project``, the dispatcher its
+``--jql``), and what must not move: the headless sentence of the create body, the alias's
+forwarding paragraph and the speedrun's headless create launches — the production prompt
+strings the Epic's done-when keeps byte-stable."""
 
 import json
 import os
@@ -24,6 +26,8 @@ TYPES_ROOT = REPO_ROOT / "types"
 CREATE_BODY = REPO_ROOT / ".claude" / "skills" / "rfe-create" / "SKILL.md"
 ALIAS_BODY = REPO_ROOT / ".claude" / "skills" / "rfe.create" / "SKILL.md"
 SPEEDRUN_BODY = REPO_ROOT / ".claude" / "skills" / "rfe-speedrun" / "SKILL.md"
+AUTOFIX_BODY = REPO_ROOT / ".claude" / "skills" / "rfe-auto-fix" / "SKILL.md"
+GENERIC_SKILLS = ("create", "review", "split", "submit", "speedrun", "auto-fix")
 
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 import type_registry  # noqa: E402
@@ -263,10 +267,19 @@ class TestCreateBodyStageOne:
         "If `--headless` is present, Step 2 still reads the guidance but asks nothing: proceed "
         "from that read straight to Step 3 using the provided input."
     )
+    # AISDLC-853: the line's second shape is the member hook — a `--type <family>` nothing
+    # decided — answered by the classification step, never by `list`; the review on #318
+    # (fullsend edge-case) added the other interactive cause, a `--project` two types are
+    # bound to (the binding overrides), so the remedy names a candidate, not only a member.
     RESOLVE_SENTENCE = (
-        "It prints `TYPE RESOLVED: <type> (<how>)`. Interactive and unresolved, it asks you to "
-        "pick a type — offer the registered types (`python3 scripts/type_registry.py list`) to "
-        "the user with AskUserQuestion and re-run with `--type`."
+        "It prints `TYPE RESOLVED: <type> (<how>)`, or `TYPE AMBIGUOUS: <a>, <b> - pass --type` "
+        "and exits 3 when more than one type is still possible — a type family named by "
+        "`--type` whose member nothing decided, or a `--project` two types are bound to. "
+        "Interactive, the types on that line are the candidates: the classification step below "
+        "decides among them from the idea, or asks once the same way when there is no idea — "
+        "never offer `python3 scripts/type_registry.py list`. Headless, exit 3 is an error: stop "
+        "and report the line, and that `--type <candidate>`, or a family's name with "
+        "`--project <KEY>`, decides it. Any other non-zero exit is an error: stop and report it."
     )
     LAUNCH_SENTENCE = (
         "Then print the stage's launch block and keep it: every `{VAR}` in this skill is the "
@@ -310,13 +323,202 @@ class TestCreateBodyStageOne:
         assert "if its first line starts with `HEADLESS`" in paragraph
         # clear match: the notice, and the switch when the match is not the resolved type
         assert "print `Type: <t> — pass --type to override`" in paragraph
-        assert "re-run `python3 scripts/type_registry.py resolve --type <t>`" in paragraph
+        assert (
+            "re-run `python3 scripts/type_registry.py resolve --type <t> [--project <KEY>] "
+            "[--parent <KEY>]`" in paragraph
+        )
         # ambiguous: one question, one option per type, built from the descriptors
         assert "ask once with AskUserQuestion, one option per listed type" in paragraph
         assert "label: its entity; description: its summary and one of its examples" in paragraph
         # never headless; --type skips it
         assert "An explicit `--type` skips this step" in paragraph
         assert "a headless run never asks and the resolved type stands" in paragraph
+
+    def test_the_member_hook_of_a_type_family(self):
+        """AISDLC-853: a `--type <family>` nothing decided ends `resolve` on the
+        `TYPE AMBIGUOUS` line (exit 3); the same classification step answers it from the
+        digest's member rows — only the line's candidates count, a `Family:` row is read by
+        its own signals and examples, the question's label is the row's `Label:` line, and
+        with no idea at all the question is asked straight away. The resolution sentence
+        never sends the user to `list` and names both headless remedies."""
+        body = CREATE_BODY.read_text()
+        paragraph = next(line for line in body.splitlines() if line.startswith(self.STAGE))
+        assert (
+            "or the line is `TYPE AMBIGUOUS`, whatever produced it (a `--type` that named a "
+            "type family, or a `--project` two types are bound to)" in paragraph
+        )
+        assert "only the candidates on that line count" in paragraph
+        assert "no idea at all" in paragraph and "straight to the one question" in paragraph
+        assert "a row with a `Family:` line" in paragraph
+        assert "the `Label:` line is the label" in paragraph
+        assert "in the digest's order" in paragraph
+        assert "unless it named a type family the `TYPE AMBIGUOUS` line answered" in paragraph
+        assert "never offer `python3 scripts/type_registry.py list`" in self.RESOLVE_SENTENCE
+        assert "`--type <candidate>`, or a family's name with `--project <KEY>`" in body
+        # the parent reaches resolve as a member signal; the Step 4 write is unchanged
+        assert "`--parent <KEY>` and `--headless` (each when given" in body
+        assert body.count("parent_key=<parent_key>") == 1
+
+    def test_the_re_runs_carry_the_parent_and_project(self):
+        """Review on #318 (Qodo 1): the forwarded `--parent` is a member signal, and a parent
+        no type claims is skipped — `resolve --parent RHOAIENG-1` is the legacy default (rfe
+        has no parent_key) — so when classification switches or picks the type, both re-runs
+        carry the `--parent` and `--project` the invocation supplied: the chosen type's
+        patterns judge the parent at Step 0 (exit 1), not after generation."""
+        paragraph = next(
+            line for line in CREATE_BODY.read_text().splitlines() if line.startswith(self.STAGE)
+        )
+        for rerun in (
+            "re-run `python3 scripts/type_registry.py resolve --type <t> [--project <KEY>] "
+            "[--parent <KEY>]` so the rest of the run uses it",
+            "re-run `resolve --type <chosen> [--project <KEY>] [--parent <KEY>]`",
+        ):
+            assert rerun in paragraph, rerun
+        assert (
+            "Both re-runs carry the `--project` and `--parent` the invocation supplied, as "
+            "Step 0 did, so a parent the chosen type's patterns refuse is an error here"
+            in paragraph
+        )
+        assert "resolve --type <t>`" not in paragraph
+        assert "resolve --type <chosen>`" not in paragraph
+        skipped = _cli("resolve", "--parent", "RHOAIENG-1")
+        assert (skipped.returncode, skipped.stdout) == (0, "TYPE RESOLVED: rfe (legacy default)\n")
+        checked = _cli("resolve", "--type", "initiative-rhaistrat", "--parent", "RHOAIENG-1")
+        assert checked.returncode == 1, (checked.stdout, checked.stderr)
+        assert "matches no parent-key pattern of initiative-rhaistrat" in checked.stderr
+        assert "TYPE RESOLVED" not in checked.stdout
+
+    def test_the_ambiguity_branch_covers_the_line_whatever_its_cause(self):
+        """Review on #318 (fullsend edge-case): with `--project` forwarded, `resolve` can end
+        on the interactive `TYPE AMBIGUOUS` line with no `--type` at all — two standalone
+        types bound to one project through the binding overrides — so the classification
+        step answers that line whatever produced it, only its candidates counting; the
+        re-run with the carried `--project` is consistent for either candidate."""
+        body = CREATE_BODY.read_text()
+        paragraph = next(line for line in body.splitlines() if line.startswith(self.STAGE))
+        assert (
+            "or the line is `TYPE AMBIGUOUS`, whatever produced it (a `--type` that named a "
+            "type family, or a `--project` two types are bound to), in which case only the "
+            "candidates on that line count" in paragraph
+        )
+        assert "`TYPE AMBIGUOUS` after a `--type`" not in paragraph
+        assert "after that `TYPE AMBIGUOUS` line" not in paragraph
+        assert "(or, after a `TYPE AMBIGUOUS` line, nothing at all)" in paragraph
+        # the candidates line names the member (`initiative-rhaistrat`) while the digest
+        # renders a family's sole member under the family's name (`## initiative`)
+        assert "(the digest lists a family's sole member under the family's name;" in paragraph
+        # the resolution sentence above it names the same cause and a remedy for either
+        assert "whose member nothing decided, or a `--project` two types are bound to." in body
+        assert "whose member nothing decided. Interactive" not in body
+        overrides = {
+            "RFE_CREATOR_BINDING_RFE_PROJECT": "ACME",
+            "RFE_CREATOR_BINDING_INITIATIVE_RHAISTRAT_PROJECT": "ACME",
+        }
+
+        def resolve(*args):
+            return subprocess.run(
+                [sys.executable, SCRIPT, "resolve", *args],
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                env=_env(**overrides),
+            )
+
+        ambiguous = resolve("--project", "ACME")
+        assert (ambiguous.returncode, ambiguous.stdout) == (
+            3,
+            "TYPE AMBIGUOUS: rfe, initiative-rhaistrat - pass --type\n",
+        )
+        for chosen in ("rfe", "initiative-rhaistrat"):
+            rerun = resolve("--type", chosen, "--project", "ACME")
+            assert rerun.returncode == 0, (chosen, rerun.stderr)
+            assert rerun.stdout.startswith(f"TYPE RESOLVED: {chosen} (--type; binding override")
+
+    def test_every_step_zero_forwards_project(self):
+        """AISDLC-853: every generic Step 0 parses `--project <KEY>` and forwards it to
+        `resolve`; the create body also forwards `--parent <KEY>`; the dispatcher forwards the
+        JQL verbatim as `--jql "<query>"` (it used to say never) so a positive `project`
+        clause can pick the member of a type family."""
+        for stage in GENERIC_SKILLS:
+            body = (REPO_ROOT / ".claude" / "skills" / f"rfe-{stage}" / "SKILL.md").read_text()
+            commands = [
+                ln
+                for ln in body.splitlines()
+                if ln.startswith("python3 scripts/type_registry.py resolve ")
+            ]
+            assert len(commands) == 1, (stage, commands)
+            assert "[--type <t>] [--project <KEY>]" in commands[0], (stage, commands[0])
+            assert "`--project <KEY>`" in body, stage
+            assert ("[--parent <KEY>]" in commands[0]) == (stage == "create"), stage
+            assert ('[--jql "<query>"]' in commands[0]) == (stage == "auto-fix"), stage
+        autofix = AUTOFIX_BODY.read_text()
+        assert "never `--jql`" not in autofix
+        # Review on #318 (Qodo 3, the fullsend hardening note): the quoting rule decides by
+        # the query's content, not by one quote kind — double-quoted when it holds no `"`, `$`,
+        # backtick or backslash (both production task lines: a single quote inside is literal,
+        # the argument is copied as the caller wrote it), otherwise single-quoted with each `'`
+        # inside written as `'\''`, so a query holding both quote kinds, `$(...)` or a
+        # backtick still travels as one literal argument.
+        assert (
+            'the query itself as `--jql "<query>"` (as ONE shell argument, the text unchanged: '
+            'double-quoted when the query holds no `"`, `$`, backtick or backslash — a single '
+            "quote inside it is then literal, so a caller's double-quoted argument is copied as "
+            "written — otherwise single-quoted, `--jql '<query>'`, with each single quote inside "
+            "it written as `'\\''`, which also keeps `$(...)` and backticks literal" in autofix
+        )
+        assert "when the query itself contains double quotes" not in autofix
+        # the parse line, the rule, the command block, the JQL-mode sentence
+        assert autofix.count('--jql "<query>"') == 4
+        assert autofix.count("--jql '<query>'") == 1  # the rule's other branch
+        # The fetch call's text is a legacy-corpus invocation (tests/test_typed_prompts.py
+        # keeps the quote characters when it folds `<query>`), so it stays as written — it is
+        # the default form — and the rule reads onto it, with a reminder where it is run.
+        assert 'python3 scripts/snapshot_fetch.py fetch "<query>" {TYPE_FLAG}' in autofix
+        assert (
+            'the `snapshot_fetch.py fetch "<query>"` call below takes the query in the same form'
+            in autofix
+        )
+        assert "Quote `<query>` as in Step 0. Print `[AUTOFIX] JQL: <jql>`" in autofix
+        assert "picks the member of a type family (`jql project`)" in autofix
+        # exit 3 is explained for both shapes: the production sandbox runs with no headless
+        # marker, so the stdout line is what it sees; either way the skill stops
+        assert "`TYPE AMBIGUOUS: <a>, <b> - pass --type` on stdout" in autofix
+        assert "on stderr under `--headless` or a CI marker" in autofix
+
+    def test_both_jql_forms_reach_resolve_as_one_argument(self):
+        """Review on #318 (Qodo 3): the two forms the auto-fix rule prescribes, run through a
+        shell exactly as the skill writes them. The production task lines' shape — double
+        quotes around a query holding single quotes and nothing a shell expands — is copied as
+        written; a query holding both quote kinds takes the single-quoted form with `'\\''`.
+        Either way `resolve` reads one argument and picks the member from its project clause
+        (`jql project`); the forgotten escape (`'...'Feature Request''`) is what the rule
+        prevents: it splits the argument and `resolve` swallows the rest as ids."""
+
+        def through_shell(command):
+            return subprocess.run(
+                ["bash", "-c", f"python3 {SCRIPT} resolve " + command],
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                env=_env(),
+            )
+
+        production = through_shell("--jql \"project = RHAIRFE AND issuetype = 'Feature Request'\"")
+        assert (production.returncode, production.stdout) == (
+            0,
+            "TYPE RESOLVED: rfe (jql project)\n",
+        ), production.stderr
+        both_kinds = through_shell("--jql 'project = RHAIRFE AND summary ~ \"it'\\''s\"'")
+        assert (both_kinds.returncode, both_kinds.stdout) == (
+            0,
+            "TYPE RESOLVED: rfe (jql project)\n",
+        ), both_kinds.stderr
+        split = through_shell(
+            "--type rfe --jql 'project = RHAIRFE AND issuetype = 'Feature Request''"
+        )
+        assert (split.returncode, split.stdout) == (0, "TYPE RESOLVED: rfe (--type)\n")
 
     def test_the_headless_and_resolution_sentences_did_not_move(self):
         body = CREATE_BODY.read_text()

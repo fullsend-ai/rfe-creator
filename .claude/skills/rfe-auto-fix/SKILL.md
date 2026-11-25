@@ -20,20 +20,20 @@ bash "${CLAUDE_SKILL_DIR}/../../../scripts/bootstrap.sh" --layout
 If `${CLAUDE_SKILL_DIR}` reaches you unsubstituted (no substitution, or a Read of this file), use this skill file's directory instead. It links the plugin's `scripts/` and `types/` in; on any nonzero exit stop and show its message (exit 3 means the directory already carries its own). Every command below then runs exactly as written.
 
 Parse `$ARGUMENTS` for:
-- `--type <t>` (an explicit type — always wins)
+- `--type <t>` (an explicit type — always wins), `--project <KEY>` (the member of a type family, by its Jira project)
 - `--jql "<query>"`, `--limit N`, `--batch-size N` (default 50), `--data-dir "<path>"`
 - `--headless`, `--announce-complete`, `--reprocess`, `--random N`
 - Remaining arguments: explicit item IDs
 
 ### 0. Resolve the type
 
-Forward to `resolve` only `--type <t>` (when given), `--headless` (when given) and the explicit IDs — never `--jql`, `--data-dir`, `--limit`, `--batch-size`, `--announce-complete`, `--reprocess` or `--random`:
+Forward to `resolve` `--type <t>`, `--project <KEY>` and `--headless` (each when given), the explicit IDs and, in JQL mode, the query itself as `--jql "<query>"` (as ONE shell argument, the text unchanged: double-quoted when the query holds no `"`, `$`, backtick or backslash — a single quote inside it is then literal, so a caller's double-quoted argument is copied as written — otherwise single-quoted, `--jql '<query>'`, with each single quote inside it written as `'\''`, which also keeps `$(...)` and backticks literal; the `snapshot_fetch.py fetch "<query>"` call below takes the query in the same form) — never `--data-dir`, `--limit`, `--batch-size`, `--announce-complete`, `--reprocess` or `--random`:
 
 ```bash
-python3 scripts/type_registry.py resolve [--type <t>] [--headless] <IDs>
+python3 scripts/type_registry.py resolve [--type <t>] [--project <KEY>] [--headless] [--jql "<query>"] <IDs>
 ```
 
-In JQL mode there are no ids to forward: run `python3 scripts/type_registry.py resolve [--type <t>] [--headless]`, passing each of those two flags only when the invocation supplied it and nothing else (a bare `resolve` when it supplied neither). It prints one line, `TYPE RESOLVED: <type> (<how>)` — with no `--type` and no ids a headless run resolves to the legacy default (`rfe`); the JQL's project is cross-checked against that type's binding by `snapshot_fetch.py` below. A non-zero exit is an error: stop. Then print the stage's launch block; every `{VAR}` in this skill is the value of that `VAR=` line:
+In JQL mode there are no ids to forward: run `python3 scripts/type_registry.py resolve [--type <t>] [--project <KEY>] [--headless] --jql "<query>"`, passing each flag only when the invocation supplied it. It prints one line, `TYPE RESOLVED: <type> (<how>)` — a positive `project =` / `project in (...)` clause of the query picks the member of a type family (`jql project`), and `snapshot_fetch.py` below still cross-checks the query against the resolved type's binding; with no `--type`, no project clause and no ids the run resolves to the legacy default (`rfe`). Exit 3 is an ambiguous type — ids from a project no type is bound to, or `--type` named a type family with several members and nothing named one — the line is `TYPE AMBIGUOUS: <a>, <b> - pass --type` on stdout, or `ERROR: ambiguous type for ...` on stderr under `--headless` or a CI marker: this skill never asks, so stop and report it — pass `--type <member>` (for a family, keeping its name and adding `--project <KEY>` decides it too). Any other non-zero exit is an error: stop. Then print the stage's launch block; every `{VAR}` in this skill is the value of that `VAR=` line:
 
 ```bash
 python3 scripts/type_registry.py launch-vars <type> auto-fix
@@ -57,7 +57,7 @@ The `tmp/pipeline-*` files in this skill take no type prefix (`STATE_PREFIX` is 
 python3 scripts/snapshot_fetch.py fetch "<query>" {TYPE_FLAG} --ids-file tmp/pipeline-all-ids.txt --changed-file tmp/pipeline-changed-ids.txt [--limit N] [--data-dir "<path>"] [--reprocess] [--random N]
 ```
 
-Print `[AUTOFIX] JQL: <jql>` from stderr output. Pass `--reprocess` if set.
+Quote `<query>` as in Step 0. Print `[AUTOFIX] JQL: <jql>` from stderr output. Pass `--reprocess` if set.
 
 **Reprocess-only mode** (`--reprocess` without `--jql`):
 

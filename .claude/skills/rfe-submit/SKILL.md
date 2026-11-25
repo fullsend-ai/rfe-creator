@@ -23,13 +23,13 @@ bash "${CLAUDE_SKILL_DIR}/../../../scripts/bootstrap.sh" --layout
 
 If `${CLAUDE_SKILL_DIR}` reaches you unsubstituted (no substitution, or a Read of this file), use this skill file's directory instead. It links the plugin's `scripts/` and `types/` in; on any nonzero exit stop and show its message (exit 3 means the directory already carries its own). Every command below then runs exactly as written.
 
-Parse `$ARGUMENTS` for `--type <t>`, `--dry-run`, `--headless` and any explicit IDs. Resolve the work-item type — forward only `--type <t>` (when given), `--headless` (when given) and the explicit IDs:
+Parse `$ARGUMENTS` for `--type <t>`, `--project <KEY>`, `--dry-run`, `--headless` and any explicit IDs. Resolve the work-item type — forward only `--type <t>` (when given), `--project <KEY>` (when given), `--headless` (when given) and the explicit IDs:
 
 ```bash
-python3 scripts/type_registry.py resolve [--type <t>] [--headless] <IDs>
+python3 scripts/type_registry.py resolve [--type <t>] [--project <KEY>] [--headless] <IDs>
 ```
 
-It prints `TYPE RESOLVED: <type> (<how>)`. Then print the stage's launch block; every `{VAR}` below is the value of that `VAR=` line:
+It prints `TYPE RESOLVED: <type> (<how>)`; a non-zero exit (unknown type, ambiguous ids, or exit 3 after a `--type` that named a type family with several members and nothing that named one — name the member with `--type`, or add `--project <KEY>`) is an error — stop and report it. Then print the stage's launch block; every `{VAR}` below is the value of that `VAR=` line:
 
 ```bash
 python3 scripts/type_registry.py launch-vars <type> submit
