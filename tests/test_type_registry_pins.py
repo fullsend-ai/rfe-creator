@@ -3278,14 +3278,17 @@ class TestEvalConfigs:
         assert ctx.ev["thresholds"]["revision_coverage"] == {"min_pass_rate": 0.92}
 
     def test_shared_two_type_judges(self, ctx):
-        # rows: 211 — revision_flag_consistency / revision_coverage carry two-type literal unions
+        # rows: 211 — revision_flag_consistency / revision_coverage carry the two-type literal
+        # union of reporting.item_key; the review's id field is the type's own since AISDLC-854
+        # (rendered from ${type.identity.id_field}; the two-type union of id fields is gone)
         js = judges(ctx)
         item_keys = "(" + ", ".join(f'"{_ctx(t).rep["item_key"]}"' for t in EVAL_TYPES) + ")"
-        id_fields = " or ".join(f'fm.get("{_ctx(t).id_field}")' for t in EVAL_TYPES)
+        other_id_fields = [_ctx(t).id_field for t in EVAL_TYPES if t != ctx.t]
         for name in ("revision_flag_consistency", "revision_coverage"):
             check = js[name]["check"]
             assert f"for key in {item_keys}:" in check, name
-            assert f"item_id = {id_fields}" in check, name
+            assert f'item_id = fm.get("{ctx.id_field}")' in check, name
+            assert not [f for f in other_id_fields if f in check], name
             assert '"-snapshot-" in os.path.basename(k)' in check, name
         for t in EVAL_TYPES:
             assert "-snapshot-" in _ctx(t).snap["prefix"]
