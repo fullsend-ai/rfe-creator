@@ -912,6 +912,9 @@ class TestHermeticity:
         env = _clean_env(**_seam(allowlisted=False), PYTHONDONTWRITEBYTECODE="1")
         for marker in type_registry.HEADLESS_MARKER_VARS:
             assert marker not in env
+        # The nested run reads the summary line byte for byte: a developer's PYTEST_ADDOPTS
+        # (--color=yes, -x, a plugin) must not reach it.
+        env.pop("PYTEST_ADDOPTS", None)
         result = subprocess.run(
             [
                 sys.executable,
@@ -919,6 +922,7 @@ class TestHermeticity:
                 "pytest",
                 "--collect-only",
                 "-q",
+                "--color=no",
                 "-p",
                 "no:cacheprovider",
                 "tests/test_verify_phase.py",
