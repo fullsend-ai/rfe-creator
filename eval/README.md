@@ -343,7 +343,10 @@ inherit the environment, and the pre-script would skip the host-side bootstrap.
 - **One sandbox per invocation.** The eval runs in batch mode, so the whole batch is one
   sandbox: about one minute of overhead once the images are cached.
 
-The initiative eval (`eval-initiative.yaml`) has no fullsend profile yet.
+The initiative eval (`eval-initiative.yaml`) has no fullsend profile yet. The test-fixture
+member of the Initiative family (`tests/fixtures/type-members/initiative-hooli`) has no eval at
+all: a second member's dataset, config and baseline are deferred until a real second project is
+chosen (the enable checklist in `types/README.md`).
 
 ### Baseline comparison, 2026-10-29
 

@@ -938,3 +938,41 @@ class TestHermeticity:
         assert result.returncode == 0, result.stdout + result.stderr
         assert "ERROR" not in result.stdout and "errors during collection" not in result.stdout
         assert re.fullmatch(r"\d+ tests collected in [\d.]+s", result.stdout.splitlines()[-1])
+
+
+# ── docs: the developer pages name the fixture, the user pages do not ──────────────
+
+
+class TestDocs:
+    """PR-4's acceptance: the provider guide walks through the fixture as the worked member of
+    the shipped family, the reference names the fixture root and the enable checklist, and the
+    two user-facing pages (whose own tests iterate the shipped registry) stay silent about it."""
+
+    PROVIDER_GUIDE = REPO_ROOT / "docs" / "type-provider-guide.md"
+    REFERENCE = REPO_ROOT / "types" / "README.md"
+    USER_PAGES = ("README.md", "docs/working-with-work-item-types.md")
+    GUIDE_TOKENS = (
+        "tests/fixtures/type-members/initiative-hooli",
+        "--extra-roots tests/fixtures/type-members",
+        "--type initiative-hooli",
+        "HOOLI",
+    )
+    FIXTURE_TOKENS = ("initiative-hooli", "HOOLI", "type-members", "RFE_CREATOR_EXTRA_TYPES")
+
+    def test_the_provider_guide_walks_through_the_fixture_member(self):
+        text = self.PROVIDER_GUIDE.read_text(encoding="utf-8")
+        for token in self.GUIDE_TOKENS:
+            assert token in text, token
+        assert "declare `display.entity` on each member" not in text
+
+    def test_the_reference_names_the_fixture_root_and_the_enable_checklist(self):
+        text = self.REFERENCE.read_text(encoding="utf-8")
+        assert f"{MEMBERS_REL}/" in text
+        assert "enable checklist" in text
+        assert "AISDLC-852 names it" not in text
+
+    @pytest.mark.parametrize("rel", USER_PAGES)
+    def test_the_user_pages_stay_silent(self, rel):
+        text = (REPO_ROOT / rel).read_text(encoding="utf-8")
+        for token in self.FIXTURE_TOKENS:
+            assert token not in text, (rel, token)

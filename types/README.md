@@ -236,41 +236,103 @@ under another is a project misfile, not a type misfile, and is not a reclassify.
 compares a member's own signals, with the family a participant under its own name, so siblings
 are not reported for what they inherit.
 
-**Second-member checklist.** Three decisions in this registry assume the Initiative family has one
-member; a second member revisits them rather than inheriting them. The eval identity is the
-family's (`generate_eval_config.eval_stem`): two members would share the run name
+**Second member: the test fixture, and the enable checklist.** The Initiative family has a second
+member in the test tree, `tests/fixtures/type-members/initiative-hooli/` (AISDLC-854): a member
+bound to the fictional HOOLI project, loaded beside `types/` by the tests only — never by the
+default registry, the type lints or any shipped command — owning what a member owns (project and key
+prefix, local id and id field, directories, the four prefixes and `results_subdir`, same-project
+Outcomes with the write prefix in `parent_key_patterns`, `display.entity`, an `eval.config`
+stand-in) and proving on the real family the member ladder, the create step's member question and
+the emulator paths (a submit whose approve transition the workflow does not offer, a split, a
+fetch with a parent). Three decisions in this registry still assume the family has one SHIPPED
+member; a real second project takes them when it is enabled rather than inheriting them. The eval
+identity is the family's (`generate_eval_config.eval_stem`): two members would share the run name
 `<family>-speedrun`, the judge key `<family>_quality` and the MLflow experiment, so the generator
 needs a per-member identity decision first. The classification digest renders the sole member under
 the family's name: with two members each renders under its own with a `Label:` (declare
 `display.entity` on the member — `Red Hat AI Initiative` for the shipped one — or the label is
-`<entity> (<project>)`), and the create step's `Type:` line and the review's misfiled-item
+`<entity> (<project>)`; with the fixture loaded the shipped member's label is the derived
+`Initiative (RHAISTRAT)`), and the create step's `Type:` line and the review's misfiled-item
 sentence name a member. The four prefixes the shipped member inherits
 — `pipeline.{poll_prefix,state_prefix}` and `snapshot.{prefix,report_prefix}`, all `initiative-` —
-must be owned by a second member (the cross-type rules keep them unique), while the shipped member
-keeps its inherited `initiative-run-` / `initiative-snapshot-` values: changing them orphans every
-run report and snapshot already under `initiative-rhaistrat/` in the results repository. Two more
-facts to know: the interactive poll files are already per member, `tmp/<member>-poll-*`
-(`POLL_FILE_PREFIX` is derived from the member's name, never inherited, so the sole member uses
-`tmp/initiative-rhaistrat-poll-*` today), and with a second member `--type <family>` resolves
-through the member ladder ("Resolution" below): a headless caller passes a deciding signal —
-`--type <member>`, `--project <KEY>`, or a `--jql` with a positive `project` clause — or stops
-with exit 3. `resolve` never reads `conventions.query_default`: a bare family name with no
-`--jql` and no other signal is exit 3 whatever project the descriptor's query names. The
-production autofixer's Initiative job composes its `--jql` from the type's
+must be owned by a second member (the cross-type rules keep them unique; the fixture's are
+`initiative-hooli-`, `initiative-hooli-snapshot-` and `initiative-hooli-run-`), while the shipped
+member keeps its inherited `initiative-run-` / `initiative-snapshot-` values: changing them
+orphans every run report and snapshot already under `initiative-rhaistrat/` in the results
+repository. Two more facts to know: the interactive poll files are already per member,
+`tmp/<member>-poll-*` (`POLL_FILE_PREFIX` is derived from the member's name, never inherited, so
+the sole member uses `tmp/initiative-rhaistrat-poll-*` today), and with a second member
+`--type <family>` resolves through the member ladder ("Resolution" below): a headless caller
+passes a deciding signal — `--type <member>`, `--project <KEY>`, or a `--jql` with a positive
+`project` clause — or stops with exit 3. `resolve` never reads `conventions.query_default`: a bare
+family name with no `--jql` and no other signal is exit 3 whatever project the descriptor's query
+names. The production autofixer's Initiative job composes its `--jql` from the type's
 `conventions.query_default` (which names the project; the job reads it through
 `type_registry.py get <type>`, which refuses a family name once it has two members) and its RFE
 job's `--jql` is a literal naming RHAIRFE — `resolve` would take the member from either clause,
 but the Initiative job also hands its `--type` to `bootstrap.sh --type`, to that `get` and to the
-scripts' argparse `--type` (`submit.py`), which need the member (AISDLC-852 names it). The
-eval dataset's `expected_classification` annotations and the `classification_signal` judge match
-the MEMBER name once two members render: the review's misfiled sentence becomes `consider
-/rfe-create --type <member>` and the judge's `--type {expected_classification}(?![a-z0-9_-])`
-regex (`eval/config/skeleton.yaml`), built from `expected_classification: initiative` today,
-stops matching — re-annotate the cases (case-027 and any Initiative-expected case) in the same PR.
+scripts' argparse `--type` (`submit.py`), which take the member (`--type initiative-rhaistrat`
+since AISDLC-852).
+
+Enabling a real second project is `git mv tests/fixtures/type-members/initiative-hooli
+types/<member>` with the real key and, that day, the list below. The descriptor's shape, the
+emulator seed and the member's registry, ladder and emulator tests survive the move as a rename
+(the project key, the name, the four prefixes); the fixture's invisibility pins — the shipped
+`names()`, the silent README and user guide — do not, and are part of the registered price below.
+The list was measured once, on 0.5.1, by the designs that preceded the fixture decision, and is
+recorded here so it is never re-derived.
+
+- Mechanical: replace the `eval.config` stand-in by the member's own config name; add
+  `eval.dataset`; decide `eval.mlflow_experiment` — the per-member identity question above (the
+  recorded proposal: run name and judge key stay the family's, the MLflow experiment is per
+  member; `generate_eval_config.eval_stem` is where it lands); rename the HOOLI seed in
+  `tests/conftest.py`; delete the fixture root and re-point the `members` rows of
+  `tests/fixtures/type-families/create-cases.yaml` — or keep both, the fixture as the two-member
+  reference of the shipped family.
+- The registered price: 392 test failures common to any registered member, +31 when the project
+  is KONFLUX (the suite's canonical unbound key; 410 in the shipped-member design's own run) —
+  the `--type initiative` CLI inputs in some forty test files, the `OK:` / `registered types:` /
+  `names()` pins, the digest goldens (`TYPES: rfe, initiative`), `tests/data/schemas-golden.json`
+  regenerated, the typed-prompt allow-lists keyed per member, the AGENTS.md block and the README /
+  user-guide rows per registered name (`tests/test_readme_doc.py`, `tests/test_user_guide_doc.py`,
+  `tests/test_type_registry_pins.py`) — the README and the user guide gain the member HERE, when
+  it is enabled, not when it registers in the test tree; `display.entity: Red Hat AI Initiative`
+  on the shipped member (test-forced once a member whose name sorts before `initiative-rhaistrat`
+  registers, `tests/test_readme_doc.py`; the `{ENTITY}` ripple through the skill bodies,
+  `split_submit.py` and the generated config; the `an {ENTITY}` sites of the review prompts
+  reworded article-free); the no-ids forms of `/rfe-review`, `/rfe-submit` and `/rfe-split`,
+  which must hand `resolve` a deciding signal (each candidate's local task files as `--artifact`)
+  once bare `--type initiative` is `TYPE AMBIGUOUS`; AGENTS.md's note that the family's short
+  schema names (`initiative-task` / `initiative-review`) are accepted, no longer true; the
+  `.fullsend/` prompts' `--type initiative` sentence and the eval workflow's type input with its
+  `^[a-z][a-z0-9-]*$` probe; the autofixer already names the member.
+- The RFE review's misfiled-item sentence: prefer naming the FAMILY — the review agent prompt and
+  `types/rfe/prompts/review-rules.md` build `consider /rfe-create --type <its type>` from the
+  digest, and a row with a `Family:` line lets them name it — over re-annotating case-027: the
+  judges match `--type initiative` (the `--type {expected_classification}(?![a-z0-9_-])` regex
+  and the `--type {expected}` substring of `eval/config/skeleton.yaml`), the case's
+  `expected_classification: initiative` stays, and a posted comment never carries a member name.
+- The member's eval, deferred whole: a member `eval/` directory carrying BOTH `fragment.yaml` and
+  `pairwise-judge.md` (`generate_eval_config.eval_dir` is whole-directory; a member fragment
+  restates the family's with the project's own `entity_long`, `inputs.questions_context`,
+  `outputs.task_fields` and `threshold_notes`, and the pairwise copy is byte-identical until a
+  per-file fallback lands); the committed render of `generate_eval_config.py --type <member>`,
+  joining `GENERATED` in `tests/test_eval_profiles.py`; a dataset of at least 16 anonymised cases
+  with at least one sparse and four `revision-expected` weak drafts ("Adding a type" above;
+  AGENTS.md's dataset policy widened to every dataset under `eval/`, and a mechanical PII floor in
+  a test); the first baseline — `/eval-run --config <config> --model opus --run-id
+  <date>-<model>-<member>`, the suffix because the run directory `eval/runs/<family>-speedrun/` is
+  the family's and both members write to it — with its `threshold_notes` and `eval/README.md`
+  record; CI dispatch, whose two routes both stop at anything the registry's default root does not
+  list (the GitHub workflow's probe, the GitLab job's `type_registry.py get` without
+  `--extra-roots`) — moot for a member under `types/`, open for an out-of-tree one; a minor
+  release with a note on bare `--type initiative`.
 
 `tests/fixtures/type-families/` is the two-member reference family (`brief` with `brief-acme` and
-`brief-globex`): the family carries every typed file and the eval prose, the members only
-`type.yaml`, and its README lists the commands to run against it.
+`brief-globex`: the family carries every typed file and the eval prose, the members only
+`type.yaml`) and `tests/fixtures/type-members/` the second member of the shipped `initiative`
+family (`initiative-hooli`, `type.yaml` only, loaded beside `types/`); each root's README lists
+the commands to run against it.
 
 ## Classification block (§6)
 
