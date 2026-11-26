@@ -1,9 +1,10 @@
 # tests/fixtures/type-families/create-cases.yaml — the five create-stage cases of AISDLC-853 (the
 # story's Scope), one row per (case, root), driven by tests/test_create_stage_family.py.
 #
-# `root` is `brief` (this committed family, `--root tests/fixtures/type-families`) or
-# `two-initiative` (a tmp root the test builds: the shipped rfe / initiative / initiative-rhaistrat
-# plus a synthetic second member, initiative-globex — never committed under types/). `args` are
+# `root` is `brief` (this committed family, `--root tests/fixtures/type-families`) or `members`
+# (the shipped types/ beside the committed second Initiative member, initiative-hooli, in its own
+# fixture root: `--root types --extra-roots tests/fixtures/type-members`, cwd the checkout root —
+# the member loads only beside types/, where its family lives; AISDLC-854). `args` are
 # the `type_registry.py resolve` arguments; `env` adds headless markers; `resolve` is the exact
 # stdout / stderr / rc. `idea` is the free text the create body would read against the digest —
 # never forwarded to `resolve`; absent when the case does not depend on it.
@@ -19,12 +20,12 @@
 # `label` key, so PR-1 and PR-2 land in either order.
 cases:
   - name: clear-rhai
-    root: two-initiative
+    root: members
     args: ["--type", "initiative"]
     idea: "A Red Hat AI platform commitment for the RHOAI product: an objective with a measurable target over two quarters, spanning the serving and training components, that hangs from a RHAISTRAT Outcome in the Red Hat AI strategy project"
     resolve:
       rc: 3
-      stdout: "TYPE AMBIGUOUS: initiative-globex, initiative-rhaistrat - pass --type\n"
+      stdout: "TYPE AMBIGUOUS: initiative-hooli, initiative-rhaistrat - pass --type\n"
       stderr: ""
     member: initiative-rhaistrat
     asks: false
@@ -34,17 +35,17 @@ cases:
     requires: []
 
   - name: clear-second-member
-    root: two-initiative
+    root: members
     args: ["--type", "initiative"]
-    idea: "Give the Globex build farms a shared GPU scheduler so tenant teams stop over-provisioning, a multi-team effort over three quarters under a GLOBEXOUT Outcome"
+    idea: "Give the Hooli build farms a shared GPU scheduler so tenant teams stop over-provisioning, a multi-team effort over three quarters under a HOOLI Outcome"
     resolve:
       rc: 3
-      stdout: "TYPE AMBIGUOUS: initiative-globex, initiative-rhaistrat - pass --type\n"
+      stdout: "TYPE AMBIGUOUS: initiative-hooli, initiative-rhaistrat - pass --type\n"
       stderr: ""
-    member: initiative-globex
+    member: initiative-hooli
     asks: false
     hits:
-      give the globex build farms a shared gpu scheduler so tenant teams stop over-provisioning: initiative-globex
+      give the hooli build farms a shared gpu scheduler so tenant teams stop over-provisioning: initiative-hooli
     requires: []
 
   - name: clear-second-member
@@ -62,12 +63,12 @@ cases:
     requires: []
 
   - name: ambiguous-asks
-    root: two-initiative
+    root: members
     args: ["--type", "initiative"]
     idea: "An objective with a measurable target over a quarter or more, spanning several teams and components, with explicit scope boundaries"
     resolve:
       rc: 3
-      stdout: "TYPE AMBIGUOUS: initiative-globex, initiative-rhaistrat - pass --type\n"
+      stdout: "TYPE AMBIGUOUS: initiative-hooli, initiative-rhaistrat - pass --type\n"
       stderr: ""
     asks: true
     hits: {}
@@ -76,7 +77,7 @@ cases:
       - explicit scope boundaries
     requires: [digest-member-rows]
     options:
-      labels: ["Globex Initiative", "Initiative (RHAISTRAT)"]
+      labels: ["Hooli Initiative", "Initiative (RHAISTRAT)"]
 
   - name: ambiguous-asks
     root: brief
@@ -95,24 +96,24 @@ cases:
       labels: ["Brief (ACME)", "Globex Brief"]
 
   - name: parent-decides
-    root: two-initiative
-    args: ["--type", "initiative", "--parent", "GLOBEXOUT-7"]
-    resolve: {rc: 0, stdout: "TYPE RESOLVED: initiative-globex (parent key)\n", stderr: ""}
+    root: members
+    args: ["--type", "initiative", "--parent", "HOOLI-7"]
+    resolve: {rc: 0, stdout: "TYPE RESOLVED: initiative-hooli (parent key)\n", stderr: ""}
     requires: []
   - name: parent-decides
     variant: shipped-member
-    root: two-initiative
+    root: members
     args: ["--type", "initiative", "--parent", "RHAISTRAT-3"]
     resolve: {rc: 0, stdout: "TYPE RESOLVED: initiative-rhaistrat (parent key)\n", stderr: ""}
     requires: []
   - name: parent-decides
     variant: unclaimed
-    root: two-initiative
+    root: members
     args: ["--type", "initiative", "--parent", "KONFLUX-1"]
     resolve:
       rc: 1
       stdout: ""
-      stderr: "ERROR: --parent KONFLUX-1 matches no parent-key pattern of initiative-globex (^(GLOBEXOUT-\\d+|INITG-\\d+)$), initiative-rhaistrat (^(RHAISTRAT-\\d+|INIT-\\d+)$)\n"
+      stderr: "ERROR: --parent KONFLUX-1 matches no parent-key pattern of initiative-hooli (^(HOOLI-\\d+|INITH-\\d+)$), initiative-rhaistrat (^(RHAISTRAT-\\d+|INIT-\\d+)$)\n"
     requires: []
   - name: parent-decides
     root: brief
@@ -145,12 +146,12 @@ cases:
     requires: []
 
   - name: headless-exit-3
-    root: two-initiative
+    root: members
     args: ["--type", "initiative", "--headless"]
     resolve:
       rc: 3
       stdout: ""
-      stderr: "ERROR: ambiguous type for --type initiative: candidates initiative-globex, initiative-rhaistrat — pass --type <member> or --project <KEY>\n"
+      stderr: "ERROR: ambiguous type for --type initiative: candidates initiative-hooli, initiative-rhaistrat — pass --type <member> or --project <KEY>\n"
     requires: []
   - name: headless-exit-3
     root: brief
