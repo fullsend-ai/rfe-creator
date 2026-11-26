@@ -446,7 +446,11 @@ class TestShippedConfigs:
             config = yaml.safe_load((REPO_ROOT / REG.get(t).get("eval.config")).read_text())
             assert config["thresholds"] == REG.get(t).get("eval.thresholds")
 
-    def test_shared_judges_are_byte_identical_across_types(self):
+    def test_shared_judges_are_identical_across_types_modulo_the_id_field(self):
+        """revision_flag_consistency / revision_coverage are shared checks with one typed
+        line: the review's id is read through ``${type.identity.id_field}`` (AISDLC-854),
+        so the two renders are byte-identical once that line is masked, and each names its
+        own type's field only — never another type's, as the pre-854 two-type union did."""
         configs = {
             t: {
                 j["name"]: j
@@ -456,10 +460,19 @@ class TestShippedConfigs:
             }
             for t in TYPES
         }
+        id_fields = {t: REG.get(t).id_field for t in TYPES}
         for name in ("revision_flag_consistency", "revision_coverage"):
-            rfe = {k: v for k, v in configs["rfe"][name].items() if k != "arguments"}
-            init = {k: v for k, v in configs[MEMBER][name].items() if k != "arguments"}
-            assert rfe == init, name
+            masked = {}
+            for t in TYPES:
+                judge = {k: v for k, v in configs[t][name].items() if k != "arguments"}
+                check = judge["check"]
+                own = f'item_id = fm.get("{id_fields[t]}")'
+                assert check.count(own) == 1 and check.count("item_id = fm.get(") == 1, (t, name)
+                for other in set(id_fields.values()) - {id_fields[t]}:
+                    assert other not in check, (t, name, other)
+                judge["check"] = check.replace(own, 'item_id = fm.get("<id_field>")')
+                masked[t] = judge
+            assert masked["rfe"] == masked[MEMBER], name
         # The one typed key of a shared judge: the dataset the run's cases come
         # from, where revision_coverage reads the sibling cases' tags.
         for t in TYPES:

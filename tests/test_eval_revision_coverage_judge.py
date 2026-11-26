@@ -2,8 +2,10 @@
 """Tests for the ``revision_coverage`` inline-check judge.
 
 The judge body lives inline in both ``eval.yaml`` (rfe-speedrun) and
-``eval-initiative.yaml`` (rfe-speedrun --type initiative) and the two copies must remain
-byte-identical; ``test_both_configs_identical`` fails the build if they drift.
+``eval-initiative.yaml`` (rfe-speedrun --type initiative). The two copies differ in one line
+only, the review's id field (``item_id = fm.get("rfe_id")`` / ``fm.get("initiative_id")``,
+rendered from the type's ``identity.id_field``, AISDLC-854);
+``test_both_configs_identical_modulo_the_id_field`` fails the build if they drift elsewhere.
 The behavioural tests exec the body exactly the way the harness does
 (``def _check(outputs, arguments): <indented body>``, see
 ``score._make_inline_check``) against crafted ``outputs`` records. The record
@@ -29,6 +31,8 @@ RFE_TASKS = "artifacts/rfe-tasks"
 RFE_ORIGINALS = "artifacts/rfe-originals"
 INIT_REVIEWS = "artifacts/initiative-reviews"
 REPORT = "artifacts/auto-fix-runs/20260101-000000.yaml"
+# The id field each config's body reads: identity.id_field of the type it was rendered for.
+ID_FIELDS = {EVAL_YAML: "rfe_id", EVAL_INITIATIVE_YAML: "initiative_id"}
 
 TAGGED = {"tags": ["weak-draft", "revision-expected", "missing-why"], "difficulty": "hard"}
 UNTAGGED = {"tags": [], "difficulty": None}
@@ -76,16 +80,21 @@ def _entry(item_id, before=8, after=8, cycles=0, auto_revised=False):
     }
 
 
-def _run(files, annotations=None, *, case_dir=None, dataset_dir=None):
+def _run(files, annotations=None, *, case_dir=None, dataset_dir=None, config_path=EVAL_YAML):
     """Score one case. ``case_dir`` is the case's directory in the run (the harness
-    record's ``case_dir``); ``dataset_dir`` the judge's ``arguments.dataset_dir``."""
+    record's ``case_dir``); ``dataset_dir`` the judge's ``arguments.dataset_dir``;
+    ``config_path`` the config whose body runs (its type's id field keys the reviews)."""
     record = {"files": files}
     if annotations is not None:
         record["annotations"] = annotations
     if case_dir is not None:
         record["case_dir"] = str(case_dir)
     arguments = {"dataset_dir": str(dataset_dir)} if dataset_dir is not None else {}
-    return _load_check()(record, arguments)
+    return _load_check(config_path)(record, arguments)
+
+
+def _id_line(id_field):
+    return f'item_id = fm.get("{id_field}")'
 
 
 # Two shapes of run: quick mode (the first two dataset cases, both untagged) and a
@@ -172,14 +181,43 @@ def test_real_history_entries_still_count(history):
     assert passed is True and "non-empty Revision History" in msg, msg
 
 
-# --- Drift guard: the two configs must carry the identical judge body ---------
+# --- Drift guard: the two bodies differ in the type's id field only ------------
 
 
-def test_both_configs_identical():
-    assert _check_body(EVAL_YAML) == _check_body(EVAL_INITIATIVE_YAML), (
+def test_both_configs_identical_modulo_the_id_field():
+    masked = {}
+    for path, id_field in ID_FIELDS.items():
+        body = _check_body(path)
+        # One read of the review's id, through the type's own field and never another's.
+        assert body.count(_id_line(id_field)) == 1 and body.count("item_id = fm.get(") == 1, path
+        for other in set(ID_FIELDS.values()) - {id_field}:
+            assert other not in body, (path, other)
+        masked[path] = body.replace(_id_line(id_field), _id_line("<id_field>"))
+    assert masked[EVAL_YAML] == masked[EVAL_INITIATIVE_YAML], (
         "revision_coverage has drifted between eval.yaml and eval-initiative.yaml; "
-        "keep the two copies byte-identical."
+        "the two copies may differ in the id-field line only."
     )
+
+
+@pytest.mark.parametrize(
+    "config_path", list(ID_FIELDS), ids=[os.path.basename(p) for p in ID_FIELDS]
+)
+def test_the_body_reads_its_own_id_field_only(config_path):
+    # A review keyed by another type's id field is invisible to this type's body (the
+    # per-type field replaced the pre-854 two-type union): its moved score is no evidence
+    # for a tagged case, while the same review under the type's own field is.
+    own = ID_FIELDS[config_path]
+    other = next(f for f in ID_FIELDS.values() if f != own)
+    for id_field, expected in ((own, True), (other, False)):
+        files = {
+            f"{RFE_REVIEWS}/X-1-review.md": _review(
+                "X-1", id_field=id_field, auto_revised=False, score=8, before_score=6
+            ),
+            **_other_revised(),
+        }
+        passed, msg = _run(files, TAGGED, config_path=config_path)
+        assert passed is expected, (id_field, msg)
+        assert ("before_score 6 != score 8" in msg) is expected, (id_field, msg)
 
 
 def _dataset(path):
@@ -518,6 +556,7 @@ def test_untagged_but_revised_counts_towards_coverage():
             ),
         },
         {"tags": ["new-feature"]},
+        config_path=EVAL_INITIATIVE_YAML,  # the Initiative body: reviews keyed by initiative_id
     )
     assert passed is True
     assert "before_score 6 != score 8" in msg
