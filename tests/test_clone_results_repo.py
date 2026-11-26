@@ -24,9 +24,11 @@ from clone_results_repo import (  # noqa: E402
 )
 
 REG = type_registry.load()
-# The registered Initiative type: the sole member of the `initiative` family (AISDLC-851). The
-# production job still says DATA_REPO_TYPES=initiative (the family alias, rfe-autofixer until
-# AISDLC-852), so the tests below pass both spellings where the layout is read.
+# The registered Initiative type: the sole SHIPPED member of the `initiative` family (AISDLC-851;
+# the second member is a test fixture under tests/fixtures/type-members, AISDLC-854, never in
+# this registry). The production job passes DATA_REPO_TYPES=initiative-rhaistrat since
+# AISDLC-852; the family alias still resolves while the shipped family has one member, so the
+# tests below pass both spellings where the layout is read.
 MEMBER = "initiative-rhaistrat"
 FAMILY = "initiative"
 RFE_PREFIX = REG.get("rfe").get("snapshot.prefix")
