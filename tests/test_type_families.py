@@ -25,6 +25,7 @@ import re
 import shutil
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -61,6 +62,10 @@ TWO_MEMBER_TEXT = (
     "'brief' is a type family with 2 members: brief-acme, brief-globex; name one of them"
 )
 PREFIX_GRAMMAR = r"^([a-z][a-z0-9-]*-)?$"
+# The two shared checks that read a review's id (eval/config/skeleton.yaml); the shipped id
+# fields they must not name as literals (AISDLC-854).
+REVISION_CHECKS = ("revision_flag_consistency", "revision_coverage")
+SHIPPED_ID_FIELDS = ("rfe_id", "initiative_id")
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────────
@@ -77,6 +82,14 @@ def _no_binding_env(monkeypatch):
 def _read_yaml(path):
     with open(path, encoding="utf-8") as fh:
         return yaml.safe_load(fh)
+
+
+def _skeleton_judge(skeleton_text, name):
+    """The skeleton's text for judge ``name``: from its ``- name:`` line to the next judge's.
+    The skeleton is a template (block slots on their own line), so it is sliced, not parsed."""
+    start = skeleton_text.index(f"\n  - name: {name}\n")
+    end = skeleton_text.find("\n  - name: ", start + 1)
+    return skeleton_text[start : end if end != -1 else len(skeleton_text)]
 
 
 def _write_yaml(path, data):
@@ -1721,6 +1734,55 @@ class TestGenerateEvalConfig:
         assert generate_eval_config.main(["--type", "brief-globex", "--stdout", *args]) == 0
         rendered = yaml.safe_load(capsys.readouterr().out)
         assert rendered["name"] == "brief-speedrun"
+
+    def test_the_revision_checks_read_the_members_own_id_field(self, repo_copy, capsys):
+        """AISDLC-854: ``revision_flag_consistency`` and ``revision_coverage`` read the review's
+        id through ``${type.identity.id_field}``, never through the shipped fields as literals.
+        A member whose field is neither (``brief_acme_id``) would otherwise skip every review and
+        fail its eval by construction: the flag check with "No review files to check" under its
+        1.0 threshold, the coverage check with no evidence for any tagged case."""
+        skeleton = (REPO_ROOT / generate_eval_config.SKELETON_RELPATH).read_text(encoding="utf-8")
+        token = 'item_id = fm.get("${type.identity.id_field}")'
+        for judge in REVISION_CHECKS:
+            body = _skeleton_judge(skeleton, judge)
+            assert body.count(token) == 1 and body.count("item_id = fm.get(") == 1, judge
+            assert not [f for f in SHIPPED_ID_FIELDS if f in body], judge
+        args = ["--root", str(FAMILIES_ROOT), "--repo-root", str(repo_copy)]
+        assert generate_eval_config.main(args) == 0
+        capsys.readouterr()
+        registry = _load(FAMILIES_ROOT)
+        checks = {}
+        for name in MEMBERS:
+            desc = registry.get(name)
+            assert desc.id_field == name.replace("-", "_") + "_id"  # the member's own field
+            rendered = _read_yaml(repo_copy / desc.get("eval.config"))
+            checks[name] = {j["name"]: j["check"] for j in rendered["judges"] if "check" in j}
+            for judge in REVISION_CHECKS:
+                check = checks[name][judge]
+                assert f'item_id = fm.get("{desc.id_field}")' in check, (name, judge)
+                assert not [f for f in SHIPPED_ID_FIELDS if f in check], (name, judge)
+        # End to end, the D9 failure mode: brief-acme's flag check sees a review keyed by its
+        # own field (a moved score under a set flag passes) and none keyed by a shipped one.
+        acme = registry.get("brief-acme")
+        wrapped = "def _check(outputs):\n" + textwrap.indent(
+            checks["brief-acme"]["revision_flag_consistency"], "    "
+        )
+        ns = {}
+        exec(compile(wrapped, "<check:revision_flag_consistency>", "exec"), ns)  # noqa: S102
+        review_path = f"{acme.get('dirs.reviews')}/BRA-1-review.md"
+
+        def _review(id_field):
+            return f"---\n{id_field}: BRA-1\nauto_revised: true\nscore: 8\nbefore_score: 6\n---\n"
+
+        assert ns["_check"]({"files": {review_path: _review("brief_acme_id")}}) == (
+            True,
+            "1 reviews: auto_revised matches evidence",
+        )
+        for shipped in SHIPPED_ID_FIELDS:
+            assert ns["_check"]({"files": {review_path: _review(shipped)}}) == (
+                False,
+                "No review files to check",
+            )
 
 
 # ── the prefix grammar ──────────────────────────────────────────────────────────

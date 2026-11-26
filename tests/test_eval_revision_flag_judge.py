@@ -2,8 +2,10 @@
 """Tests for the ``revision_flag_consistency`` inline-check judge.
 
 The judge body lives inline in both ``eval.yaml`` (rfe-speedrun) and
-``eval-initiative.yaml`` (rfe-speedrun --type initiative) and the two copies must remain
-byte-identical; ``test_both_configs_identical`` fails the build if they drift.
+``eval-initiative.yaml`` (rfe-speedrun --type initiative). The two copies differ in one line
+only, the review's id field (``item_id = fm.get("rfe_id")`` / ``fm.get("initiative_id")``,
+rendered from the type's ``identity.id_field``, AISDLC-854);
+``test_both_configs_identical_modulo_the_id_field`` fails the build if they drift elsewhere.
 The behavioural tests exec the body exactly the way
 the harness does (``def _check(outputs): <indented body>``) against crafted
 ``outputs`` records, so the logic has real coverage even though it is stored as
@@ -13,6 +15,7 @@ YAML text rather than an importable module.
 import os
 import textwrap
 
+import pytest
 import yaml
 
 REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
@@ -22,6 +25,8 @@ JUDGE = "revision_flag_consistency"
 
 RFE_REVIEWS = "artifacts/rfe-reviews"
 INIT_REVIEWS = "artifacts/initiative-reviews"
+# The id field each config's body reads: identity.id_field of the type it was rendered for.
+ID_FIELDS = {EVAL_YAML: "rfe_id", EVAL_INITIATIVE_YAML: "initiative_id"}
 
 
 def _check_body(config_path):
@@ -45,18 +50,49 @@ def _review(item_id, id_field="rfe_id", history="none", **frontmatter):
     return f"---\n{fm}---\n\n## Revision History\n{history}\n"
 
 
-def _run(files):
-    return _load_check()(outputs={"files": files})
+def _run(files, config_path=EVAL_YAML):
+    return _load_check(config_path)(outputs={"files": files})
 
 
-# --- Drift guard: the two configs must carry the identical judge body ---------
+def _id_line(id_field):
+    return f'item_id = fm.get("{id_field}")'
 
 
-def test_both_configs_identical():
-    assert _check_body(EVAL_YAML) == _check_body(EVAL_INITIATIVE_YAML), (
-        "revision_flag_consistency has drifted between eval.yaml and "
-        "eval-initiative.yaml; keep the two copies byte-identical."
+# --- Drift guard: the two bodies differ in the type's id field only ------------
+
+
+def test_both_configs_identical_modulo_the_id_field():
+    masked = {}
+    for path, id_field in ID_FIELDS.items():
+        body = _check_body(path)
+        # One read of the review's id, through the type's own field and never another's.
+        assert body.count(_id_line(id_field)) == 1 and body.count("item_id = fm.get(") == 1, path
+        for other in set(ID_FIELDS.values()) - {id_field}:
+            assert other not in body, (path, other)
+        masked[path] = body.replace(_id_line(id_field), _id_line("<id_field>"))
+    assert masked[EVAL_YAML] == masked[EVAL_INITIATIVE_YAML], (
+        "revision_flag_consistency has drifted between eval.yaml and eval-initiative.yaml; "
+        "the two copies may differ in the id-field line only."
     )
+
+
+@pytest.mark.parametrize(
+    "config_path", list(ID_FIELDS), ids=[os.path.basename(p) for p in ID_FIELDS]
+)
+def test_the_body_reads_its_own_id_field_only(config_path):
+    # A review keyed by another type's id field is invisible to this type's body (the
+    # per-type field replaced the pre-854 two-type union): it is skipped, not checked, so
+    # alone it leaves nothing to check and beside an own-field review it cannot fail the run.
+    own = ID_FIELDS[config_path]
+    other = next(f for f in ID_FIELDS.values() if f != own)
+    seen = _review("X-1", id_field=own, auto_revised=True, score=8, before_score=6)
+    unseen = _review("X-2", id_field=other, auto_revised=True, score=8)  # flag with no trace
+    passed, msg = _run({f"{RFE_REVIEWS}/X-2-review.md": unseen}, config_path)
+    assert passed is False and "No review files" in msg
+    passed, msg = _run(
+        {f"{RFE_REVIEWS}/X-1-review.md": seen, f"{RFE_REVIEWS}/X-2-review.md": unseen}, config_path
+    )
+    assert passed is True and msg == "1 reviews: auto_revised matches evidence"
 
 
 # --- Stable behaviours (correct before and after the fixes) -------------------
@@ -194,7 +230,8 @@ def test_initiative_pipeline_flag_false_but_revised():
                 "INIT-1", id_field="initiative_id", auto_revised=False, score=8
             ),
             f"{INIT_REVIEWS}/INIT-1-review-state.json": '{"revision_history": "- cycle 1"}',
-        }
+        },
+        EVAL_INITIATIVE_YAML,  # the Initiative body: its reviews are keyed by initiative_id
     )
     assert passed is False
     assert "INIT-1" in msg
@@ -245,7 +282,8 @@ def test_initiative_snapshot_excluded_from_reports():
                 "INIT-2", id_field="initiative_id", auto_revised=True, score=8, before_score=6
             ),
             "artifacts/auto-fix-runs/initiative-snapshot-20260101.yaml": "issues:\n- {id: x}\n",
-        }
+        },
+        EVAL_INITIATIVE_YAML,
     )
     assert passed is True
 
