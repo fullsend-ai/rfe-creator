@@ -1,0 +1,55 @@
+# tests/fixtures/type-members/initiative-hooli/type.yaml — a TEST FIXTURE: the second member of the
+# SHIPPED `initiative` type family, bound to the fictional HOOLI Jira project (AISDLC-854). Never
+# under types/ (nothing outside the test tree reads it) and never loaded alone: its family lives in
+# the main root, so the tests load it BESIDE types/ through the drop-in seam
+# (`--extra-roots tests/fixtures/type-members`; `load(root=TYPES_ROOT, extra_roots=[...])`; or
+# RFE_CREATOR_EXTRA_TYPES plus RFE_CREATOR_EXTRA_TYPES_ALLOWLIST in a headless subprocess). Own keys
+# only — MEMBER_OWN_KEYS plus the four prefixes a second member must own (cross rules 3, 4, 8, 9) and
+# what the project changes; display defaults, issue type, split link type, state_map (Approved:
+# inherited, never reached by the HOOLI emulator workflow), labels, schema, stages, prompts,
+# dimensions, rubric pin, eval dataset, experiment and thresholds are the family's.
+# Enabling a real second project is a separate decision: types/README.md "Second member".
+schema_version: 1
+type: initiative-hooli
+extends: initiative
+display: { entity: Hooli Initiative, entity_plural: Hooli Initiatives }   # the member question's label (Label:); the shipped member's stays derived, `Initiative (RHAISTRAT)`
+identity:
+  jira: { project: HOOLI, key_prefixes: ["HOOLI-"] }   # one member per project within the family (cross rule 9)
+  local_prefix: "INITH-"
+  local_id_pattern: '^INITH-\d+$'
+  id_field: initiative_hooli_id
+dirs:                                                  # one owner per artifact directory across types (cross rule 8)
+  tasks: artifacts/initiative-hooli
+  originals: artifacts/initiative-hooli-originals
+  reviews: artifacts/initiative-hooli-reviews
+classification:
+  signals:                                             # appended after the family's six; cross rule 7 compares these own phrases only
+    - a Hooli platform commitment, framed for the Hooli build farm and its tenant teams
+    - hangs from a HOOLI Outcome in the Hooli strategy project
+  counter_signals:                                     # a member list REPLACES the family's: the four restated plus the sibling's domain
+    - one user-facing capability with acceptance criteria
+    - a single customer's request, escalation or commitment
+    - a need that fits one release or one component
+    - an implementation task, a chore or a bug
+    - a Red Hat AI product or RHOAI component commitment, or a RHAISTRAT Outcome
+  examples:                                            # replaces the family's three (the oracle's clear-second-member hit)
+    - Give the Hooli build farms a shared GPU scheduler so tenant teams stop over-provisioning
+conventions:
+  query_default: 'project = HOOLI AND issuetype = Initiative'
+  parent_key_patterns: ['HOOLI-\d+', 'INITH-\d+']      # the project's own Outcomes, as RHAISTRAT's; the write prefix is in the list, so a split child's parent_key validates
+pipeline:
+  poll_prefix: "initiative-hooli-"                     # the four prefixes a second member must own (cross rule 3)
+  state_prefix: "initiative-hooli-"
+  context_sources:                                     # a list REPLACES the family's: both sources restated, --type names this member
+    - { name: assess-rubric, bootstrap: scripts/bootstrap.sh, args: ["--type", "initiative-hooli"], required: true }
+    - { name: architecture-context, bootstrap: scripts/fetch-architecture-context.sh, required: false }
+  dimensions:
+    - name: alignment                                  # merged by name: prompt, blocking, frontmatter_field are the family's
+      condition: { prefix: "HOOLI-" }
+      skip_stub: { result: not_assessed, reason: "skipped by pipeline (no HOOLI Outcome parent)" }
+snapshot:
+  prefix: "initiative-hooli-snapshot-"
+  report_prefix: "initiative-hooli-run-"
+  results_subdir: "initiative-hooli"                   # == the member name (gate 1)
+eval:
+  config: eval-initiative.yaml                         # existence stand-in (the fixture-family convention): never regenerated in place; dataset, experiment and thresholds inherited

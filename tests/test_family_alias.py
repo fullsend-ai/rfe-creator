@@ -87,52 +87,16 @@ SKIP_LINE = "RFE_SKIP_BOOTSTRAP set - skipping dependency bootstrapping step\n"
 FAST_POLL_STAGES = ("review", "split", "speedrun")
 FAMILY_TASK = "---\ntype: brief\n---\n\nBody.\n"
 WORKSPACE_FAMILY = "bindings:\n  brief:\n    jira:\n      project: KONFLUX\n"
-# A synthetic second member of the shipped Initiative family (AISDLC-853): the one root on
-# which the SHIPPED member renders as one of two. Built in a tmp root per module, as the
-# repository duplicates its copy helpers; never committed under types/.
-SECOND_INITIATIVE = "initiative-globex"
-SECOND_INITIATIVE_YAML = r"""schema_version: 1
-type: initiative-globex
-extends: initiative
-display: { entity: Globex Initiative, entity_plural: Globex Initiatives }
-identity:
-  jira: { project: GLOBEX, key_prefixes: ["GLOBEX-"] }
-  local_prefix: "INITG-"
-  local_id_pattern: '^INITG-\d+$'
-  id_field: initiative_globex_id
-dirs:
-  tasks: artifacts/initiative-globex
-  originals: artifacts/initiative-globex-originals
-  reviews: artifacts/initiative-globex-reviews
-classification:
-  signals:
-    - a Globex platform commitment, framed for the Globex build farm and its tenants
-    - hangs from a GLOBEXOUT Outcome in the Globex strategy project
-  examples:
-    - Give the Globex build farms a shared GPU scheduler so tenant teams stop over-provisioning
-conventions:
-  query_default: 'project = GLOBEX AND issuetype = Initiative'
-  parent_key_patterns: ['GLOBEXOUT-\d+', 'INITG-\d+']
-pipeline:
-  poll_prefix: "initiative-globex-"
-  state_prefix: "initiative-globex-"
-  context_sources:
-    - name: assess-rubric
-      bootstrap: scripts/bootstrap.sh
-      args: ["--type", "initiative-globex"]
-      required: true
-  dimensions:
-    - name: alignment
-      condition: { prefix: "GLOBEXOUT-" }
-      skip_stub:
-        result: not_assessed
-        reason: "skipped by pipeline (no GLOBEXOUT Outcome parent)"
-snapshot:
-  prefix: "initiative-globex-snapshot-"
-  report_prefix: "initiative-globex-run-"
-  results_subdir: "initiative-globex"
-eval: { config: eval-initiative.yaml }
-"""
+# The second member of the shipped Initiative family (AISDLC-853/854): the one root on which
+# the SHIPPED member renders as one of two. The committed fixture
+# tests/fixtures/type-members/initiative-hooli (gate-1-validated in tests/test_fixture_member.py)
+# is COPIED into a tmp single root per module: two variants below mutate its YAML text, and the
+# fixture root is never written to.
+MEMBERS_ROOT = REPO_ROOT / "tests/fixtures/type-members"
+SECOND_INITIATIVE = "initiative-hooli"
+SECOND_INITIATIVE_YAML = (MEMBERS_ROOT / SECOND_INITIATIVE / "type.yaml").read_text(
+    encoding="utf-8"
+)
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────────
@@ -287,7 +251,9 @@ def member(single_reg):
 
 
 def _two_initiative_root(dest, member_yaml=SECOND_INITIATIVE_YAML):
-    """``dest``: the shipped types plus ``initiative-globex`` written from ``member_yaml``."""
+    """``dest``: the shipped types plus ``initiative-hooli`` written from ``member_yaml`` — by
+    default the committed fixture's text (tests/fixtures/type-members), so a variant mutates a
+    copy and never the fixture root."""
     dest.mkdir(parents=True)
     for name in ("_schema", "rfe", SHIPPED_FAMILY, SHIPPED_MEMBER):
         shutil.copytree(TYPES_ROOT / name, dest / name)
@@ -297,9 +263,9 @@ def _two_initiative_root(dest, member_yaml=SECOND_INITIATIVE_YAML):
 
 @pytest.fixture(scope="module")
 def two_initiative_root(tmp_path_factory):
-    """The shipped types plus ``initiative-globex``, a synthetic second member of the
-    ``initiative`` family: ``rfe``, ``initiative-globex``, ``initiative-rhaistrat``. Never
-    mutated."""
+    """The shipped types plus ``initiative-hooli``, the committed second member of the
+    ``initiative`` family (tests/fixtures/type-members), in one tmp root: ``rfe``,
+    ``initiative-hooli``, ``initiative-rhaistrat``. Never mutated."""
     return _two_initiative_root(tmp_path_factory.mktemp("two-initiative") / "types")
 
 
@@ -746,7 +712,7 @@ class TestClassification:
         assert out.startswith(
             f"TYPES: rfe, {SECOND_INITIATIVE}, {SHIPPED_MEMBER}\n\n## rfe (RFE)\nSummary: "
         )
-        assert f"\n## {SECOND_INITIATIVE} (Globex Initiative)\nLabel: Globex Initiative\n" in out
+        assert f"\n## {SECOND_INITIATIVE} (Hooli Initiative)\nLabel: Hooli Initiative\n" in out
         assert f"\n## {SHIPPED_MEMBER} (Initiative)\nLabel: Initiative (RHAISTRAT)\n" in out
         assert (
             f"Family: {SHIPPED_FAMILY} (members {SECOND_INITIATIVE}, {SHIPPED_MEMBER})\n"
@@ -757,7 +723,7 @@ class TestClassification:
         rows = json.loads(_registry("classification", "--json", root=two_initiative_root).stdout)
         assert [(r["type"], r["label"], r["family"], r["project"]) for r in rows] == [
             ("rfe", "RFE", None, "RHAIRFE"),
-            (SECOND_INITIATIVE, "Globex Initiative", SHIPPED_FAMILY, "GLOBEX"),
+            (SECOND_INITIATIVE, "Hooli Initiative", SHIPPED_FAMILY, "HOOLI"),
             (SHIPPED_MEMBER, "Initiative (RHAISTRAT)", SHIPPED_FAMILY, "RHAISTRAT"),
         ]
         assert rows[2]["own_signals"] == own
@@ -843,13 +809,13 @@ class TestClassification:
         assert out.count("Member signals: ") == 1
         assert "Member signals: " + "; ".join(own) + "\n" in out
         family_block = _read_yaml(TYPES_ROOT / SHIPPED_FAMILY / "type.yaml")["classification"]
-        globex = out[out.index(f"## {SECOND_INITIATIVE} (") : out.index(f"## {SHIPPED_MEMBER} (")]
+        hooli = out[out.index(f"## {SECOND_INITIATIVE} (") : out.index(f"## {SHIPPED_MEMBER} (")]
         assert (
             "Signals: " + "; ".join(family_block["signals"]) + "\n"
             "Counter-signals: " + "; ".join(family_block["counter_signals"]) + "\n"
             "Examples:\n"
-        ) in globex
-        assert "Member signals" not in globex
+        ) in hooli
+        assert "Member signals" not in hooli
         rows = json.loads(_registry("classification", "--json", root=root).stdout)
         assert [r["type"] for r in rows] == ["rfe", SECOND_INITIATIVE, SHIPPED_MEMBER]
         assert rows[1]["own_signals"] == [] and "own_signals" in rows[1]

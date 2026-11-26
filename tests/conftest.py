@@ -13,13 +13,24 @@ import yaml
 
 TYPES_DIR = os.path.join(os.path.dirname(__file__), "..", "types")
 
-# Hermetic suite: a developer's or runner's binding override or shorthand must reach neither
-# the module-level registries the scripts build at import (artifact_utils.SCHEMAS reflects the
-# environment at import) nor an in-process main(). Stripped once here, before any test module
-# imports a script; a test that exercises an override passes it explicitly (monkeypatch.setenv
-# or a subprocess env).
+# Hermetic suite: a developer's or runner's binding override, shorthand or drop-in type root
+# must reach neither the module-level registries the scripts build at import
+# (artifact_utils.SCHEMAS reflects the environment at import) nor an in-process main().
+# Stripped once here, before any test module imports a script; a test that exercises an
+# override passes it explicitly (monkeypatch.setenv or a subprocess env). The two
+# RFE_CREATOR_EXTRA_TYPES keys are stripped because a developer may export
+# tests/fixtures/type-members (the second Initiative member, AISDLC-854) to play with the
+# two-member ladder: left in the environment, that root makes `initiative` an ambiguous family
+# and adds two schemas, which breaks ~30 unrelated modules at import (tests/test_fixture_member.py
+# pins the collect-only proof).
+_STRIPPED_VARS = (
+    "JIRA_PROJECT",
+    "JIRA_ISSUE_TYPE",
+    "RFE_CREATOR_EXTRA_TYPES",
+    "RFE_CREATOR_EXTRA_TYPES_ALLOWLIST",
+)
 for _var in list(os.environ):
-    if _var.startswith("RFE_CREATOR_BINDING_") or _var in ("JIRA_PROJECT", "JIRA_ISSUE_TYPE"):
+    if _var.startswith("RFE_CREATOR_BINDING_") or _var in _STRIPPED_VARS:
         del os.environ[_var]
 
 
