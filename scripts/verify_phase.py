@@ -281,9 +281,9 @@ def verify(phase, ids_file, pipeline_type="rfe"):
                         exists = False
                     else:
                         stamp_review_type(path, pipeline_type)
-                elif (_TYPES.try_canonical(declared) or declared) != pipeline_type:
-                    # Compared through the family alias (design §3.2.2): a restored review that
-                    # declares the single-member family's name is the member's.
+                elif declared != pipeline_type:
+                    # A stored type name is compared as written: a review that declares another
+                    # name — a family's included (AISDLC-856) — is reported and not stamped.
                     print(
                         f"verify_phase: {path}: review declares type={declared!r}, expected "
                         f"{pipeline_type}; not stamped",

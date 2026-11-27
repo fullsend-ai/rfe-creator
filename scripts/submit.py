@@ -371,9 +371,9 @@ def _read_revise_passes(type_name, state_file=PIPELINE_STATE_FILE):
     if not isinstance(state, dict):
         return {}, "cannot be parsed (not a mapping)"
     state_type = state.get("type", "rfe")
-    # Compared through the family alias (design §3.2.2): a state file written under a
-    # single-member family's name belongs to the member's run; the message keeps the spelling.
-    if (_TYPES.try_canonical(state_type) or state_type) != type_name:
+    # A stored type name is compared as written (AISDLC-856): a family name is refused like any
+    # other foreign name; the message keeps the spelling.
+    if state_type != type_name:
         return {}, f"belongs to another type ({state_type})"
     passes = state.get(REVISE_PASSES_KEY)
     if passes is None:

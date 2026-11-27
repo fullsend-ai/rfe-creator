@@ -367,7 +367,7 @@ class TestSecondPassInterruptedHold:
         _write(review, text)
         _write(
             f"{art_dir}/tmp/pipeline-state.yaml",
-            "phase: DONE\ntype: initiative\nreassess_cycle: 2\n"
+            "phase: DONE\ntype: initiative-rhaistrat\nreassess_cycle: 2\n"
             "revise_passes:\n  RHAISTRAT-1234: 1\n",
         )
 
@@ -839,7 +839,8 @@ class TestResolveLine:
         _write(
             f"{art_dir}/initiatives/RHAISTRAT-1234.md",
             "---\ninitiative_id: RHAISTRAT-1234\ntitle: Test Initiative\n"
-            "priority: Major\nstatus: Ready\ntype: initiative\ntracker_ref: RHAISTRAT-1234\n"
+            "priority: Major\nstatus: Ready\ntype: initiative-rhaistrat\n"
+            "tracker_ref: RHAISTRAT-1234\n"
             "---\nRevised.",
         )
         _write(

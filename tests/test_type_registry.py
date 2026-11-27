@@ -54,8 +54,8 @@ SCRIPT = "scripts/type_registry.py"
 EPIC_FIXTURE = REPO_ROOT / "tests" / "fixtures" / "types" / "epic" / "type.yaml"
 # The shipped registry (AISDLC-851): `initiative` is a type FAMILY (abstract, never a registered
 # name) and `initiative-rhaistrat` its sole member — the name every lookup, table, list and
-# `TYPE RESOLVED:` line carries. `--type initiative` (and a stored `type: initiative`) is the
-# family alias, kept below as an INPUT that must resolve to the member.
+# `TYPE RESOLVED:` line carries. `--type initiative` is the family alias, kept below as an INPUT
+# that must resolve to the member; a stored `type: initiative` is refused (AISDLC-856).
 MEMBER = "initiative-rhaistrat"
 FAMILY = "initiative"
 SHIPPED = ("rfe", MEMBER)  # registered names
@@ -2091,7 +2091,7 @@ class TestResolve:
     # -- rung 3: artifact and id signals --------------------------------------------------
 
     def test_frontmatter_type(self, tmp_path):
-        art = _artifact(tmp_path / "anywhere" / "X-1.md", {"type": "initiative", "title": "t"})
+        art = _artifact(tmp_path / "anywhere" / "X-1.md", {"type": MEMBER, "title": "t"})
         res = resolve(_shipped(), artifact=art, env={})
         assert (res.type_name, res.rung, res.provisional) == (
             MEMBER,
@@ -2101,7 +2101,7 @@ class TestResolve:
         assert res.line() == "TYPE RESOLVED: initiative-rhaistrat (frontmatter type)"
 
     def test_frontmatter_type_beats_the_directory_and_the_stem(self, tmp_path):
-        art = _artifact(tmp_path / "rfe-tasks" / "RFE-001.md", {"type": "initiative"})
+        art = _artifact(tmp_path / "rfe-tasks" / "RFE-001.md", {"type": MEMBER})
         assert resolve(_shipped(), artifact=str(art), env={}).type_name == MEMBER
 
     def test_frontmatter_type_unknown(self, tmp_path):
@@ -2110,6 +2110,25 @@ class TestResolve:
             ResolveError, match="unknown type 'epic' \\(.*X-1.md frontmatter type:\\)"
         ):
             resolve(_shipped(), artifact=art, env={})
+
+    def test_frontmatter_family_type_is_unknown(self, tmp_path):
+        # D5 (AISDLC-856): a stored type name is compared as written — the family's name in
+        # frontmatter is the unknown-type refusal, under the member's directory or anywhere.
+        for rel in ("initiatives/INIT-1.md", "anywhere/X-1.md"):
+            art = _artifact(tmp_path / rel, {"type": FAMILY})
+            with pytest.raises(ResolveError) as excinfo:
+                resolve(_shipped(), artifact=str(art), env={})
+            assert str(excinfo.value) == (
+                f"unknown type 'initiative' ({art} frontmatter type:); registered types: rfe, "
+                "initiative-rhaistrat"
+            )
+            assert excinfo.value.exit_code == 1
+        result = _cli("resolve", "--artifact", str(art))
+        assert (result.returncode, result.stdout) == (1, "")
+        assert result.stderr == (
+            f"ERROR: unknown type 'initiative' ({art} frontmatter type:); registered types: rfe, "
+            "initiative-rhaistrat\n"
+        )
 
     def test_frontmatter_type_must_be_a_string(self, tmp_path):
         art = _artifact(tmp_path / "x" / "X-1.md", {"type": 5})
@@ -2196,9 +2215,10 @@ class TestResolve:
         assert excinfo.value.exit_code == 1
 
     def test_conflict_between_an_artifact_and_an_id(self, tmp_path):
-        art = _artifact(tmp_path / "x" / "X.md", {"type": "initiative"})
+        art = _artifact(tmp_path / "x" / "X.md", {"type": MEMBER})
         with pytest.raises(
-            ResolveError, match="X.md \\(type: initiative\\) -> initiative-rhaistrat, RFE-1 -> rfe"
+            ResolveError,
+            match="X.md \\(type: initiative-rhaistrat\\) -> initiative-rhaistrat, RFE-1 -> rfe",
         ):
             resolve(_shipped(), artifact=art, ids=["RFE-1"], env={})
         art = _artifact(tmp_path / "initiatives" / "X.md")
@@ -2515,7 +2535,7 @@ class TestResolveCli:
         assert rejected.returncode == 1 and "per-item 'type' key" in rejected.stderr
 
     def test_artifact_option(self, tmp_path):
-        art = _artifact(tmp_path / "x" / "X.md", {"type": "initiative"})
+        art = _artifact(tmp_path / "x" / "X.md", {"type": MEMBER})
         result = _cli("resolve", "--artifact", str(art))
         assert result.returncode == 0, result.stderr
         assert result.stdout == "TYPE RESOLVED: initiative-rhaistrat (frontmatter type)\n"

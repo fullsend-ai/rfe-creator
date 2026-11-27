@@ -1825,15 +1825,18 @@ class TestLoadRunReportTypeCrossCheck:
         with pytest.raises(ValueError, match=f"is a {other} report, expected {type_name}"):
             _load_run_report(results, run, config=cfg)
 
-    def test_a_pre_split_report_naming_the_family_reads_under_the_member(self, tmp_path):
-        """A results-repository report written before AISDLC-851 says `type: initiative`; under
-        the member's config it is the same type (the canonical compare) and the file is left
-        as written."""
+    def test_a_pre_split_report_naming_the_family_is_refused(self, tmp_path):
+        """A results-repository report written before AISDLC-851 said `type: initiative`; the
+        stored name is compared as written (AISDLC-856) — the results repository's nine such
+        reports were rewritten to the member's name — so under the member's config it is
+        another type's report."""
         cfg = BOOTSTRAP_CONFIG[MEMBER]
         body = f"type: initiative\n{cfg['item_key']}:\n" + self.ENTRY.format(key="RHAISTRAT-1")
         results, run = self._write(tmp_path, body, prefix=cfg["report_prefix"])
-        ids, report = _load_run_report(results, run, config=cfg)
-        assert ids == {"RHAISTRAT-1"} and report["type"] == "initiative"
+        with pytest.raises(
+            ValueError, match="is a initiative report, expected initiative-rhaistrat"
+        ):
+            _load_run_report(results, run, config=cfg)
 
     def test_generated_report_round_trips(self, tmp_path):
         # The writer's own header (generate_run_report.py: report_schema_version, type,

@@ -13,8 +13,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 import frontmatter  # noqa: E402
 
 # The registered Initiative type: the sole member of the `initiative` family (AISDLC-851). The
-# schemas are keyed by it; a file declaring `type: initiative` and `--schema-type initiative-*`
-# (the family's short names) are the alias, kept below as inputs read as the member.
+# schemas are keyed by it; `--schema-type initiative-*` is the family's short name, kept below as
+# a CLI input read as the member; a stored `type: initiative` is refused (AISDLC-856).
 MEMBER = "initiative-rhaistrat"
 from artifact_utils import SCHEMAS, get_schema_yaml  # noqa: E402
 
@@ -228,8 +228,8 @@ class TestSchemaForRung:
     @pytest.mark.parametrize(
         "rel, fm_type, dir_type, kind",
         [
-            ("artifacts/rfe-reviews/INIT-001-review.md", "initiative", "rfe", "review"),
-            ("artifacts/rfe-tasks/INIT-001.md", "initiative", "rfe", "task"),
+            ("artifacts/rfe-reviews/INIT-001-review.md", MEMBER, "rfe", "review"),
+            ("artifacts/rfe-tasks/INIT-001.md", MEMBER, "rfe", "task"),
             ("artifacts/initiatives/RFE-001.md", "rfe", MEMBER, "task"),
             ("artifacts/initiative-reviews/RFE-001-review.md", "rfe", MEMBER, "review"),
         ],
@@ -313,7 +313,7 @@ class TestCliUsesTheRung:
         return _place(
             tmp_path,
             "artifacts/rfe-reviews/INIT-001-review.md",
-            "---\ninitiative_id: INIT-001\ntype: initiative\nscore: 8\npass: true\n"
+            f"---\ninitiative_id: INIT-001\ntype: {MEMBER}\nscore: 8\npass: true\n"
             "recommendation: submit\nfeasibility: feasible\nauto_revised: false\n"
             "needs_attention: false\nscores:\n  what: 2\n  why: 2\n  scope: 1\n"
             "  open_to_how: 2\n  right_sized: 1\n---\n\nFeedback.\n",
@@ -347,30 +347,62 @@ class TestCliUsesTheRung:
         assert result.returncode == 1
         assert "type: epic is not a registered type" in result.stderr
 
+    def test_read_bare_family_type_exits_1(self, tmp_path):
+        """AISDLC-856: a stored `type: initiative` (the family's name) is not a registered type,
+        under the member's own directory included — the refusal any unknown name gets."""
+        path = _place(
+            tmp_path,
+            "artifacts/initiatives/INIT-001.md",
+            "---\ninitiative_id: INIT-001\ntype: initiative\ntitle: T\npriority: Major\n"
+            "status: Draft\n---\n\nB.\n",
+        )
+        result = _cli("read", str(path), cwd=tmp_path)
+        assert (result.returncode, result.stdout) == (1, "")
+        assert (
+            "frontmatter type: initiative is not a registered type (registered types: rfe, "
+            "initiative-rhaistrat)"
+        ) in result.stderr
+
+    def test_set_type_family_is_refused(self, tmp_path):
+        """AISDLC-856: `type=initiative` is not the schema's own concrete name — refused like any
+        other disagreeing `type=`, and no file is written."""
+        path = tmp_path / "artifacts" / "initiatives" / "INIT-001.md"
+        path.parent.mkdir(parents=True)
+        fields = ("initiative_id=INIT-001", "title=T", "priority=Major", "status=Draft")
+        result = _cli("set", str(path), *fields, "type=initiative", cwd=tmp_path)
+        assert (result.returncode, result.stdout) == (1, "")
+        assert result.stderr == (
+            f"Error: type=initiative disagrees with the {MEMBER}-task schema that validates "
+            f"{path} (its type is {MEMBER})\n"
+        )
+        assert not path.exists()
+
     def test_schema_type_flag_wins_on_read_but_set_will_not_keep_the_contradiction(self, tmp_path):
         path = self._mismatch(tmp_path)
         result = _cli("read", str(path), "--schema-type", "initiative-review", cwd=tmp_path)
         assert result.returncode == 0, result.stderr
-        assert json.loads(result.stdout)["type"] == "initiative"
+        assert json.loads(result.stdout)["type"] == MEMBER
         # A set under the flag would write the same self-contradicting file back — the file's
-        # own `type: initiative` is the effective type, the directory says rfe: refused.
+        # own `type: initiative-rhaistrat` is the effective type, the directory says rfe: refused.
         before = path.read_bytes()
         result = _cli(
             "set", str(path), "score=9", "--schema-type", "initiative-review", cwd=tmp_path
         )
         assert result.returncode == 1
         assert "under the rfe review directory (rfe-review by path)" in result.stderr
-        # the file's own spelling is echoed (the alias is read, never rewritten): exact phrase
-        assert "its frontmatter type: initiative would make its type initiative; a self-" in (
-            result.stderr
-        )
+        # the file's own spelling is echoed (read, never rewritten): exact phrase
+        assert (
+            "its frontmatter type: initiative-rhaistrat would make its type "
+            "initiative-rhaistrat; a self-"
+        ) in result.stderr
         assert path.read_bytes() == before
 
-    _INITIATIVE_FIELDS = ("title=T", "priority=Major", "status=Draft", "type=initiative")
+    _INITIATIVE_FIELDS = ("title=T", "priority=Major", "status=Draft", f"type={MEMBER}")
 
     def test_set_schema_type_contradicting_the_directory_is_refused(self, tmp_path):
         """--schema-type bypasses the rung; it still may not mint the artifact the rung refuses
-        to read (a file under rfe-tasks/ written under initiative-task with type=initiative)."""
+        to read (a file under rfe-tasks/ written under initiative-task with the member's
+        type=)."""
         path = tmp_path / "artifacts" / "rfe-tasks" / "INIT-001.md"
         path.parent.mkdir(parents=True)
         result = _cli(
@@ -384,7 +416,7 @@ class TestCliUsesTheRung:
         )
         assert result.returncode == 1
         assert "under the rfe task directory (rfe-task by path)" in result.stderr
-        assert "type=initiative would make its type initiative; a self-" in result.stderr
+        assert f"type={MEMBER} would make its type {MEMBER}; a self-" in result.stderr
         assert not path.exists()
         # Without type=, the flag's own type is the effective one: still refused, and an
         # existing file is left byte-identical.
@@ -417,7 +449,7 @@ class TestCliUsesTheRung:
             cwd=tmp_path,
         )
         assert result.returncode == 0, result.stderr
-        assert "type: initiative\n" in path.read_text()
+        assert f"type: {MEMBER}\n" in path.read_text()
         result = _cli(
             "set", str(path), "status=Ready", "--schema-type", "initiative-task", cwd=tmp_path
         )
@@ -443,7 +475,7 @@ class TestCliUsesTheRung:
             cwd=tmp_path,
         )
         assert result.returncode == 0, result.stderr
-        assert "type: initiative\n" in new.read_text()
+        assert f"type: {MEMBER}\n" in new.read_text()
         # ...and the repair of a contradicting file: the directory's schema with type=, which
         # takes precedence over the `type:` the file declares.
         bad = _place(

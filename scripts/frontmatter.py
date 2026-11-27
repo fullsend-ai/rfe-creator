@@ -170,23 +170,21 @@ def _schema_for(path, schema_type=None):
     if fm_type is None or by_dir is None:
         return by_dir
     registered = ", ".join(_TYPES.names())
-    # A stored type name is compared through the family alias (design §3.2.2): a restored
-    # artifact that declares a single-member family's name reads under its member's schema. The
-    # stored line is never rewritten.
-    fm_canon = _TYPES.try_canonical(fm_type)
-    if fm_canon is None:
+    # A stored type name is compared as written (AISDLC-856): a family name is refused like any
+    # other foreign name. The stored line is never rewritten.
+    if fm_type not in _TYPES.names():
         raise SchemaTypeError(
             f"{path}: frontmatter type: {fm_type} is not a registered type (registered "
             f"types: {registered})"
         )
     dir_type, kind = by_dir.rsplit("-", 1)
-    if dir_type != fm_canon:
+    if dir_type != fm_type:
         raise SchemaTypeError(
             f"{path}: frontmatter type: {fm_type} but the path is under the {dir_type} "
             f"{kind} directory ({by_dir} by path); a self-describing artifact and its "
             f"directory must agree — move the file or fix the type field"
         )
-    return f"{fm_canon}-{kind}"
+    return f"{fm_type}-{kind}"
 
 
 def _directory_disagreement(path, schema_type, new_type):
@@ -218,7 +216,7 @@ def _directory_disagreement(path, schema_type, new_type):
         if effective is None:
             effective = schema_type.rsplit("-", 1)[0]
             source = f"--schema-type {schema_type}"
-    if (_TYPES.try_canonical(effective) or effective) == dir_type:
+    if effective == dir_type:
         return None
     return (
         f"{path} is under the {dir_type} {kind} directory ({by_dir} by path) but {source} "
@@ -274,9 +272,10 @@ def _schema_type_arg(value):
     name, sep, kind = value.rpartition("-")
     candidate = value
     if sep:
-        concrete = _TYPES.try_canonical(name)
-        if concrete is not None:
-            candidate = f"{concrete}-{kind}"
+        try:
+            candidate = f"{_TYPES.canonical(name)}-{kind}"
+        except KeyError:
+            pass  # neither a type nor a single-member family: the invalid-choice error below
     if candidate not in SCHEMAS:
         choices = ", ".join(repr(k) for k in SCHEMAS)
         raise argparse.ArgumentTypeError(f"invalid choice: {value!r} (choose from {choices})")
@@ -338,9 +337,9 @@ def cmd_set(args):
     # artifact the rung above refuses to read.
     schema_owner = schema_type.rsplit("-", 1)[0]
     declared = data.get("type")
-    # Compared through the family alias (design §3.2.2): `type=<family>` under the member's
-    # schema is accepted and written AS GIVEN (every pipeline writer stamps the member).
-    if declared is not None and (_TYPES.try_canonical(declared) or declared) != schema_owner:
+    # A `type=` must be the schema's own concrete type name; a family name is refused like any
+    # other (AISDLC-856).
+    if declared is not None and declared != schema_owner:
         print(
             f"Error: type={data['type']} disagrees with the {schema_type} schema that "
             f"validates {args.file} (its type is {schema_owner})",

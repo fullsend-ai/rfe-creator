@@ -487,40 +487,58 @@ class TestScope:
             "",
         )
 
-    def test_a_family_frontmatter_lets_the_directory_decide_the_member(self, tmp_path):
+    def test_a_family_frontmatter_is_refused(self, tmp_path):
+        # D5 (AISDLC-856): a stored type name is compared as written — a frontmatter `type:`
+        # must be a concrete registered name whatever the member count; the family's name is
+        # the unknown-type refusal before any directory, stem or --type is weighed. (Rungs 1
+        # and 2 keep the family scope.)
+        def unknown(path):
+            return (
+                f"ERROR: unknown type 'brief' ({path} frontmatter type:); registered types: "
+                "brief-acme, brief-globex\n"
+            )
+
         art = _write_text(
             tmp_path / "artifacts" / "brief-globex-tasks" / "BRG-7.md",
             "---\ntype: brief\n---\n\nBody.\n",
         )
-        assert _triple(_fixture("resolve", "--artifact", str(art))) == (
-            0,
-            "TYPE RESOLVED: brief-globex (artifact dir)\n",
-            "",
-        )
+        assert _triple(_fixture("resolve", "--artifact", str(art))) == (1, "", unknown(art))
         stray = _write_text(tmp_path / "misc" / "notes.md", "---\ntype: brief\n---\n\nBody.\n")
-        assert _triple(_fixture("resolve", "--artifact", str(stray))) == (3, AMBIGUOUS_LINE, "")
+        assert _triple(_fixture("resolve", "--artifact", str(stray))) == (1, "", unknown(stray))
         headless = _fixture("resolve", "--artifact", str(stray), "--headless")
-        assert _triple(headless) == (
-            3,
-            "",
-            f"ERROR: ambiguous type for {stray} (type: brief): candidates brief-acme, "
-            "brief-globex — pass --type <member> or --project <KEY>\n",
-        )
+        assert _triple(headless) == (1, "", unknown(stray))
         under_sibling = _fixture("resolve", "--type", ACME, "--artifact", str(art))
-        assert _triple(under_sibling) == (
-            1,
+        assert _triple(under_sibling) == (1, "", unknown(art))
+        # The member's own name in the same places resolves as before.
+        member = _write_text(
+            tmp_path / "artifacts" / "brief-globex-tasks" / "BRG-8.md",
+            "---\ntype: brief-globex\n---\n\nBody.\n",
+        )
+        assert _triple(_fixture("resolve", "--artifact", str(member))) == (
+            0,
+            "TYPE RESOLVED: brief-globex (frontmatter type)\n",
             "",
-            f"ERROR: conflicting type signals: --type brief-acme vs {art} (dir brief-globex-tasks) "
-            f"-> brief-globex, BRG-7 -> brief-globex{SPLIT}\n",
         )
 
-    def test_a_family_frontmatter_outside_a_chosen_type_is_a_conflict(self, tmp_path):
+    def test_a_family_frontmatter_outside_a_chosen_type_is_refused_before_the_conflict(
+        self, tmp_path
+    ):
         art = _write_text(tmp_path / "misc" / "notes.md", "---\ntype: brief\n---\n\nBody.\n")
         assert _triple(_combined("resolve", "--type", "rfe", "--artifact", str(art))) == (
             1,
             "",
-            f"ERROR: conflicting type signals: --type rfe vs {art} (type: brief) -> "
-            f"brief-acme/brief-globex{SPLIT}\n",
+            f"ERROR: unknown type 'brief' ({art} frontmatter type:); registered types: rfe, "
+            "brief-acme, brief-globex, initiative-rhaistrat\n",
+        )
+        # A member-typed sibling still renders the conflict the frontmatter signal is.
+        member = _write_text(
+            tmp_path / "misc" / "other.md", "---\ntype: brief-globex\n---\n\nBody.\n"
+        )
+        assert _triple(_combined("resolve", "--type", "rfe", "--artifact", str(member))) == (
+            1,
+            "",
+            f"ERROR: conflicting type signals: --type rfe vs {member} (type: brief-globex) -> "
+            f"brief-globex{SPLIT}\n",
         )
 
     def test_the_batch_d1_rule_is_relaxed_to_the_family(self, tmp_path):

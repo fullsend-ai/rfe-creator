@@ -4310,16 +4310,26 @@ class TestInitTypeChoices:
         assert ps._load_state()["type"] == persisted
         assert buf.getvalue() == f"Initialized pipeline state: type={persisted} batch_size=50\n"
 
-    def test_pre_split_state_naming_the_family_loads_as_the_member(self, tmp_dir):
+    def test_pre_split_state_naming_the_family_is_left_as_written_and_refused(
+        self, tmp_dir, capsys
+    ):
         """A tmp/pipeline-state.yaml written before the split says `type: initiative`; the
-        tables are keyed by the member, so _load_state canonicalises in memory and never
-        rewrites the file on read (AISDLC-851)."""
+        loader leaves it as written (AISDLC-856: nothing is canonicalised in memory) and the
+        acting commands refuse it through _validate_state_values, as they do any unknown name.
+        The file is never rewritten."""
         import yaml
 
         os.makedirs(os.path.dirname(ps.STATE_FILE) or ".", exist_ok=True)
         with open(ps.STATE_FILE, "w", encoding="utf-8") as fh:
             yaml.safe_dump(make_state(type="initiative"), fh)
-        assert ps._load_state()["type"] == MEMBER
+        assert ps._load_state()["type"] == "initiative"
+        with pytest.raises(SystemExit) as exc_info:
+            ps.advance(ps._load_state())
+        assert exc_info.value.code == 1
+        assert (
+            "[validate-state] refusing to run: type='initiative' is not one of "
+            "['initiative-rhaistrat', 'rfe']"
+        ) in capsys.readouterr().err
         with open(ps.STATE_FILE, encoding="utf-8") as fh:
             assert yaml.safe_load(fh)["type"] == "initiative"
 

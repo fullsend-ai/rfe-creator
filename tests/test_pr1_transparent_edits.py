@@ -465,9 +465,9 @@ class TestSelfDescribingWriters:
         assert 'declared = data.get("type")' in source
         assert "if declared is None:" in source
         assert "stamp_review_type(path, pipeline_type)" in source
-        # The declared name is compared through the family alias (AISDLC-851): a restored review
-        # declaring a single-member family's name is the member's, anything else is reported.
-        assert "elif (_TYPES.try_canonical(declared) or declared) != pipeline_type:" in source
+        # The declared name is compared as written (AISDLC-856): a review declaring anything but
+        # the pipeline's concrete type — a family's name included — is reported, never stamped.
+        assert "elif declared != pipeline_type:" in source
 
 
 # Pre-migration artifacts on disk: the GOLDEN bytes above, exactly as an existing results
@@ -533,7 +533,7 @@ class TestLegacyArtifactsStayByteIdentical:
     @pytest.mark.parametrize("schema", sorted(SCHEMAS))
     def test_cli_set_appends_the_fields_only_when_the_caller_sets_them(self, tmp_path, schema):
         path, raw = self._legacy(tmp_path, schema)
-        type_name = schema.split("-")[0]
+        type_name = schema.rsplit("-", 1)[0]  # the schema's own concrete type (AISDLC-856)
         result = subprocess.run(
             [sys.executable, "scripts/frontmatter.py", "set", str(path), f"type={type_name}"],
             cwd=REPO_ROOT,

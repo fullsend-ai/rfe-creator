@@ -432,7 +432,13 @@ The bootstrap snapshot accounts for:
   If no run report is found at all, all fetched issues are included
   as a fallback, marked unprocessed. A `report_stage: pre_submit`
   report is used but warned about: it predates that run's Jira
-  writes, so split children may appear under local ids.
+  writes, so split children may appear under local ids. A report
+  whose `type:` is not this bootstrap's concrete type name (another
+  type's report, or a pre-split `initiative` header — retired with
+  AISDLC-856, when the results repository's nine pre-split Initiative
+  runs were rewritten to `initiative-rhaistrat`) is refused, in the
+  tip and in the walk-back alike; `--include-all` is the only way
+  past it.
 - Historical descriptions at the run time (for externally modified issues)
 - Current descriptions for auto-revised issues (our own submissions)
 - Exclusion of issues that were out of scope (Done) at run time
