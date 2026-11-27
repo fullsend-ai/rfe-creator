@@ -1,7 +1,7 @@
 # types/initiative/type.yaml — the Initiative TYPE FAMILY (abstract: true; design §3.2.2, AISDLC-851): the
 # judgement, labels, prompts, dimensions, rubric pin, prefixes and eval identity its members share. Never
 # enumerated, bound or run: `python3 scripts/type_registry.py list` names the members only, and
-# `initiative` as a `--type` (or a stored `type:`) is the family alias, answered by its sole member
+# `initiative` as a `--type` is the family alias, answered by its sole member
 # `initiative-rhaistrat` (types/initiative-rhaistrat/type.yaml) through TypeRegistry.canonical while it is
 # the only one. Deliberately absent here, owned by each member (validate_types MEMBER_OWN_KEYS /
 # TRACKER_MEMBER_OWN_KEYS, plus what the project changes): identity.jira.{project,key_prefixes},

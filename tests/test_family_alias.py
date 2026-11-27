@@ -3,13 +3,14 @@
 
 A type family with exactly one member answers to the family's name at every boundary a type
 NAME crosses. ``TypeRegistry.canonical()`` is the one seam and every adapter goes through it:
-the argparse converter ``type_arg`` beside ``choices=``, ``parse_type_arg``, the three
-``resolve`` rungs, the workspace ``bindings:`` keys, the classification digest,
-``validate_all(only=)``, ``generate_eval_config``, the artifact and state readers
-(``try_canonical``: frontmatter, artifact_utils, bootstrap_snapshot, pipeline_state,
-clone_results_repo, submit's revise-pass reader, verify_phase's D8 compare),
-``scripts/bootstrap.sh`` and the ``canonical`` CLI; ``TestWriters`` runs the scripts the
-autofixer launches by argv end to end. The shipped tree is
+the argparse converter ``type_arg`` beside ``choices=``, ``parse_type_arg``, the ``resolve``
+rungs 1 and 2, the workspace ``bindings:`` keys, the classification digest,
+``validate_all(only=)``, ``generate_eval_config``, clone_results_repo's ``DATA_REPO_TYPES``,
+``scripts/bootstrap.sh`` and the ``canonical`` CLI. The artifact and state readers compare a
+stored name as written (AISDLC-856): frontmatter, artifact_utils, bootstrap_snapshot,
+pipeline_state, submit's revise-pass reader, verify_phase's D8 compare and ``resolve``'s
+frontmatter rung refuse, report or route a stored family name like any other foreign name.
+``TestWriters`` runs the scripts the autofixer launches by argv end to end. The shipped tree is
 alias-free apart from ``initiative`` (one member, ``initiative-rhaistrat``), so the alias is
 exercised on the reference
 family (tests/fixtures/type-families) with ``brief-globex`` removed: ``brief`` then names
@@ -86,6 +87,7 @@ FAMILY_VERIFY_TEXT = (
 SKIP_LINE = "RFE_SKIP_BOOTSTRAP set - skipping dependency bootstrapping step\n"
 FAST_POLL_STAGES = ("review", "split", "speedrun")
 FAMILY_TASK = "---\ntype: brief\n---\n\nBody.\n"
+MEMBER_TASK = "---\ntype: brief-acme\n---\n\nBody.\n"
 WORKSPACE_FAMILY = "bindings:\n  brief:\n    jira:\n      project: KONFLUX\n"
 # The second member of the shipped Initiative family (AISDLC-853/854): the one root on which
 # the SHIPPED member renders as one of two. The committed fixture
@@ -128,8 +130,9 @@ def _write_text(path, text):
     return path
 
 
-def _task_file(root, text=FAMILY_TASK, stem="BRA-1"):
-    """A task artifact under the member's tasks dir, declaring the FAMILY's name by default."""
+def _task_file(root, text=MEMBER_TASK, stem="BRA-1"):
+    """A task artifact under the member's tasks dir, declaring the MEMBER's name by default
+    (``FAMILY_TASK`` where the refusal of a stored family name is the point, AISDLC-856)."""
     return _write_text(root / "artifacts" / f"{MEMBER}-tasks" / f"{stem}.md", text)
 
 
@@ -430,19 +433,28 @@ class TestResolve:
             "is single-typed — split the input by type\n"
         )
 
-    def test_rung_3_frontmatter_family_type_resolves_the_member(self, single_root, tmp_path):
-        path = _task_file(tmp_path)
+    def test_rung_3_frontmatter_family_type_is_refused(self, single_root, tmp_path):
+        # D5 (AISDLC-856): a stored type name is compared as written — the family's name in an
+        # artifact's frontmatter is the unknown-type refusal, whatever the member count.
+        path = _task_file(tmp_path, FAMILY_TASK)
         result = _registry("resolve", "--artifact", str(path), root=single_root)
+        assert (result.returncode, result.stdout) == (1, "")
+        assert result.stderr == (
+            f"ERROR: unknown type 'brief' ({path} frontmatter type:); registered types: "
+            "brief-acme\n"
+        )
+        member = _task_file(tmp_path, stem="BRA-2")
+        result = _registry("resolve", "--artifact", str(member), root=single_root)
         assert (result.returncode, result.stdout, result.stderr) == (
             0,
             "TYPE RESOLVED: brief-acme (frontmatter type)\n",
             "",
         )
 
-    def test_rung_3_label_keeps_the_files_spelling(self, single_root, tmp_path):
-        """The conflict label names the file's own ``type: brief``; the candidate behind the
-        arrow is the concrete type the alias resolved."""
-        path = _task_file(tmp_path)
+    def test_rung_3_family_type_under_a_chosen_type_is_refused(self, single_root, tmp_path):
+        """The refusal names the file's own ``type: brief``; the rung raises before any conflict
+        with ``--type`` is aggregated (AISDLC-856)."""
+        path = _task_file(tmp_path, FAMILY_TASK)
         result = _registry(
             "resolve",
             "--type",
@@ -454,8 +466,8 @@ class TestResolve:
         )
         assert (result.returncode, result.stdout) == (1, "")
         assert result.stderr == (
-            f"ERROR: conflicting type signals: --type rfe vs {path} (type: brief) -> brief-acme; "
-            "a run is single-typed — split the input by type\n"
+            f"ERROR: unknown type 'brief' ({path} frontmatter type:); registered types: rfe, "
+            "brief-acme, initiative-rhaistrat\n"
         )
 
     def test_rung_1_two_member_family_is_a_scope_ambiguous_until_a_member_is_picked(self):
@@ -661,14 +673,6 @@ class TestClassification:
                 env=env,
             )
             assert beside.stdout.startswith("TYPES: rfe, initiative\n"), env
-
-    def test_try_canonical_ignores_a_corrupted_stored_value(self, single_reg):
-        # A list- or mapping-valued stored `type:` is never a name: the readers compare it as
-        # written instead of crashing.
-        assert single_reg.try_canonical(["brief"]) is None
-        assert single_reg.try_canonical({"type": "brief"}) is None
-        assert single_reg.try_canonical(None) is None
-        assert single_reg.try_canonical(FAMILY) == MEMBER
 
     @pytest.mark.parametrize("others", [MEMBER, FAMILY])
     def test_others_excludes_the_family_row(self, single_root, others):
@@ -930,14 +934,26 @@ class TestFrontmatter:
         )
         return combined_reg
 
-    def test_schema_for_a_family_typed_file_under_the_member_dir(self, alias_tables, tmp_path):
-        path = _task_file(tmp_path)
-        assert frontmatter._schema_for(str(path)) == f"{MEMBER}-task"
+    def test_schema_for_a_family_typed_file_under_the_member_dir_is_refused(
+        self, alias_tables, tmp_path
+    ):
+        # AISDLC-856: a stored family name is the unknown-type refusal, member directory or not;
+        # the member's own name reads under its schema.
+        path = _task_file(tmp_path, FAMILY_TASK)
+        with pytest.raises(frontmatter.SchemaTypeError) as exc:
+            frontmatter._schema_for(str(path))
+        assert str(exc.value) == (
+            f"{path}: frontmatter type: brief is not a registered type (registered types: rfe, "
+            "brief-acme, initiative-rhaistrat)"
+        )
         review = _write_text(
             tmp_path / "artifacts" / f"{MEMBER}-reviews" / "BRA-1-review.md",
             "---\ntype: brief\n---\n",
         )
-        assert frontmatter._schema_for(str(review)) == f"{MEMBER}-review"
+        with pytest.raises(frontmatter.SchemaTypeError) as exc:
+            frontmatter._schema_for(str(review))
+        assert "frontmatter type: brief is not a registered type" in str(exc.value)
+        assert frontmatter._schema_for(str(_task_file(tmp_path, stem="BRA-2"))) == f"{MEMBER}-task"
 
     def test_schema_for_still_refuses_a_foreign_type_under_the_member_dir(
         self, alias_tables, tmp_path
@@ -951,9 +967,15 @@ class TestFrontmatter:
             "— move the file or fix the type field"
         )
 
-    def test_directory_disagreement_compares_through_the_alias(self, alias_tables, tmp_path):
+    def test_directory_disagreement_compares_as_written(self, alias_tables, tmp_path):
         path = _task_file(tmp_path)
-        assert frontmatter._directory_disagreement(str(path), f"{MEMBER}-task", FAMILY) is None
+        assert frontmatter._directory_disagreement(str(path), f"{MEMBER}-task", MEMBER) is None
+        # AISDLC-856: `type=<family>` disagrees with the member's directory like any other name.
+        family = frontmatter._directory_disagreement(str(path), f"{MEMBER}-task", FAMILY)
+        assert family.startswith(
+            f"{path} is under the brief-acme task directory (brief-acme-task by path) but "
+            "type=brief would make its type brief;"
+        )
         foreign = frontmatter._directory_disagreement(str(path), f"{MEMBER}-task", "rfe")
         assert foreign.startswith(
             f"{path} is under the brief-acme task directory (brief-acme-task by path) but "
@@ -972,31 +994,33 @@ class TestFrontmatter:
                 f"invalid choice: {bad!r} (choose from 'brief-acme-task', 'brief-acme-review')"
             )
 
-    def test_cli_set_type_family_under_the_member_dir_is_written_as_given(
-        self, single_root, tmp_path
-    ):
+    def test_cli_set_type_family_under_the_member_dir_is_refused(self, single_root, tmp_path):
         """Through the RFE_CREATOR_EXTRA_TYPES seam the script's own tables carry the member:
-        ``set ... type=brief`` passes the schema-owner check and the file keeps ``type: brief``
-        (never normalised to the member)."""
+        ``set ... type=brief`` is refused by the schema-owner check (AISDLC-856: a ``type=`` must
+        be the schema's own concrete name) and the file is left as written; ``type=brief-acme``
+        is written and read back as the member."""
         path = _task_file(tmp_path)
+        before = path.read_text(encoding="utf-8")
+        fields = ("brief_acme_id=BRA-1", "title=T", "priority=Major", "status=Draft")
         result = _cli(
-            FRONTMATTER_SCRIPT,
-            "set",
-            str(path),
-            "brief_acme_id=BRA-1",
-            "title=T",
-            "priority=Major",
-            "status=Draft",
-            f"type={FAMILY}",
-            env=_seam(single_root),
+            FRONTMATTER_SCRIPT, "set", str(path), *fields, f"type={FAMILY}", env=_seam(single_root)
+        )
+        assert (result.returncode, result.stdout) == (1, "")
+        assert result.stderr == (
+            f"Error: type=brief disagrees with the brief-acme-task schema that validates {path} "
+            "(its type is brief-acme)\n"
+        )
+        assert path.read_text(encoding="utf-8") == before
+        result = _cli(
+            FRONTMATTER_SCRIPT, "set", str(path), *fields, f"type={MEMBER}", env=_seam(single_root)
         )
         assert result.returncode == 0, result.stderr
         assert result.stdout == f"OK: {path}\n"
         text = path.read_text(encoding="utf-8")
-        assert "type: brief\n" in text and MEMBER not in text
+        assert f"type: {MEMBER}\n" in text and "type: brief\n" not in text
         read = _cli(FRONTMATTER_SCRIPT, "read", str(path), env=_seam(single_root))
         assert read.returncode == 0, read.stderr
-        assert json.loads(read.stdout)["type"] == FAMILY
+        assert json.loads(read.stdout)["type"] == MEMBER
 
     def test_cli_set_a_foreign_type_is_still_refused(self, single_root, tmp_path):
         path = _task_file(tmp_path)
@@ -1006,7 +1030,7 @@ class TestFrontmatter:
             f"Error: type=rfe disagrees with the brief-acme-task schema that validates {path} "
             "(its type is brief-acme)\n"
         )
-        assert path.read_text(encoding="utf-8") == FAMILY_TASK
+        assert path.read_text(encoding="utf-8") == MEMBER_TASK
 
     def test_cli_schema_family_task_names_the_members_schema(self, single_root):
         result = _cli(FRONTMATTER_SCRIPT, "schema", f"{FAMILY}-task", env=_seam(single_root))
@@ -1023,12 +1047,20 @@ class TestFrontmatter:
 
 
 class TestArtifactUtils:
-    def test_reject_declared_type_conflict_accepts_the_family_name(
+    def test_reject_declared_type_conflict_refuses_the_family_name(
         self, monkeypatch, combined_reg, member, tmp_path
     ):
+        # AISDLC-856: a stored family name is a conflict like any other foreign name; the
+        # member's own name passes the pre-flight.
         monkeypatch.setattr(artifact_utils, "_TYPES", combined_reg)
         path = _task_file(tmp_path)
         assert artifact_utils._reject_declared_type_conflict(str(path), member, "rename") is None
+        family = _task_file(tmp_path, FAMILY_TASK, stem="BRA-3")
+        with pytest.raises(ValueError) as exc:
+            artifact_utils._reject_declared_type_conflict(str(family), member, "rename")
+        assert str(exc.value) == (
+            f"rename: {family} declares type='brief', expected brief-acme; nothing renamed"
+        )
         foreign = _task_file(tmp_path, "---\ntype: rfe\n---\n\nBody.\n", stem="BRA-2")
         with pytest.raises(ValueError) as exc:
             artifact_utils._reject_declared_type_conflict(str(foreign), member, "rename")
@@ -1036,16 +1068,22 @@ class TestArtifactUtils:
             f"rename: {foreign} declares type='rfe', expected brief-acme; nothing renamed"
         )
 
-    def test_type_for_probes_the_declared_family_name(self, monkeypatch, combined_reg, tmp_path):
+    def test_type_for_probes_the_declared_name_as_written(
+        self, monkeypatch, combined_reg, tmp_path
+    ):
         """A provisional id (one every Jira type's generic grammar admits) is routed by the
-        ``type:`` its task file declares: ``brief`` under the member's dir selects the member."""
+        ``type:`` its task file declares, compared as written (AISDLC-856): ``brief-acme`` under
+        the member's dir selects the member; ``brief`` is a miss and the id takes the rfe
+        default, like any other foreign name."""
         monkeypatch.setattr(artifact_utils, "_TYPES", combined_reg)
         found = combined_reg.candidates("ZZZ-1")
         assert found.provisional and MEMBER in found.names
         _task_file(tmp_path, stem="ZZZ-1")
+        _task_file(tmp_path, FAMILY_TASK, stem="ZZZ-3")
         artifacts = str(tmp_path / "artifacts")
         assert artifact_utils._type_for("ZZZ-1", artifacts_dir=artifacts).name == MEMBER
         assert artifact_utils._type_for("ZZZ-2", artifacts_dir=artifacts).name == "rfe"
+        assert artifact_utils._type_for("ZZZ-3", artifacts_dir=artifacts).name == "rfe"
 
     def test_rename_error_label_is_keyed_by_the_family(self, member, shipped_reg):
         assert artifact_utils._rename_error_label(member) == "rename_brief_to_jira_key"
@@ -1069,12 +1107,12 @@ class TestBootstrapSnapshot:
         return single_reg
 
     @staticmethod
-    def _config(member, type_name=MEMBER):
+    def _config(member):
         """BOOTSTRAP_CONFIG's row shape for the member (report_prefix, item_key, type)."""
         return {
             "report_prefix": member.get("snapshot.report_prefix"),
             "item_key": member.get("reporting.item_key"),
-            "type": type_name,
+            "type": MEMBER,
         }
 
     def _write(self, tmp_path, body, prefix):
@@ -1083,22 +1121,18 @@ class TestBootstrapSnapshot:
         _write_text(path, body)
         return str(results), str(path)
 
-    def test_a_family_typed_report_is_read_under_the_member_config(
-        self, alias_registry, member, tmp_path
-    ):
+    def test_a_family_typed_report_is_refused(self, alias_registry, member, tmp_path):
+        # AISDLC-856: a report's stored type is compared as written — the family's name is
+        # another type's report; the member's own name reads in full.
         cfg = self._config(member)
         assert cfg["report_prefix"] == "brief-acme-run-" and cfg["item_key"] == "per_brief"
-        results, _ = self._write(tmp_path, "type: brief\n" + self.ENTRY, cfg["report_prefix"])
-        ids, report = bootstrap_snapshot._load_run_report(results, self.RUN, config=cfg)
-        assert ids == {"ACME-1"} and report["type"] == FAMILY
-
-    def test_a_member_typed_report_is_read_under_a_config_built_from_the_alias(
-        self, alias_registry, member, tmp_path
-    ):
-        cfg = self._config(member, type_name=FAMILY)
+        results, path = self._write(tmp_path, "type: brief\n" + self.ENTRY, cfg["report_prefix"])
+        with pytest.raises(ValueError) as exc:
+            bootstrap_snapshot._load_run_report(results, self.RUN, config=cfg)
+        assert str(exc.value) == f"run report {path} is a brief report, expected brief-acme"
         results, _ = self._write(tmp_path, "type: brief-acme\n" + self.ENTRY, cfg["report_prefix"])
-        ids, _ = bootstrap_snapshot._load_run_report(results, self.RUN, config=cfg)
-        assert ids == {"ACME-1"}
+        ids, report = bootstrap_snapshot._load_run_report(results, self.RUN, config=cfg)
+        assert ids == {"ACME-1"} and report["type"] == MEMBER
 
     def test_another_type_is_still_refused(self, alias_registry, member, tmp_path):
         cfg = self._config(member)
@@ -1142,18 +1176,25 @@ class TestPipelineState:
         ) in err
         assert not os.path.exists(ps.STATE_FILE)
 
-    def test_load_state_canonicalises_a_family_typed_state_in_memory(self, alias_pipeline):
-        _write_yaml(Path(ps.STATE_FILE), _state(type=FAMILY))
-        before = Path(ps.STATE_FILE).read_text(encoding="utf-8")
-        assert "type: brief\n" in before
-        assert ps._load_state()["type"] == MEMBER
-        # Never rewritten by the loader: the next _save_state persists the member.
-        assert Path(ps.STATE_FILE).read_text(encoding="utf-8") == before
-
-    @pytest.mark.parametrize("name", ["rfe", MEMBER, "zzz"])
+    @pytest.mark.parametrize("name", ["rfe", MEMBER, FAMILY, "zzz"])
     def test_load_state_leaves_a_concrete_or_unknown_name_alone(self, alias_pipeline, name):
+        # AISDLC-856: the family's name is left as written too — nothing is canonicalised in
+        # memory; the validators see the stored value.
         _write_yaml(Path(ps.STATE_FILE), _state(type=name))
         assert ps._load_state()["type"] == name
+
+    def test_a_family_typed_state_is_refused_by_the_acting_commands(self, alias_pipeline, capsys):
+        # D8: `_validate_state_values` refuses the stored family name on every acting command,
+        # exactly as it refuses any unknown name; the file is never rewritten.
+        _write_yaml(Path(ps.STATE_FILE), _state(type=FAMILY))
+        before = Path(ps.STATE_FILE).read_text(encoding="utf-8")
+        with pytest.raises(SystemExit) as exc:
+            ps.advance(ps._load_state())
+        assert exc.value.code == 1
+        assert capsys.readouterr().err.startswith(
+            "[validate-state] refusing to run: type='brief' is not one of "
+        )
+        assert Path(ps.STATE_FILE).read_text(encoding="utf-8") == before
 
 
 # ── clone_results_repo.type_layouts ─────────────────────────────────────────────
@@ -1306,7 +1347,7 @@ class TestCanonicalCli:
 class TestWriters:
     """The argv half of the seam: the scripts the pipeline and the autofixer launch with
     ``--type <name>`` convert the family's name at argparse, write the MEMBER's name into what
-    they produce, and compare what they read back through ``try_canonical``. Exact texts are
+    they produce, and read back a stored name as written (AISDLC-856). Exact texts are
     taken from real runs."""
 
     RUN = "20260101-000000"
@@ -1408,17 +1449,25 @@ class TestWriters:
             "argument --type: invalid choice: 'brief' (choose from 'rfe', 'initiative-rhaistrat')"
         ) in without.stderr
 
-    def test_read_revise_passes_compares_the_state_type_through_the_alias(
+    def test_read_revise_passes_compares_the_state_type_as_written(
         self, monkeypatch, combined_reg, tmp_path
     ):
-        """A state file written under the family's name belongs to the member's run; one of
-        another type is refused with the spelling it carries."""
+        """The member's own state file is read in full; one written under the family's name
+        belongs to another run (AISDLC-856), like one of another type — both are refused with
+        the spelling they carry."""
         monkeypatch.setattr(submit, "_TYPES", combined_reg)
         passes = {"ACME-1": 1, "ACME-2": 0}
         own = _write_yaml(
-            tmp_path / "own.yaml", _state(type=FAMILY, **{submit.REVISE_PASSES_KEY: passes})
+            tmp_path / "own.yaml", _state(type=MEMBER, **{submit.REVISE_PASSES_KEY: passes})
         )
         assert submit._read_revise_passes(MEMBER, str(own)) == (passes, None)
+        family = _write_yaml(
+            tmp_path / "family.yaml", _state(type=FAMILY, **{submit.REVISE_PASSES_KEY: passes})
+        )
+        assert submit._read_revise_passes(MEMBER, str(family)) == (
+            {},
+            "belongs to another type (brief)",
+        )
         foreign = _write_yaml(
             tmp_path / "foreign.yaml", _state(type="rfe", **{submit.REVISE_PASSES_KEY: passes})
         )
@@ -1456,7 +1505,12 @@ class TestWriters:
     @pytest.mark.parametrize(
         "declared, reported",
         [
-            (FAMILY, ""),
+            (MEMBER, ""),
+            (
+                FAMILY,
+                "verify_phase: artifacts/brief-acme-reviews/ACME-1-review.md: review declares "
+                "type='brief', expected brief-acme; not stamped\n",
+            ),
             (
                 "rfe",
                 "verify_phase: artifacts/brief-acme-reviews/ACME-1-review.md: review declares "
@@ -1464,13 +1518,13 @@ class TestWriters:
             ),
         ],
     )
-    def test_verify_d8_judges_a_declared_type_through_the_alias(
+    def test_verify_d8_judges_a_declared_type_as_written(
         self, alias_verify, capsys, declared, reported
     ):
         """D8's declared-type branch: a review under the member's reviews dir that declares the
-        family's name is the member's own (left alone, silently); one that declares another
-        type is reported once and not stamped. Either way the file stays byte-identical and the
-        id stays active."""
+        member's name is left alone, silently; one that declares another name — the family's
+        included (AISDLC-856) — is reported once and not stamped. Either way the file stays
+        byte-identical and the id stays active."""
         review = self.REVIEW.replace("score: 7\n", f"type: {declared}\nscore: 7\n")
         path = _write_text(Path("artifacts") / f"{MEMBER}-reviews" / "ACME-1-review.md", review)
         _write_text(Path("ids.txt"), "ACME-1\n")

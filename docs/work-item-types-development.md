@@ -104,7 +104,7 @@ pin.
 | `cleanup_partial_split.py` | `dirs`, `id_field` and the `<type>-task` schema through `_TYPES.get(args.type)`; `--type` choices and the family converter from the registry | AISDLC-851 |
 | `compare_review_outputs.py` | `_TYPE_CONFIG` derived over `names()` (the bare `dirs`, `score_fields`); `--type` choices and the family converter from the registry | AISDLC-851 |
 | `jira_utils.py` | `strip_metadata` prefix regex | pending |
-| `pipeline_state.py` | `init --type` choices = the registered types that carry the phase-table facts (unknown → argparse exit 2 with the registered list; a single-member family name converts to its member through `type_registry.type_arg`, and `_load_state` canonicalises a stored family name in memory); `PIPELINE_TYPES` projected from the descriptor — `pipeline.scorer_agent`, `.context/assess-rfe/` + `pipeline.rubric.path`, `pipeline.dimensions[]` (prompt, blocking, condition, skip_stub), `dirs.{tasks,reviews,originals}`, `pipeline.poll_prefix`, `pipeline.prompts.split_rules`; the review prompt directory is the type-invariant skeleton dir and `dispatch_skill` the one generic auto-fix body (D7, PR-5c); every agent launch carries `type_registry.launch_vars` | PR-3a (choices); PR-5b (table) |
+| `pipeline_state.py` | `init --type` choices = the registered types that carry the phase-table facts (unknown → argparse exit 2 with the registered list; a single-member family name converts to its member through `type_registry.type_arg`; a state file naming anything but a registered type is refused by `_validate_state_values`); `PIPELINE_TYPES` projected from the descriptor — `pipeline.scorer_agent`, `.context/assess-rfe/` + `pipeline.rubric.path`, `pipeline.dimensions[]` (prompt, blocking, condition, skip_stub), `dirs.{tasks,reviews,originals}`, `pipeline.poll_prefix`, `pipeline.prompts.split_rules`; the review prompt directory is the type-invariant skeleton dir and `dispatch_skill` the one generic auto-fix body (D7, PR-5c); every agent launch carries `type_registry.launch_vars` | PR-3a (choices); PR-5b (table) |
 
 ## Where each reference section came from
 
@@ -135,7 +135,11 @@ pin.
   create-question fixtures of AISDLC-853 re-rooted on it), and made the eval skeleton's two
   revision checks read `${type.identity.id_field}` in place of the two shipped id fields (#323);
   the member's eval and any live binding are deferred with the second-project decision ("Second
-  member" in `types/README.md`).
+  member" in `types/README.md`). AISDLC-856 retired the stored-name half of that alias once the
+  results repository's pre-split Initiative runs carried the member's name: the readers
+  (frontmatter, artifact_utils, bootstrap_snapshot, pipeline_state, submit, verify_phase,
+  `resolve --artifact`) compare a stored `type:` as written and `try_canonical` is gone; the
+  typed-name boundaries keep canonicalising.
 - **Reserved vocabulary.** The `schema.task.priority.enum` beside the reserved `map_to_tracker`
   feeds `artifact_utils.SCHEMAS` since PR-2b and `validate_batch_input.ALLOWED_PRIORITIES` per
   type since PR-3b.

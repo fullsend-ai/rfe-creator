@@ -35,7 +35,7 @@ descriptor value ("Deployment binding override" below).
 | Which scripts read the registry, delivery history, where the descriptors depart from the design text | [`docs/work-item-types-development.md`](work-item-types-development.md) |
 | Copy-from skeleton | `types/rfe/` (`cp -r types/rfe types/<name>`) |
 | Reference type family | `tests/fixtures/type-families/` (a two-member family that passes gate 1, resolves and renders launch vars; "Type families" in `types/README.md`) |
-| Registry API and CLI | `scripts/type_registry.py` (`list`, `families`, `canonical`, `show`, `get`, `binding`, `candidates`, `resolve`); in code `load()`, `names()`/`choices()`/`get()`, `families()`/`members(family)`/`family(name)`/`canonical(name)`/`try_canonical(name)`, `Descriptor.family` / `.own` / `.extends`, `detect(item_id)`, `candidates(item_id)`, `resolve(registry, ...)`, `assert_registered_binding(desc)`, `is_headless(env, flag)`, `parse_type_arg(registry, argv)`, `type_arg(registry)` (the argparse `--type` converter) |
+| Registry API and CLI | `scripts/type_registry.py` (`list`, `families`, `canonical`, `show`, `get`, `binding`, `candidates`, `resolve`); in code `load()`, `names()`/`choices()`/`get()`, `families()`/`members(family)`/`family(name)`/`canonical(name)`, `Descriptor.family` / `.own` / `.extends`, `detect(item_id)`, `candidates(item_id)`, `resolve(registry, ...)`, `assert_registered_binding(desc)`, `is_headless(env, flag)`, `parse_type_arg(registry, argv)`, `type_arg(registry)` (the argparse `--type` converter) |
 | Validator (gates 1–3) | `scripts/validate_types.py` (`make lint` runs gate 1) |
 | Anti-regression prefix lint and its ratchet baseline | `scripts/lint_prefix_predicates.py`, `tests/data/prefix_predicate_baseline.json` (only ever shrinks) |
 | Recorded gaps (R1): what the v1 vocabulary cannot say | `NOT EXPRESSIBLE AT V1` comments in `tests/fixtures/types/epic/type.yaml`; `not_expressible_at_v1` in `tests/fixtures/types/strategy-inputs.yaml` |
@@ -348,11 +348,12 @@ that `extends` it, and the registry merges the family under the member before an
    render — `TYPE`, `POLL_PREFIX`, `STATE_PREFIX`, the inherited prompt paths) and
    `python3 scripts/generate_eval_config.py --type <member>` (the committed config, rendered from
    the family's fragment when the member has none). Then run the pipeline with `--type <member>`.
-   The family name is accepted everywhere a type name is read while the family has exactly one
+   The family name is accepted everywhere a type name is handed in while the family has exactly one
    member (`canonical()`: every script's `--type`, `resolve`, `validate_types.py --verify --type`,
-   `generate_eval_config.py --type`, a workspace `bindings:` key, `bootstrap.sh --type`, the
-   artifact and report readers; the `get` / `binding` / `launch-vars` CLI adds a stderr note naming
-   the member). With two or more members `resolve` takes it as a scope: the run is narrowed to the
+   `generate_eval_config.py --type`, a workspace `bindings:` key, `bootstrap.sh --type`,
+   `frontmatter.py --schema-type <family>-<kind>`; the `get` / `binding` / `launch-vars` CLI adds a
+   stderr note naming the member) — never in a stored `type:`, which the readers compare as written
+   (AISDLC-856). With two or more members `resolve` takes it as a scope: the run is narrowed to the
    members and a `--project <KEY>`, a key in a member's project, a `--parent` or batch `parent_key`
    in a member's parent-key family, or a `--jql` `project` clause picks the member — nothing
    deciding is the ambiguous verdict (exit 3); `parse_type_arg` (the three gates) accepts it only
@@ -360,7 +361,8 @@ that `extends` it, and the registry merges the family under the member before an
    boundary still needs one concrete type — the `canonical()` paths (`get` / `binding` /
    `launch-vars`, `--verify --type`) refuse it naming the members, the argparse converter, the eval
    generator, a workspace `bindings:` key and `bootstrap.sh --type` answer with the registered
-   list, the stored-name readers answer None. The family itself is never runnable, so
+   list; the stored-name readers compare as written, so a stored family name is reported against
+   the expected member. The family itself is never runnable, so
    `/rfe-review --type <family> <KEY>` runs the member the key names, `/rfe-create --type <family>
    <idea>` reads the idea against the members and asks once, and a headless run with no deciding
    signal stops with exit 3. New artifacts and run reports carry the member's name either way.

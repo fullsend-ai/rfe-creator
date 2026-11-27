@@ -807,14 +807,6 @@ def _load_state():
         sys.exit(1)
     with open(STATE_FILE) as f:
         state = yaml.safe_load(f)
-    # A state file written by a pre-split plugin may name a type family (`type: initiative`);
-    # the tables are keyed by concrete name, so canonicalise in memory (never rewritten here;
-    # the next _save_state persists it). An unknown name is left for the validators to report.
-    ptype = state.get("type") if isinstance(state, dict) else None
-    if isinstance(ptype, str) and ptype not in PIPELINE_TYPES:
-        concrete = _TYPES.try_canonical(ptype)
-        if concrete is not None:
-            state["type"] = concrete
     _export_headless_marker(state)
     return state
 
@@ -951,11 +943,14 @@ def _enter_phase(state, next_phase):
     """Move ``state`` to ``next_phase`` and save; stamp the entry time of an agent phase.
 
     Entering a phase restarts its wave count (``wave_ordinal``, bumped by each launch_wave).
+    The state is validated BEFORE anything is saved: a rejected ``set-phase`` (an unregistered
+    ``type:``, a stored family name since AISDLC-856) leaves the file as it was.
     """
+    config = _get_config(state)
     state["phase"] = next_phase
     state["wave_ordinal"] = 0
     _save_state(state)
-    if _get_config(state).get(next_phase, {}).get("type") == "agent":
+    if config.get(next_phase, {}).get("type") == "agent":
         _write_phase_entry(next_phase)
 
 

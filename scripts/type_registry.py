@@ -1205,10 +1205,11 @@ class TypeRegistry:
         """The concrete type name behind ``name``: ``name`` itself when it is a type; the sole
         member when it is a family with exactly one; ``KeyError`` otherwise. The one seam the
         family-name alias goes through: every boundary a type NAME crosses — the argparse
-        converter ``type_arg``, ``parse_type_arg``, ``resolve``, the artifact and state readers
-        (``try_canonical``), ``validate_all(only=)``, ``generate_eval_config --type``, a
-        workspace ``bindings:`` key, the CLI — canonicalises through it; the tables stay keyed by
-        concrete name (AISDLC-851)."""
+        converter ``type_arg``, ``parse_type_arg``, ``resolve``, ``validate_all(only=)``,
+        ``generate_eval_config --type``, a workspace ``bindings:`` key, the CLI — canonicalises
+        through it; the tables stay keyed by concrete name (AISDLC-851). A stored ``type:`` is
+        never canonicalised (AISDLC-856): the readers compare it with the concrete name as
+        written."""
         if name in self._types:
             return name
         if name in self._families:
@@ -1225,16 +1226,6 @@ class TypeRegistry:
                 "name one of them"
             )
         return self.get(name).name
-
-    def try_canonical(self, name):
-        """``canonical(name)``, or None when ``name`` is neither a type nor a single-member
-        family — the readers' tolerant compare: an unknown stored name is compared as written."""
-        if not isinstance(name, str):
-            return None  # a corrupted stored value (a list, a mapping) is never a type name
-        try:
-            return self.canonical(name)
-        except KeyError:
-            return None
 
     # -- effective bindings (design §3.2.1) -------------------------------------------------
 
@@ -1263,13 +1254,14 @@ class TypeRegistry:
         # type are a conflict, not a merge.
         rekeyed, spelled = {}, {}
         for name, block in mapping.items():
-            concrete = self.try_canonical(name)
-            if concrete is None:
+            try:
+                concrete = self.canonical(name)
+            except KeyError:
                 raise RegistryError(
                     f"{self.workspace_root / WORKSPACE_FILENAME}: {WORKSPACE_BINDINGS_KEY}."
                     f"{name}: unknown type; registered types: "
                     f"{', '.join(self.names()) or '(none)'}"
-                )
+                ) from None
             if concrete in rekeyed:
                 raise RegistryError(
                     f"{self.workspace_root / WORKSPACE_FILENAME}: {WORKSPACE_BINDINGS_KEY}."
@@ -1636,9 +1628,10 @@ class Resolution:
     provisional: bool = False
     binding: "dict | None" = None
     candidates: list = field(default_factory=list)
-    # AISDLC-853: the type family a ``--type`` / batch ``type:`` / frontmatter ``type:`` named
-    # when it scoped the run and nothing picked the member (the create body's member question
-    # keys on it); never set on a resolved type and not in ``as_dict`` (its key list is pinned).
+    # AISDLC-853: the type family a ``--type`` / batch ``type:`` named when it scoped the run and
+    # nothing picked the member (the create body's member question keys on it); never set on a
+    # resolved type and not in ``as_dict`` (its key list is pinned). A frontmatter ``type:`` never
+    # scopes a run: it must be a concrete name (D5, AISDLC-856).
     family: "str | None" = None
 
     @property
@@ -1724,11 +1717,11 @@ def resolve(
        (the speedrun batch, where every item is a mapping) passes ``items_are_ids=False`` so a
        bare string is its own malformed-entry error — never an id signal, never a D5 error.
        Any other root shape is an error.
-    4. deterministic signals — ``artifact`` (a markdown path): a string frontmatter ``type``
-       is ``frontmatter type`` (a family spelling narrows the scope instead and lets the
-       directory and the stem pick the member: dirs are member-own); else its parent
-       directory name against every type's ``dirs`` is ``artifact dir`` AND its stem joins
-       ``ids`` (so a stem owned by another type is a conflict, not a silent directory win).
+    4. deterministic signals — ``artifact`` (a markdown path): a string frontmatter ``type`` must
+       be a concrete registered name and is ``frontmatter type``; a family or unknown name is
+       ``ResolveError`` (a stored value is never a scope: D5, AISDLC-856); else its parent
+       directory name against every type's ``dirs`` is ``artifact dir`` AND its stem joins ``ids``
+       (so a stem owned by another type is a conflict, not a silent directory win).
        Every id goes through ``candidates()``; a non-provisional match is ``id grammar``.
        Every ``parent`` key — and, while a family scoped the run, every batch entry's
        ``parent_key`` — is ``parent key``: the parent-bearing types (``batch.extra_fields``
@@ -1981,27 +1974,18 @@ def resolve(
 
     if artifact is not None:
         fm_type, dir_name, stem = _artifact_signal(artifact)
-        fm_chosen = None
         if fm_type is not None:
-            # The file's spelling stays in the label (a restored artifact may carry a family
-            # name); the candidate is the concrete type.
-            fm_chosen, fm_family, fm_scope = scoped(fm_type, f"{artifact} frontmatter type:")
-            label = f"{artifact} (type: {fm_type})"
-            if fm_chosen is not None:
-                take("frontmatter type", label, [fm_chosen])
-            else:
-                # A family spelling (AISDLC-853) narrows the scope and the directory and the
-                # stem below pick the member (dirs are member-own). Under a chosen type, or a
-                # scope it does not meet, it is a plain signal: the aggregation renders the
-                # conflict it is.
-                narrowed = [n for n in scope if n in fm_scope]
-                if chosen is not None or not narrowed:
-                    take("frontmatter type", label, fm_scope)
-                else:
-                    scope = narrowed
-                    if family is None:
-                        family, family_label = fm_family, label
-        if fm_chosen is None:
+            # -- D5 (AISDLC-856), rung 3 strict: a stored type name is compared as written. A
+            # frontmatter `type:` must be a concrete registered name; a family name is refused
+            # like any other foreign name (rungs 1 and 2 keep the family scope of AISDLC-853).
+            if fm_type not in registered:
+                raise ResolveError(
+                    f"unknown type {fm_type!r} ({artifact} frontmatter type:); registered "
+                    f"types: {registered_text}"
+                )
+            take("frontmatter type", f"{artifact} (type: {fm_type})", [fm_type])
+            # -- end D5 hunk
+        else:
             owners = [d.name for d in registry if dir_name and dir_name in _artifact_dirs(d)]
             if owners:
                 take("artifact dir", f"{artifact} (dir {dir_name})", owners)

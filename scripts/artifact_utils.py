@@ -895,7 +895,7 @@ def _type_for(identifier, artifacts_dir="artifacts"):
                 continue
             task_path = os.path.join(artifacts_dir, desc.dirs("bare")["tasks"], f"{identifier}.md")
             declared = _declared_type(task_path)
-            if declared is not None and _TYPES.try_canonical(declared) == desc.name:
+            if declared == desc.name:
                 return desc
     return _TYPES.detect(identifier) or _TYPES.get("rfe")
 
@@ -1148,9 +1148,9 @@ def _reject_declared_type_conflict(path, desc, label):
     stamp then applies).
     """
     declared = _declared_type(path)
-    # Compared through the family alias (design §3.2.2): a restored draft that declares the
-    # single-member family's name is the member's.
-    if declared is not None and (_TYPES.try_canonical(declared) or declared) != desc.name:
+    # A stored type name is compared as written (AISDLC-856): a family name is refused like any
+    # other foreign name.
+    if declared is not None and declared != desc.name:
         raise ValueError(
             f"{label}: {path} declares type={declared!r}, expected {desc.name}; nothing renamed"
         )

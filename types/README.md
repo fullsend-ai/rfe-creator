@@ -177,9 +177,10 @@ Enumeration and the CLI. `TypeRegistry.families()` lists the family names, `memb
 member names in `names()` order, `family(name)` the raw family `Descriptor` (`abstract` true,
 `binding()` raises) and `canonical(name)` the concrete name behind a name — the name itself for a
 type, the sole member for a single-member family, a `KeyError` for a family with two or more
-members or none (`try_canonical(name)` is the same answer or `None`, the readers' tolerant
-compare). On a member `Descriptor.family` is the family `Descriptor`, `own` the raw file
-mapping and `extends` the family name (`None`, `data` and `None` on any other descriptor); `names()`,
+members or none. A stored `type:` — an artifact's, a run report's, `tmp/pipeline-state.yaml`'s —
+is never canonicalised: the readers compare it with the concrete name as written (AISDLC-856). On
+a member `Descriptor.family` is the family `Descriptor`, `own` the raw file mapping and `extends`
+the family name (`None`, `data` and `None` on any other descriptor); `names()`,
 `get()`, iteration, `len`, `in`, `bindings()`, `detect()` and `candidates()` see concrete types only.
 `python3 scripts/type_registry.py families` prints `<family>: <member> <member>` (`--json` a
 mapping), `show <family>` the family file as written, `show <member>` the merged data, `canonical
@@ -189,16 +190,20 @@ everywhere a type NAME crosses a boundary — the `get`, `binding`,
 `launch-vars` (one `# <family>: a type family; answered by its sole member <member>` line on
 stderr) and `canonical` CLI commands; every script's `--type` (the
 argparse converter `type_registry.type_arg`, used beside the registered `choices`, and
-`parse_type_arg` for the gates that parse by hand); `resolve` (rungs 1, 2 and 3 — the printed
-`TYPE RESOLVED:` line names the member, nothing else is printed); `validate_types.py --verify
+`parse_type_arg` for the gates that parse by hand); `resolve` (rungs 1 and 2 — the printed
+`TYPE RESOLVED:` line names the member, nothing else is printed; a frontmatter `type:` is a stored
+value and must be a concrete name, AISDLC-856); `validate_types.py --verify
 --type <family>`; `generate_eval_config.py --type <family>`; a workspace `bindings.<family>` key
 (two spellings of one type in that block are a conflict, not a merge); `bootstrap.sh --type
-<family>` (through the registry, and through the shipped root when there is no Python yet); and the
-readers of a stored type name — an artifact's `type:` (`frontmatter.py`, the `artifact_utils`
-routers and the rename's declared-type check, `--schema-type <family>-<kind>` too), a run report's
-`type:` (`bootstrap_snapshot.py`) and `tmp/pipeline-state.yaml` — which compare canonical names and
-never rewrite the artifact or the report (the state file is canonicalised in memory and carries the
-concrete name from its next save). A family with two or more members is a SCOPE for `resolve`
+<family>` (through the registry, and through the shipped root when there is no Python yet); and
+`frontmatter.py --schema-type <family>-<kind>` / `schema <family>-<kind>`. The readers of a stored
+type name — an artifact's `type:` (`frontmatter.py`, the `artifact_utils` routers and the rename's
+declared-type check, `resolve --artifact`), a run report's `type:` (`bootstrap_snapshot.py`),
+`tmp/pipeline-state.yaml` (`pipeline_state.py`, `submit.py`) and `verify_phase.py`'s review stamp —
+compare the stored name with the concrete name as written: a stored family name is refused,
+reported or routed like any other foreign name (AISDLC-856; the results repository's pre-split
+Initiative runs were rewritten to the member's name first). A family with two or more members is a
+SCOPE for `resolve`
 (AISDLC-853): the run is narrowed to its members and a `--project <KEY>`, a key in a member's
 project, a `--parent` or batch `parent_key` in a member's parent-key family, or a `--jql` `project`
 clause picks the member — nothing deciding is the ambiguous verdict (exit 3; interactively the
@@ -208,8 +213,8 @@ there). Every other boundary still needs one concrete type: the `canonical()` pa
 `binding` / `launch-vars`, the `canonical` CLI, `validate_types.py --verify --type` — refuse it
 naming the members; the argparse converter (`type_arg` beside the registered `choices`, every
 script's `--type`), `bootstrap.sh --type`, `generate_eval_config.py --type` and a workspace
-`bindings.<family>` key answer with the registered list; the stored-name readers (`try_canonical`)
-answer None, so a stored family name is reported against the expected member. The Python `get()`,
+`bindings.<family>` key answer with the registered list; the stored-name readers compare as written,
+so a stored family name is reported against the expected member. The Python `get()`,
 `names()`, `in`, iteration, `bindings()`, `detect()` and `candidates()` see concrete types only,
 and every import-time table (the artifact schemas, the poll phases, the snapshot and Jira write
 tables) is keyed by concrete name, which is why a family is kept out of `names()` rather than
@@ -220,7 +225,9 @@ resolved type in the writers and the report), never a family's. The shipped tree
 `initiative-rhaistrat` (`types/initiative-rhaistrat/type.yaml`, the RHAISTRAT binding): `--type
 initiative` resolves to `initiative-rhaistrat` through this alias, so every `--type initiative`
 spelling keeps working, and the member is the name `list`, the `TYPE RESOLVED:` line, new artifacts
-and run reports carry.
+and run reports carry. The family name is a `--type`, batch `type:`, `--schema-type`, workspace
+`bindings:` and `DATA_REPO_TYPES` spelling only: no artifact, run report or state file carries it,
+and no reader accepts it there.
 
 The classification digest (`type_registry.py classification`) renders a member's merged block
 under its FAMILY's name while it is the family's sole member, so the create step's `Type:` line

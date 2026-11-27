@@ -46,7 +46,8 @@ from artifact_utils import (
 
 # The registered Initiative type: the sole member of the `initiative` type family (AISDLC-851).
 # Schema keys, descriptor lookups and the names readers resolve to are the member's; a fixture
-# that DECLARES `type: initiative` (the family alias) is kept as written and expected to read as it.
+# that DECLARES `type: initiative` (the family alias) is a foreign name to the readers since
+# AISDLC-856 — compared as written, never canonicalised.
 MEMBER = "initiative-rhaistrat"
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -1482,12 +1483,12 @@ class TestTypeForProbesTheTaskFrontmatter:
 
         _write(
             "artifacts/initiatives/KONFLUX-1.md",
-            _task_fm("initiative_id", "KONFLUX-1", type="initiative"),
+            _task_fm("initiative_id", "KONFLUX-1", type=MEMBER),
         )
         _write("artifacts/rfe-tasks/KONFLUX-2.md", _task_fm("rfe_id", "KONFLUX-2", type="rfe"))
         found = _TYPES.candidates("KONFLUX-1")
         assert found.provisional and found.names == ["rfe", MEMBER]
-        # the file declares the family alias: the probe reads it as the member (never rewritten)
+        # the file declares the member: the probe matches it (never rewritten)
         assert artifact_utils._type_for("KONFLUX-1").name == MEMBER
         assert artifact_utils._type_for("KONFLUX-2").name == "rfe"
         # No task file, or one that declares nothing: today's default.
@@ -1499,13 +1500,19 @@ class TestTypeForProbesTheTaskFrontmatter:
             "artifacts/initiatives/KONFLUX-5.md", _task_fm("initiative_id", "KONFLUX-5", type="rfe")
         )
         assert artifact_utils._type_for("KONFLUX-5").name == "rfe"
+        # The family's name is compared as written (AISDLC-856): a miss, so the rfe default.
+        _write(
+            "artifacts/initiatives/KONFLUX-6.md",
+            _task_fm("initiative_id", "KONFLUX-6", type="initiative"),
+        )
+        assert artifact_utils._type_for("KONFLUX-6").name == "rfe"
 
     def test_probe_reads_under_the_callers_artifacts_dir(self, tmp_dir):
         import artifact_utils
 
         _write(
             "elsewhere/initiatives/KONFLUX-1.md",
-            _task_fm("initiative_id", "KONFLUX-1", type="initiative"),
+            _task_fm("initiative_id", "KONFLUX-1", type=MEMBER),
         )
         _write("elsewhere/initiative-reviews/KONFLUX-1-review.md", "---\nx: 1\n---\n")
         _write("elsewhere/rfe-reviews/KONFLUX-1-review.md", "---\nx: 1\n---\n")
