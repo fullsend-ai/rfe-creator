@@ -129,7 +129,13 @@ pin.
   `--type <family>` (`--project`, the `parent key` and `jql project` rungs, the family-scoped
   exit 3), member rows in the classification digest (`label`, `own_signals`, `family`,
   `project`) and family-level `--others`, with the JQL clause parser moved into the registry
-  (re-exported by `snapshot_fetch.py`).
+  (re-exported by `snapshot_fetch.py`); AISDLC-854 added the second Initiative member as a test
+  fixture, `tests/fixtures/type-members/initiative-hooli/` (a drop-in root loaded beside `types/`
+  by the tests; the HOOLI project seeded in the emulator by `tests/conftest.py`; the
+  create-question fixtures of AISDLC-853 re-rooted on it), and made the eval skeleton's two
+  revision checks read `${type.identity.id_field}` in place of the two shipped id fields (#323);
+  the member's eval and any live binding are deferred with the second-project decision ("Second
+  member" in `types/README.md`).
 - **Reserved vocabulary.** The `schema.task.priority.enum` beside the reserved `map_to_tracker`
   feeds `artifact_utils.SCHEMAS` since PR-2b and `validate_batch_input.ALLOWED_PRIORITIES` per
   type since PR-3b.

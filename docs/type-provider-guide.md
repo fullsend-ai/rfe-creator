@@ -202,9 +202,10 @@ registered type declares the block, and `rfe` and the `initiative` family (hence
 `initiative-rhaistrat`) do, every create-stage type needs one. A member inherits the family's block,
 appends its own `signals` (the digest lists them under `Member signals:` once the family has two
 members; a member declaring none gets no such line) and may replace `examples`; declare
-`display.entity` on each member of a multi-member family (the create question's label and the
-`likely a <entity>` sentence — `Red Hat AI Initiative` is the shipped member's intended spelling),
-or the digest labels it `<entity> (<project>)`. `classification --others <your type>` lists the
+`display.entity` on the member you add (the create question's label and the `likely a <entity>`
+sentence), or the digest labels it `<entity> (<project>)` — the shipped member's own spelling,
+`Red Hat AI Initiative`, is an item of the enable checklist in
+[`types/README.md`](../types/README.md). `classification --others <your type>` lists the
 types outside your family only: a sibling filed under your project is a project misfile, not a
 reclassify. Within the block `summary`, `signals` (at least one) and `examples` (one to five) are
 required, `driver` and `counter_signals` optional. The generic create body classifies a free-text
@@ -252,7 +253,7 @@ that `extends` it, and the registry merges the family under the member before an
    family's (`generate_eval_config.eval_stem`), so the `<family>_quality` threshold lives on the
    family, not on the member — and the poll/state/snapshot prefixes unless the family carries them
    (the reference family leaves them to its members; the shipped Initiative family carries them,
-   inherited by its sole member). The reference member is
+   inherited by its sole shipped member). The reference member is
    `tests/fixtures/type-families/brief-acme/type.yaml`, abridged here to the keys a member must own
    (the file itself adds the prefixes, the eval dataset and experiment, the query default, the
    parent-key patterns and one own signal):
@@ -270,6 +271,61 @@ that `extends` it, and the registry merges the family under the member before an
    snapshot: { prefix: brief-acme-snapshot-, report_prefix: brief-acme-run-, results_subdir: brief-acme }
    ```
 
+   The same shape on the shipped family: `tests/fixtures/type-members/initiative-hooli/type.yaml`
+   is a second member of `initiative`, bound to the fictional HOOLI project and kept in the test
+   tree — a registry root of its own, never under `types/`, loaded beside `types/` (where its
+   family lives) by the tests and by nothing shipped:
+
+   ```bash
+   python3 scripts/type_registry.py --root types --extra-roots tests/fixtures/type-members families
+   # initiative: initiative-hooli initiative-rhaistrat
+   python3 scripts/validate_types.py --extra-roots tests/fixtures/type-members --no-eval-sync
+   # OK: 3 type(s) valid: rfe, initiative-hooli, initiative-rhaistrat; 1 family(ies) checked: initiative
+   python3 scripts/type_registry.py --root types --extra-roots tests/fixtures/type-members resolve --type initiative
+   # exit 3: TYPE AMBIGUOUS: initiative-hooli, initiative-rhaistrat - pass --type
+   python3 scripts/type_registry.py --root types --extra-roots tests/fixtures/type-members resolve --type initiative-hooli
+   # TYPE RESOLVED: initiative-hooli (--type)
+   ```
+
+   Its one file is the whole list of what a second member of a shipped family owns: the HOOLI
+   binding (`identity.jira: { project: HOOLI, key_prefixes: ["HOOLI-"] }`), `INITH-` local ids and
+   the `initiative_hooli_id` field, the three `artifacts/initiative-hooli*` directories,
+   `results_subdir: initiative-hooli`, and the four prefixes the shipped member inherits from the
+   family and a second member must own — `pipeline.{poll_prefix,state_prefix}` and
+   `snapshot.{prefix,report_prefix}`, all `initiative-hooli-…`. Its Outcomes live in its own
+   project, as RHAISTRAT's do, so `conventions.parent_key_patterns` is `['HOOLI-\d+', 'INITH-\d+']`
+   (the write prefix is in the list) and the `alignment` dimension is overridden by name with
+   `condition: { prefix: "HOOLI-" }` and a `skip_stub.reason` naming the project; the launch block
+   renders `PARENT_KEY_PREFIX=HOOLI-` and `DIMENSION_ALIGNMENT_CONDITION=parent_key startswith
+   HOOLI-` from them. It shows every override kind a member uses: `display` (`Hooli Initiative`,
+   the member question's label — the shipped member's stays the derived `Initiative (RHAISTRAT)`),
+   two own `classification.signals` (appended after the family's six; the digest lists them under
+   `Member signals:`), a replaced `counter_signals` list (the family's four restated plus one
+   domain counter-signal — a member list replaces the family's whole, so the shape counter-signals
+   are restated to be kept), a replaced `examples` list (one line), the `alignment` dimension
+   merged by name and a replaced `pipeline.context_sources` list (both sources restated,
+   `--type initiative-hooli` in the rubric bootstrap). Its `eval.config` names
+   `eval-initiative.yaml` as an existence stand-in, so the sync gate is off for it as for every
+   fixture — the same `validate_types.py` run without `--no-eval-sync` reports exactly one
+   finding, `ERROR initiative-hooli: eval config eval-initiative.yaml is out of date …` — whereas
+   a shipped member's config is generated and checked. `tests/conftest.py` seeds the tracker
+   emulator with the HOOLI project (Initiatives and their Outcomes, a workflow without an
+   `Approved` status and the global `Close` a split's parent closure needs), which is what the
+   member's integration tests create, update, split and fetch against. The commands the root
+   answers are in `tests/fixtures/type-members/README.md`; the member's pins are
+   `tests/test_fixture_member.py`.
+
+   A member whose Outcome family is another Jira project must list its own write prefix in
+   `conventions.parent_key_patterns` beside the Outcome prefix and the local one (a `GLOBEX`-bound
+   member with its Outcomes in `GLOBEXOUT` and `INITG-` local ids lists `['GLOBEXOUT-\d+',
+   'GLOBEX-\d+', 'INITG-\d+']`): the task schema's `parent_key` grammar is `^(a|b|c)$` over that
+   list (`artifact_utils.SCHEMAS`) and a split child's `parent_key` is its parent's key in the
+   member's own project, so without the write prefix every child of a Jira-keyed parent fails the
+   `<member>-task` schema and the split cannot submit it; only the alignment `condition.prefix`
+   decides what arms the dimension. A member whose Outcomes live in its own project (RHAISTRAT,
+   HOOLI) satisfies it with one pattern. The brief fixture members list their Outcome and local
+   patterns only — they never submit — and gate 1 has no rule for it.
+
 2. Override by key, not by file. What a member typically overrides: a dimension's `condition.prefix`
    and `skip_stub` (a same-name `pipeline.dimensions` entry merges into the family's and keeps its
    `prompt`, `blocking` and `frontmatter_field`), its own `classification.signals` (appended after
@@ -280,7 +336,7 @@ that `extends` it, and the registry merges the family under the member before an
    lives), the rubric pin, the schema facts, the eval prose (`types/<family>/eval/` serves a member
    with no `eval/` directory of its own) and — when the family declares them — the poll/state
    prefixes and the snapshot prefixes (the reference family does not; the shipped Initiative family
-   does, and its sole member inherits them). A second member gives those their own values: the cross-type
+   does, and its sole shipped member inherits them). A second member gives those their own values: the cross-type
    rules keep the prefixes, `results_subdir` and every `dirs.*` value unique and allow one member
    per project. A file placed under `types/<member>/` is read only when a descriptor key names it.
 
@@ -395,6 +451,23 @@ boundary as the binding override — and every other entry is dropped with one s
 may hold a member whose family lives under `types/` (one level of `extends`, across roots in that
 direction only); a `types/` member may not depend on a drop-in family, and a family with its members
 in one drop-in root loads as a unit.
+
+Two fixture roots are the reference shapes. `tests/fixtures/type-families/` is a family with its
+members in one root (`brief` with `brief-acme` and `brief-globex`), loadable alone (`python3
+scripts/type_registry.py --root tests/fixtures/type-families list`) or beside `types/`;
+`tests/fixtures/type-members/` is a member of the shipped `initiative` family (`initiative-hooli`),
+loadable only beside `types/` (`--root types --extra-roots tests/fixtures/type-members`, "Adding a
+member of a family" above) — alone, `--root tests/fixtures/type-members list` is `ERROR:
+…/initiative-hooli/type.yaml: 'extends: initiative' names no registered type family (families:
+(none))`. Each root's README lists the commands to run against it. Run them from the checkout
+root: a missing root is an error (`ERROR: type root not found: <path>`), and in a headless run the
+allowlist is mandatory — `CI=true RFE_CREATOR_EXTRA_TYPES=$PWD/tests/fixtures/type-members python3
+scripts/type_registry.py list` prints the two shipped names after one stderr line (`type_registry:
+headless/CI run — ignoring RFE_CREATOR_EXTRA_TYPES root(s) not in RFE_CREATOR_EXTRA_TYPES_ALLOWLIST:
+…`) and three once `RFE_CREATOR_EXTRA_TYPES_ALLOWLIST=$PWD/tests/fixtures/type-members` is set
+beside it; `--extra-roots` is never gated. The test suite strips both variables
+(`tests/conftest.py`), so a root exported to play with the two-member ladder never reaches an
+unrelated test module.
 
 ## Deployment binding override
 
