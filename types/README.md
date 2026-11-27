@@ -238,49 +238,51 @@ are not reported for what they inherit.
 
 **Second member: the test fixture, and the enable checklist.** The Initiative family has a second
 member in the test tree, `tests/fixtures/type-members/initiative-hooli/` (AISDLC-854): a member
-bound to the fictional HOOLI project, loaded beside `types/` by the tests only — never by the
-default registry, the type lints or any shipped command — owning what a member owns (project and key
-prefix, local id and id field, directories, the four prefixes and `results_subdir`, same-project
-Outcomes with the write prefix in `parent_key_patterns`, `display.entity`, an `eval.config`
-stand-in) and proving on the real family the member ladder, the create step's member question and
-the emulator paths (a submit whose approve transition the workflow does not offer, a split, a
-fetch with a parent). Three decisions in this registry still assume the family has one SHIPPED
-member; a real second project takes them when it is enabled rather than inheriting them. The eval
-identity is the family's (`generate_eval_config.eval_stem`): two members would share the run name
-`<family>-speedrun`, the judge key `<family>_quality` and the MLflow experiment, so the generator
-needs a per-member identity decision first. The classification digest renders the sole member under
-the family's name: with two members each renders under its own with a `Label:` (declare
-`display.entity` on the member — `Red Hat AI Initiative` for the shipped one — or the label is
-`<entity> (<project>)`; with the fixture loaded the shipped member's label is the derived
-`Initiative (RHAISTRAT)`), and the create step's `Type:` line and the review's misfiled-item
-sentence name a member. The four prefixes the shipped member inherits
-— `pipeline.{poll_prefix,state_prefix}` and `snapshot.{prefix,report_prefix}`, all `initiative-` —
+bound to the fictional HOOLI project, loaded beside `types/` by the tests, or by a developer who
+names the root (`--extra-roots tests/fixtures/type-members`; the commands are in the provider guide)
+— never by the default registry, the type lints or a shipped command on its own — owning what a
+member owns (project and key prefix, local id and id field, directories, the four prefixes and
+`results_subdir`, same-project Outcomes with the write prefix in `parent_key_patterns`,
+`display.entity`, an `eval.config` stand-in) and proving on the real family the member ladder, the
+create step's member question and the emulator paths (a submit whose approve transition the workflow
+does not offer, a split, a fetch with a parent). Three decisions in this registry still assume the
+family has one SHIPPED member; a real second project takes them when it is enabled rather than
+inheriting them. The eval identity is the family's (`generate_eval_config.eval_stem`): two members
+would share the run name `<family>-speedrun`, the judge key `<family>_quality` and the MLflow
+experiment, so the generator needs a per-member identity decision first. The classification digest
+renders the sole member under the family's name: with two members each renders under its own with a
+`Label:` (declare `display.entity` on the member — `Red Hat AI Initiative` for the shipped one — or
+the label is `<entity> (<project>)`; with the fixture loaded the shipped member's label is the
+derived `Initiative (RHAISTRAT)`), and the create step's `Type:` line and the review's misfiled-item
+sentence name a member. The four prefixes the shipped member inherits —
+`pipeline.{poll_prefix,state_prefix}` and `snapshot.{prefix,report_prefix}`, all `initiative-` —
 must be owned by a second member (the cross-type rules keep them unique; the fixture's are
 `initiative-hooli-`, `initiative-hooli-snapshot-` and `initiative-hooli-run-`), while the shipped
-member keeps its inherited `initiative-run-` / `initiative-snapshot-` values: changing them
-orphans every run report and snapshot already under `initiative-rhaistrat/` in the results
-repository. Two more facts to know: the interactive poll files are already per member,
-`tmp/<member>-poll-*` (`POLL_FILE_PREFIX` is derived from the member's name, never inherited, so
-the sole member uses `tmp/initiative-rhaistrat-poll-*` today), and with a second member
-`--type <family>` resolves through the member ladder ("Resolution" below): a headless caller
-passes a deciding signal — `--type <member>`, `--project <KEY>`, or a `--jql` with a positive
-`project` clause — or stops with exit 3. `resolve` never reads `conventions.query_default`: a bare
-family name with no `--jql` and no other signal is exit 3 whatever project the descriptor's query
-names. The production autofixer's Initiative job composes its `--jql` from the type's
-`conventions.query_default` (which names the project; the job reads it through
-`type_registry.py get <type>`, which refuses a family name once it has two members) and its RFE
-job's `--jql` is a literal naming RHAIRFE — `resolve` would take the member from either clause,
-but the Initiative job also hands its `--type` to `bootstrap.sh --type`, to that `get` and to the
-scripts' argparse `--type` (`submit.py`), which take the member (`--type initiative-rhaistrat`
-since AISDLC-852).
+member keeps its inherited `initiative-run-` / `initiative-snapshot-` values: changing them orphans
+every run report and snapshot already under `initiative-rhaistrat/` in the results repository. Two
+more facts to know: the interactive poll files are already per member, `tmp/<member>-poll-*`
+(`POLL_FILE_PREFIX` is derived from the member's name, never inherited, so the sole member uses
+`tmp/initiative-rhaistrat-poll-*` today), and with a second member `--type <family>` resolves
+through the member ladder ("Resolution" below): a headless caller passes a deciding signal — `--type
+<member>`, `--project <KEY>`, or a `--jql` with a positive `project` clause — or stops with exit 3.
+`resolve` never reads `conventions.query_default`: a bare family name with no `--jql` and no other
+signal is exit 3 whatever project the descriptor's query names. The production autofixer's
+Initiative job composes its `--jql` from the type's `conventions.query_default` (which names the
+project; the job reads it through `type_registry.py get <type>`, which refuses a family name once it
+has two members) and its RFE job's `--jql` is a literal naming RHAIRFE — `resolve` would take the
+member from either clause, but the Initiative job also hands its `--type` to `bootstrap.sh --type`,
+to that `get` and to the scripts' argparse `--type` (`submit.py`), which take the member (`--type
+initiative-rhaistrat` since AISDLC-852).
 
 Enabling a real second project is `git mv tests/fixtures/type-members/initiative-hooli
 types/<member>` with the real key and, that day, the list below. The descriptor's shape, the
 emulator seed and the member's registry, ladder and emulator tests survive the move as a rename
 (the project key, the name, the four prefixes); the fixture's invisibility pins — the shipped
 `names()`, the silent README and user guide — do not, and are part of the registered price below.
-The list was measured once, on 0.5.1, by the designs that preceded the fixture decision, and is
-recorded here so it is never re-derived.
+The categories below are the list; the counts beside them are a point-in-time measurement (0.5.1,
+November 2026, by the designs that preceded the fixture decision), kept so the categories are not
+re-derived — re-measure before enabling by moving the fixture under `types/` on a branch and
+running the suite.
 
 - Mechanical: replace the `eval.config` stand-in by the member's own config name; add
   `eval.dataset`; decide `eval.mlflow_experiment` — the per-member identity question above (the
@@ -289,8 +291,9 @@ recorded here so it is never re-derived.
   `tests/conftest.py`; delete the fixture root and re-point the `members` rows of
   `tests/fixtures/type-families/create-cases.yaml` — or keep both, the fixture as the two-member
   reference of the shipped family.
-- The registered price: 392 test failures common to any registered member, +31 when the project
-  is KONFLUX (the suite's canonical unbound key; 410 in the shipped-member design's own run) —
+- The registered price (then about 392 test failures common to any registered member, +31 when
+  the project is KONFLUX, the suite's canonical unbound key; 410 in the shipped-member design's
+  own run) —
   the `--type initiative` CLI inputs in some forty test files, the `OK:` / `registered types:` /
   `names()` pins, the digest goldens (`TYPES: rfe, initiative`), `tests/data/schemas-golden.json`
   regenerated, the typed-prompt allow-lists keyed per member, the AGENTS.md block and the README /
