@@ -13,6 +13,7 @@
     "outputs",
     "architecture_context",
     "quality",
+    "calibration",
     "revision"
   ],
   "additionalProperties": false,
@@ -113,7 +114,18 @@
         },
         "extra_checks": {
           "$ref": "#/$defs/block",
-          "description": "Optional paragraph of extra verdicts the quality judge cross-checks (feasibility, alignment, ...); empty for none."
+          "description": "Optional paragraph of extra CONTENT checks for the quality judge; empty for none. The pipeline's own verdicts (feasibility, alignment, ...) belong in calibration.extra_checks: the quality judge grades content only."
+        }
+      }
+    },
+    "calibration": {
+      "type": "object",
+      "required": ["extra_checks"],
+      "additionalProperties": false,
+      "properties": {
+        "extra_checks": {
+          "$ref": "#/$defs/block",
+          "description": "Optional paragraph of the pipeline's own verdicts (feasibility, alignment, ...) the self_score_calibration judge also checks; empty for none."
         }
       }
     },

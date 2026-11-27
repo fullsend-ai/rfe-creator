@@ -3227,10 +3227,14 @@ class TestEvalConfigs:
         # a member's judge key is the FAMILY stem (generate_eval_config.eval_stem)
         name = f"{ctx.desc.extends or ctx.t}_quality"
         assert name in js and "revision_quality" in js
-        assert ctx.ev["thresholds"][name] == {"min_mean": 3.5} and ctx.ev["thresholds"][
+        # the quality judge is 0-2 per criterion (0-10): 7.0 is the former 3.5/5 bar
+        assert ctx.ev["thresholds"][name] == {"min_mean": 7.0} and ctx.ev["thresholds"][
             "revision_quality"
         ] == {"min_mean": 3.5}
-        assert "scores." + "/".join(ctx.score_fields) in js[name]["prompt"]
+        assert js[name]["score_range"] == [0, 2 * len(ctx.score_fields)]
+        # the pipeline's own scores are self_score_calibration's to check, not the quality judge's
+        assert "scores." + "/".join(ctx.score_fields) in js["self_score_calibration"]["prompt"]
+        assert "scores." + "/".join(ctx.score_fields) not in js[name]["prompt"]
         for key in ("originals", "tasks", "reviews"):
             assert f"{ctx.dirs[key]}/" in js["revision_quality"]["prompt"], key
 

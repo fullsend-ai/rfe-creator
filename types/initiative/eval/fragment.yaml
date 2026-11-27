@@ -57,9 +57,12 @@ quality:
       (e.g., "implement using Redis" when the choice is open)
     - Right-sized: Represent a single coherent effort — not bundle independent
       workstreams that could be planned and executed by different teams
+  extra_checks: ""
+calibration:
   extra_checks: |
     Also check feasibility and alignment verdicts — are they accurate
     given the Initiative's content and any architecture context used?
+    Name any inaccurate verdict in the rationale (it does not change the count).
 revision:
   assessments: |
     **Revision quality**: Did revisions genuinely improve the Initiative?
