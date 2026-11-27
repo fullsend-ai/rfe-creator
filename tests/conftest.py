@@ -225,6 +225,42 @@ def jira(jira_emu):
     seed_service.WORKFLOWS["RHAISTRAT Workflow"] = _iwf
     seed_service.PROJECT_WORKFLOWS["RHAISTRAT"] = "RHAISTRAT Workflow"
 
+    # The test-fixture member of the initiative family (AISDLC-854,
+    # tests/fixtures/type-members/initiative-hooli): one project holding Initiatives and their
+    # Outcomes, a workflow WITHOUT an Approved status (the approve transition is skipped, as
+    # RHAISTRAT's live workflow does) and the global Close the split's Phase 3 needs. Seeded by
+    # module patch like RHAIRFE/RHAISTRAT above, not imported: /api/admin/import creates a bare
+    # Project (no ProjectWorkflow row, so no transitions) and a REST create needs the Project and
+    # IssueType rows; the emulator's /api/admin/import/project-config route would do it over REST
+    # after every reset and is the recorded fallback (AISDLC-854 spec D12).
+    if not any(p["key"] == "HOOLI" for p in seed_service.PROJECTS):
+        seed_service.PROJECTS = seed_service.PROJECTS + [
+            {
+                "key": "HOOLI",
+                "name": "Hooli Strategy (test fixture)",
+                "description": "Test-fixture member of the initiative type family",
+            }
+        ]
+    if not any(t["name"] == "Outcome" for t in seed_service.ISSUE_TYPES):
+        seed_service.ISSUE_TYPES = seed_service.ISSUE_TYPES + [
+            {"name": "Outcome", "subtask": False}
+        ]
+    seed_service.PROJECT_ISSUE_TYPES.setdefault("HOOLI", ["Initiative", "Outcome", "Sub-task"])
+    seed_service.WORKFLOWS.setdefault(
+        "HOOLI Workflow",
+        [
+            ("New", "Start Refinement", "Refinement"),
+            ("Refinement", "Start Progress", "In Progress"),
+            ("In Progress", "Submit for Review", "Review"),
+            ("Review", "Complete", "Done"),
+            ("Review", "Reopen", "In Progress"),
+            ("Done", "Reopen", "In Progress"),
+            ("Closed", "Reopen", "In Progress"),
+            (None, "Close", "Closed"),
+        ],
+    )
+    seed_service.PROJECT_WORKFLOWS.setdefault("HOOLI", "HOOLI Workflow")
+
     # Reset all data before each test (re-seeds with patched data)
     req = urllib.request.Request(f"{jira_emu}/api/admin/reset", method="POST", data=b"")
     urllib.request.urlopen(req)
