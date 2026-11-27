@@ -2205,7 +2205,7 @@ class TestTypeConfigsProjection:
         import submit as submit_mod
 
         assert list(submit_mod.TYPE_CONFIGS) == submit_mod._TYPES.names()
-        assert list(submit_mod.TYPE_CONFIGS) == ["rfe", MEMBER]
+        assert list(submit_mod.TYPE_CONFIGS) == ["rfe", MEMBER, "react-shopping-cart"]
         for cfg in submit_mod.TYPE_CONFIGS.values():
             assert list(cfg) == list(self.RFE)
 
@@ -2240,7 +2240,7 @@ class TestTypeConfigsProjection:
             [sys.executable, SCRIPT, "--help"], capture_output=True, text=True, env=_clean_env()
         )
         assert result.returncode == 0, result.stderr
-        assert f"--type {{rfe,{MEMBER}}}" in result.stdout
+        assert f"--type {{rfe,{MEMBER},react-shopping-cart}}" in result.stdout
 
         result = subprocess.run(
             [sys.executable, SCRIPT, "--type", "epic", "--dry-run"],

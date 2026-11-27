@@ -480,6 +480,16 @@ class TestShippedConfigs:
                 "dataset_dir": REG.get(t).get("eval.dataset")
             }, t
 
+    def test_a_type_without_an_eval_block_is_skipped(self, capsys):
+        """`eval` is optional (a demo type omits it): the generator renders no config for
+        such a type and refuses a --type that names it."""
+        assert not gen.has_eval(REG.get("react-shopping-cart"))
+        assert [d.name for d in gen._select(REG, None)] == TYPES
+        with pytest.raises(gen.GenerateError, match="has no eval block"):
+            gen._select(REG, "react-shopping-cart")
+        assert gen.main(["--check", "--type", "react-shopping-cart"]) == 2
+        assert "has no eval block" in capsys.readouterr().err
+
     def test_check_mode_on_the_repo_passes(self, capsys):
         assert gen.main(["--check"]) == 0
         out = capsys.readouterr().out

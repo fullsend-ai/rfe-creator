@@ -50,8 +50,10 @@ FAMILY = "brief"
 MEMBERS = ["brief-acme", "brief-globex"]
 SHIPPED_FAMILY = "initiative"
 SHIPPED_MEMBER = "initiative-rhaistrat"
+SHIPPED_RSC = "react-shopping-cart"  # the Shop RFE type, a concrete type beside the family
 SHIPPED_OK_LINE = (
-    "OK: 2 type(s) valid: rfe, initiative-rhaistrat; 1 family(ies) checked: initiative\n"
+    "OK: 3 type(s) valid: rfe, initiative-rhaistrat, react-shopping-cart; "
+    "1 family(ies) checked: initiative\n"
 )
 FAMILY_OK_LINE = "OK: 2 type(s) valid: brief-acme, brief-globex; 1 family(ies) checked: brief\n"
 FAMILY_VERIFY_TEXT = (
@@ -208,7 +210,7 @@ class TestShippedFamily:
     def test_shipped_registry_has_the_initiative_family(self):
         reg = _load(TYPES_ROOT)
         assert reg.families() == [SHIPPED_FAMILY]
-        assert reg.names() == ["rfe", SHIPPED_MEMBER]
+        assert reg.names() == ["rfe", SHIPPED_MEMBER, SHIPPED_RSC]
         assert reg.members(SHIPPED_FAMILY) == [SHIPPED_MEMBER]
         assert reg.canonical(SHIPPED_FAMILY) == SHIPPED_MEMBER
         assert reg.family(SHIPPED_FAMILY).abstract
@@ -216,7 +218,7 @@ class TestShippedFamily:
             reg.family("rfe")
         assert exc.value.args[0] == f"unknown type family 'rfe'; families: {SHIPPED_FAMILY}"
 
-    @pytest.mark.parametrize("name", ["rfe"])
+    @pytest.mark.parametrize("name", ["rfe", SHIPPED_RSC])
     def test_shipped_standalone(self, name):
         desc = _load(TYPES_ROOT).get(name)
         assert desc.family is None
@@ -251,7 +253,7 @@ class TestShippedFamily:
     def test_shipped_report_lists_the_family(self):
         report = _validate(TYPES_ROOT)
         assert report.ok, report.lines()
-        assert report.types == ["rfe", SHIPPED_MEMBER]
+        assert report.types == ["rfe", SHIPPED_MEMBER, SHIPPED_RSC]
         assert report.families == [SHIPPED_FAMILY]
         assert report.to_dict()["families"] == [SHIPPED_FAMILY]
 
@@ -803,7 +805,7 @@ class TestLoadErrors:
 
     def test_a_family_and_its_member_in_one_extra_root_load(self):
         reg = _load(TYPES_ROOT, extra_roots=[FAMILIES_ROOT])
-        assert reg.names() == ["rfe", "brief-acme", "brief-globex", SHIPPED_MEMBER]
+        assert reg.names() == ["rfe", "brief-acme", "brief-globex", SHIPPED_MEMBER, SHIPPED_RSC]
         assert reg.families() == [FAMILY, SHIPPED_FAMILY]
         assert reg.members(FAMILY) == MEMBERS
 
@@ -966,7 +968,7 @@ class TestGate1:
     def test_fixture_beside_the_shipped_tree_passes(self):
         report = _validate(TYPES_ROOT, extra_roots=[FAMILIES_ROOT])
         assert report.ok, report.lines()
-        assert report.types == ["rfe", "brief-acme", "brief-globex", SHIPPED_MEMBER]
+        assert report.types == ["rfe", "brief-acme", "brief-globex", SHIPPED_MEMBER, SHIPPED_RSC]
         assert report.families == [FAMILY, SHIPPED_FAMILY]
 
     def test_to_dict_lists_the_family(self):
@@ -1058,6 +1060,21 @@ class TestGate1Findings:
         other = _validate(TYPES_ROOT, extra_roots=[families_copy], only="rfe", eval_gate=False)
         assert other.ok, other.lines()
         assert other.families == []
+
+    def test_a_family_and_members_without_eval_need_no_member_eval_config(self, families_copy):
+        # eval is optional: with no eval block anywhere in the family, no member owes its own
+        # eval.config (generate_eval_config skips such types too).
+        for name in (FAMILY, *MEMBERS):
+            _mutate(families_copy, name, lambda d: d.pop("eval"))
+        report = _validate(families_copy)
+        assert report.ok, report.lines()
+        assert _find(report, "eval.config") == []
+
+    def test_a_member_of_an_eval_family_still_owes_its_eval_config(self, families_copy):
+        _mutate(families_copy, "brief-acme", lambda d: d["eval"].pop("config"))
+        report = _validate(families_copy)
+        hit = _assert_finding(report, "eval.config: a member of family", "brief-acme")
+        assert hit
 
     def test_a_family_with_abstract_false_is_a_load_finding(self, families_copy):
         path = _mutate(families_copy, FAMILY, lambda d: d.__setitem__("abstract", False)).resolve()
@@ -1220,7 +1237,7 @@ class TestGate1Findings:
             shutil.rmtree(families_copy / name)
         # Beside a concrete type the family itself is reported.
         report = _validate(TYPES_ROOT, extra_roots=[families_copy])
-        assert report.types == ["rfe", SHIPPED_MEMBER]
+        assert report.types == ["rfe", SHIPPED_MEMBER, SHIPPED_RSC]
         assert report.families == [FAMILY, SHIPPED_FAMILY]
         assert [(f.type, f.message, f.types) for f in report.findings] == [
             (

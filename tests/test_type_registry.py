@@ -50,6 +50,9 @@ from type_registry import (  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TYPES_ROOT = REPO_ROOT / "types"
+# Every registered type under types/, in registry order (rfe, initiative, then the rest by
+# name): a new type is a one-line change here. SHIPPED below is the two-type copy fixture.
+REGISTERED = ["rfe", "initiative-rhaistrat", "react-shopping-cart"]
 SCRIPT = "scripts/type_registry.py"
 EPIC_FIXTURE = REPO_ROOT / "tests" / "fixtures" / "types" / "epic" / "type.yaml"
 # The shipped registry (AISDLC-851): `initiative` is a type FAMILY (abstract, never a registered
@@ -58,6 +61,7 @@ EPIC_FIXTURE = REPO_ROOT / "tests" / "fixtures" / "types" / "epic" / "type.yaml"
 # family alias, kept below as an INPUT that must resolve to the member.
 MEMBER = "initiative-rhaistrat"
 FAMILY = "initiative"
+RSC = "react-shopping-cart"  # the Shop RFE type, shipped beside the two above
 SHIPPED = ("rfe", MEMBER)  # registered names
 SHIPPED_DIRS = ("rfe", FAMILY, MEMBER)  # descriptor directories a copied root needs
 
@@ -148,10 +152,10 @@ def _cli(*args, env=None, cwd=REPO_ROOT):
 
 
 class TestDiscovery:
-    def test_shipped_root_holds_exactly_the_two_types(self):
+    def test_shipped_root_holds_exactly_the_three_types(self):
         reg = _shipped()
-        assert reg.names() == ["rfe", MEMBER]
-        assert len(reg) == 2
+        assert reg.names() == ["rfe", MEMBER, RSC]
+        assert len(reg) == 3
         # _schema/ is a support dir and README.md is a file: neither is a type.
         assert "_schema" not in reg
         assert "README.md" not in reg
@@ -260,7 +264,7 @@ class TestEnumeration:
         # check_conflicts.py:60, batch_summary.py:22, error_collect.py:67, ... all spell
         # choices=["rfe", MEMBER]; the registry must reproduce that order (PR-2 swapped
         # the literal for registry.choices(); since AISDLC-851 the second name is the member).
-        assert _shipped().choices() == ["rfe", MEMBER]
+        assert _shipped().choices() == ["rfe", MEMBER, RSC]
 
     def test_iteration_follows_names_order(self):
         reg = _shipped()
@@ -272,12 +276,15 @@ class TestEnumeration:
         assert "rfe" in reg
         assert MEMBER in reg
         assert "epic" not in reg
-        assert len(reg) == 2
+        assert len(reg) == 3
 
     def test_get_unknown_type_lists_available_names(self):
         with pytest.raises(KeyError) as excinfo:
             _shipped().get("epic")
-        assert excinfo.value.args[0] == "unknown type 'epic'; available: rfe, initiative-rhaistrat"
+        assert (
+            excinfo.value.args[0]
+            == "unknown type 'epic'; available: rfe, initiative-rhaistrat, react-shopping-cart"
+        )
 
     def test_get_unknown_type_on_empty_registry(self, tmp_path):
         root = tmp_path / "types"
@@ -673,7 +680,7 @@ class TestBinding:
 
     def test_bindings_keyed_in_names_order(self):
         bindings = _shipped().bindings()
-        assert list(bindings) == ["rfe", MEMBER]
+        assert list(bindings) == ["rfe", MEMBER, RSC]
         assert bindings["rfe"] == RFE_DESCRIPTOR_BINDING
 
     def test_descriptor_without_registry_env_reads_os_environ(self, monkeypatch):
@@ -711,7 +718,7 @@ class TestExtraRoots:
         _add_type(extra, "docs", project="DOCS")
         env = {"RFE_CREATOR_EXTRA_TYPES": str(extra)}
         reg = load(root=TYPES_ROOT, env=env)
-        assert reg.names() == ["rfe", "docs", MEMBER]
+        assert reg.names() == ["rfe", "docs", MEMBER, RSC]
         assert reg.extra_roots == [extra]
 
     def test_env_variable_pathsep_and_empty_entries(self, tmp_path):
@@ -720,12 +727,12 @@ class TestExtraRoots:
         _add_type(b, "bbb", project="BBB")
         env = {"RFE_CREATOR_EXTRA_TYPES": os.pathsep.join(["", str(a), " ", str(b), ""])}
         reg = load(root=TYPES_ROOT, env=env)
-        assert reg.names() == ["rfe", "aaa", "bbb", MEMBER]
+        assert reg.names() == ["rfe", "aaa", "bbb", MEMBER, RSC]
         assert reg.extra_roots == [a, b]
 
     def test_explicit_extra_roots_ignore_the_env_variable(self, tmp_path):
         env = {"RFE_CREATOR_EXTRA_TYPES": str(tmp_path / "does-not-exist")}
-        assert load(root=TYPES_ROOT, extra_roots=[], env=env).names() == ["rfe", MEMBER]
+        assert load(root=TYPES_ROOT, extra_roots=[], env=env).names() == ["rfe", MEMBER, RSC]
 
     def test_env_pointing_at_a_missing_root_fails_loudly(self, tmp_path):
         env = {"RFE_CREATOR_EXTRA_TYPES": str(tmp_path / "does-not-exist")}
@@ -769,7 +776,7 @@ class TestHeadlessGate:
     def test_env_root_is_ignored_under_a_headless_marker(self, extra, marker, capsys):
         env = {"RFE_CREATOR_EXTRA_TYPES": str(extra), marker: "true"}
         reg = load(root=TYPES_ROOT, env=env)
-        assert reg.names() == ["rfe", MEMBER]
+        assert reg.names() == ["rfe", MEMBER, RSC]
         assert reg.extra_roots == []
         assert reg.roots == [TYPES_ROOT]
         assert reg.ignored_extra_roots == [extra]
@@ -791,7 +798,7 @@ class TestHeadlessGate:
             "RFE_CREATOR_EXTRA_TYPES_ALLOWLIST": str(extra),
         }
         reg = load(root=TYPES_ROOT, env=env)
-        assert reg.names() == ["rfe", "docs", MEMBER]
+        assert reg.names() == ["rfe", "docs", MEMBER, RSC]
         assert reg.ignored_extra_roots == []
         assert capsys.readouterr().err == ""
 
@@ -822,7 +829,7 @@ class TestHeadlessGate:
             "RFE_CREATOR_EXTRA_TYPES_ALLOWLIST": str(extra),
         }
         reg = load(root=TYPES_ROOT, env=env)
-        assert reg.names() == ["rfe", "docs", MEMBER]
+        assert reg.names() == ["rfe", "docs", MEMBER, RSC]
         assert reg.extra_roots == [extra]
         assert reg.ignored_extra_roots == [other]
 
@@ -835,13 +842,13 @@ class TestHeadlessGate:
     def test_explicit_empty_extra_roots_switch_the_seam_off_without_noise(self, extra, capsys):
         env = {"CI": "true", "RFE_CREATOR_EXTRA_TYPES": str(extra)}
         reg = load(root=TYPES_ROOT, extra_roots=[], env=env)
-        assert reg.names() == ["rfe", MEMBER]
+        assert reg.names() == ["rfe", MEMBER, RSC]
         assert reg.ignored_extra_roots == []
         assert capsys.readouterr().err == ""
 
     def test_no_seam_no_noise(self, capsys):
         reg = load(root=TYPES_ROOT, env={"CI": "true"})
-        assert reg.names() == ["rfe", MEMBER]
+        assert reg.names() == ["rfe", MEMBER, RSC]
         assert capsys.readouterr().err == ""
 
     def test_is_headless(self):
@@ -863,7 +870,7 @@ class TestHeadlessGate:
     def test_cli_honours_the_gate_from_the_process_environment(self, extra):
         gated = _cli("list", env={"RFE_CREATOR_EXTRA_TYPES": str(extra), "CI": "true"})
         assert gated.returncode == 0, gated.stderr
-        assert gated.stdout == f"rfe\n{MEMBER}\n"
+        assert gated.stdout == f"rfe\n{MEMBER}\n{RSC}\n"
         assert "ignoring RFE_CREATOR_EXTRA_TYPES" in gated.stderr
         allowed = _cli(
             "list",
@@ -874,13 +881,13 @@ class TestHeadlessGate:
             },
         )
         assert allowed.returncode == 0, allowed.stderr
-        assert allowed.stdout == f"rfe\ndocs\n{MEMBER}\n"
+        assert allowed.stdout == f"rfe\ndocs\n{MEMBER}\n{RSC}\n"
         assert allowed.stderr == ""
 
     def test_cli_explicit_extra_roots_are_not_gated(self, extra):
         result = _cli("--extra-roots", str(extra), "list", env={"CI": "true"})
         assert result.returncode == 0, result.stderr
-        assert result.stdout == f"rfe\ndocs\n{MEMBER}\n"
+        assert result.stdout == f"rfe\ndocs\n{MEMBER}\n{RSC}\n"
 
     def test_headless_flag_gates_the_env_root(self, extra, capsys):
         """PR-3 D4, one predicate: ``load(headless=True)`` — the explicit ``--headless`` —
@@ -889,7 +896,7 @@ class TestHeadlessGate:
         assert load(root=TYPES_ROOT, env=env).headless is False
         reg = load(root=TYPES_ROOT, env=env, headless=True)
         assert reg.headless is True
-        assert reg.names() == ["rfe", MEMBER]
+        assert reg.names() == ["rfe", MEMBER, RSC]
         assert reg.ignored_extra_roots == [extra]
         err = capsys.readouterr().err
         assert err.count("\n") == 1 and "headless/CI run" in err and str(extra) in err
@@ -899,6 +906,7 @@ class TestHeadlessGate:
             "rfe",
             "docs",
             MEMBER,
+            RSC,
         ]
         assert capsys.readouterr().err == ""
         # explicit extra_roots stay a deliberate caller action, flag or not
@@ -924,7 +932,7 @@ class TestHeadlessGate:
         ) in headless.stderr
         by_id = _cli("resolve", "--headless", "DOCS-1", env=env)
         assert by_id.returncode == 3
-        assert "candidates rfe, initiative-rhaistrat" in by_id.stderr
+        assert "candidates rfe, initiative-rhaistrat, react-shopping-cart" in by_id.stderr
         allowed = _cli(
             "resolve",
             "--headless",
@@ -940,7 +948,18 @@ class TestHeadlessGate:
 
 # `copy` is stdlib: binding() deep-copies the identity block so callers never alias descriptor
 # data; `dataclasses` is stdlib: the Candidates / Resolution result objects (PR-3a).
-ALLOWED_IMPORTS = {"argparse", "copy", "dataclasses", "json", "os", "re", "sys", "pathlib", "yaml"}
+ALLOWED_IMPORTS = {
+    "argparse",
+    "copy",
+    "dataclasses",
+    "json",
+    "os",
+    "re",
+    "shlex",
+    "sys",
+    "pathlib",
+    "yaml",
+}
 
 
 class TestImportClean:
@@ -1002,17 +1021,17 @@ class TestCli:
     def test_list(self):
         result = _cli("list")
         assert result.returncode == 0, result.stderr
-        assert result.stdout == f"rfe\n{MEMBER}\n"
+        assert result.stdout == f"rfe\n{MEMBER}\n{RSC}\n"
 
     def test_list_json(self):
         result = _cli("list", "--json")
         assert result.returncode == 0
-        assert json.loads(result.stdout) == ["rfe", MEMBER]
+        assert json.loads(result.stdout) == ["rfe", MEMBER, RSC]
 
     def test_options_accepted_before_the_subcommand(self):
         result = _cli("--json", "list")
         assert result.returncode == 0
-        assert json.loads(result.stdout) == ["rfe", MEMBER]
+        assert json.loads(result.stdout) == ["rfe", MEMBER, RSC]
 
     def test_show_text_is_a_header_plus_yaml(self):
         result = _cli("show", "rfe")
@@ -1101,7 +1120,7 @@ class TestCli:
         result = _cli(command, "nope")
         assert result.returncode == 1
         assert result.stderr.strip() == (
-            "ERROR: unknown type 'nope'; available: rfe, initiative-rhaistrat"
+            "ERROR: unknown type 'nope'; available: rfe, initiative-rhaistrat, react-shopping-cart"
         )
 
     def test_no_subcommand_is_a_usage_error(self):
@@ -1131,14 +1150,14 @@ class TestCli:
         _add_type(extra, "docs", project="DOCS")
         result = _cli("--extra-roots", str(extra), "list")
         assert result.returncode == 0, result.stderr
-        assert result.stdout == f"rfe\ndocs\n{MEMBER}\n"
+        assert result.stdout == f"rfe\ndocs\n{MEMBER}\n{RSC}\n"
 
     def test_extra_roots_env_variable(self, tmp_path):
         extra = tmp_path / "extra"
         _add_type(extra, "docs", project="DOCS")
         result = _cli("list", env={"RFE_CREATOR_EXTRA_TYPES": str(extra)})
         assert result.returncode == 0, result.stderr
-        assert result.stdout == f"rfe\ndocs\n{MEMBER}\n"
+        assert result.stdout == f"rfe\ndocs\n{MEMBER}\n{RSC}\n"
 
     def test_duplicate_across_roots_exits_1(self, tmp_path):
         extra = _copy_types(tmp_path / "extra", names=("rfe",))
@@ -1319,7 +1338,7 @@ class TestOwnsEffective:
     def test_never_the_provisional_rung(self):
         reg = _shipped()
         found = reg.candidates("RHOAIENG-1", env=self.ENV)
-        assert found.provisional and found.names == ["rfe", MEMBER]
+        assert found.provisional and found.names == ["rfe", MEMBER, RSC]
         assert not any(d.owns_effective("RHOAIENG-1", env=self.ENV) for d in reg)
         assert not any(d.owns_effective("AB1-9", env={}) for d in reg)
 
@@ -1714,9 +1733,9 @@ class TestCandidates:
             ("RHAIRFE-1234x", "key_prefix", ["rfe"], False),
             ("INIT-x", "local_prefix", [MEMBER], False),
             ("RFE-", "local_prefix", ["rfe"], False),
-            ("KONFLUX-12", "tracker_grammar", ["rfe", MEMBER], True),
-            ("RHOAIENG-1", "tracker_grammar", ["rfe", MEMBER], True),
-            ("AB1-9", "tracker_grammar", ["rfe", MEMBER], True),
+            ("KONFLUX-12", "tracker_grammar", ["rfe", MEMBER, RSC], True),
+            ("RHOAIENG-1", "tracker_grammar", ["rfe", MEMBER, RSC], True),
+            ("AB1-9", "tracker_grammar", ["rfe", MEMBER, RSC], True),
             ("konflux-12", None, [], False),
             ("KONFLUX-", None, [], False),
             ("K-1", None, [], False),  # the grammar needs at least two leading characters
@@ -1995,7 +2014,8 @@ class TestResolve:
         assert excinfo.value.exit_code == 1
         assert (
             str(excinfo.value)
-            == "unknown type 'epic' (--type); registered types: rfe, initiative-rhaistrat"
+            == "unknown type 'epic' (--type); registered types: rfe, initiative-rhaistrat, "
+            "react-shopping-cart"
         )
 
     def test_resolve_error_is_a_registry_error_with_an_exit_code(self):
@@ -2252,7 +2272,9 @@ class TestResolve:
             resolve(_shipped(), ids=["KONFLUX-12"], **kwargs)
         assert excinfo.value.exit_code == 3
         message = str(excinfo.value)
-        assert "KONFLUX-12" in message and "candidates rfe, initiative-rhaistrat" in message
+        assert "KONFLUX-12" in message and (
+            "candidates rfe, initiative-rhaistrat, react-shopping-cart" in message
+        )
         assert "--type" in message
 
     def test_ambiguous_interactive_returns_the_candidates(self):
@@ -2260,9 +2282,12 @@ class TestResolve:
         assert res.ambiguous is True
         assert res.type_name is None and res.desc is None and res.rung is None
         assert res.binding is None
-        assert res.candidates == ["rfe", MEMBER]
+        assert res.candidates == ["rfe", MEMBER, RSC]
         assert res.provisional is True
-        assert res.line() == "TYPE AMBIGUOUS: rfe, initiative-rhaistrat - pass --type"
+        assert (
+            res.line()
+            == "TYPE AMBIGUOUS: rfe, initiative-rhaistrat, react-shopping-cart - pass --type"
+        )
 
     def test_shared_prefix_ambiguity_is_deterministic_but_unresolved(self, tmp_path):
         root = tmp_path / "types"
@@ -2382,7 +2407,7 @@ class TestResolve:
         assert json.loads(json.dumps(data)) == data
         ambiguous = resolve(_shipped(), ids=["KONFLUX-12"], env={}).as_dict()
         assert ambiguous["type"] is None and ambiguous["binding"] is None
-        assert ambiguous["candidates"] == ["rfe", MEMBER]
+        assert ambiguous["candidates"] == ["rfe", MEMBER, RSC]
 
     def test_rung_vocabulary_is_pinned(self):
         # AISDLC-853 added `--project`, `parent key` and `jql project` (the member ladder under
@@ -2417,7 +2442,8 @@ class TestResolveCli:
         assert result.returncode == 1
         assert result.stdout == ""
         assert result.stderr.strip() == (
-            "ERROR: unknown type 'epic' (--type); registered types: rfe, initiative-rhaistrat"
+            "ERROR: unknown type 'epic' (--type); registered types: rfe, initiative-rhaistrat, "
+            "react-shopping-cart"
         )
 
     def test_legacy_default_is_printed_by_the_resolve_cli(self):
@@ -2441,7 +2467,10 @@ class TestResolveCli:
     def test_ambiguous_interactive_exits_3_on_stdout(self):
         result = _cli("resolve", "KONFLUX-12")
         assert result.returncode == 3
-        assert result.stdout == "TYPE AMBIGUOUS: rfe, initiative-rhaistrat - pass --type\n"
+        assert (
+            result.stdout
+            == "TYPE AMBIGUOUS: rfe, initiative-rhaistrat, react-shopping-cart - pass --type\n"
+        )
         assert result.stderr == ""
 
     def test_ambiguous_headless_flag_exits_3_on_stderr(self):
@@ -2449,7 +2478,8 @@ class TestResolveCli:
         assert result.returncode == 3
         assert result.stdout == ""
         assert result.stderr.startswith(
-            "ERROR: ambiguous type for KONFLUX-12: candidates rfe, initiative-rhaistrat"
+            "ERROR: ambiguous type for KONFLUX-12: candidates rfe, initiative-rhaistrat, "
+            "react-shopping-cart"
         )
 
     @pytest.mark.parametrize("marker", type_registry.HEADLESS_MARKER_VARS)
@@ -2492,8 +2522,11 @@ class TestResolveCli:
         data = json.loads(result.stdout)
         assert data["type"] is None and data["rung"] is None and data["binding"] is None
         assert data["provisional"] is True
-        assert data["candidates"] == ["rfe", MEMBER]
-        assert data["line"] == "TYPE AMBIGUOUS: rfe, initiative-rhaistrat - pass --type"
+        assert data["candidates"] == ["rfe", MEMBER, RSC]
+        assert (
+            data["line"]
+            == "TYPE AMBIGUOUS: rfe, initiative-rhaistrat, react-shopping-cart - pass --type"
+        )
 
     def test_json_provisional_single_type(self, tmp_path):
         root = _copy_types(tmp_path / "types", names=("rfe",))
@@ -2597,7 +2630,7 @@ class TestResolveCli:
     def test_candidates_subcommand(self):
         assert (
             _cli("candidates", "KONFLUX-12").stdout
-            == "tracker_grammar (provisional): rfe initiative-rhaistrat\n"
+            == "tracker_grammar (provisional): rfe initiative-rhaistrat react-shopping-cart\n"
         )
         assert _cli("candidates", "RFE-1").stdout == "local_id_pattern: rfe\n"
         assert _cli("candidates", "RHAISTRAT-1").stdout == "key_prefix: initiative-rhaistrat\n"
@@ -2648,8 +2681,12 @@ class TestParseTypeArg:
     check_autofix_complete; each prints ``ERROR: <message>`` and exits with ``exit_code``, so
     the error text is pinned once, here."""
 
-    UNKNOWN = "unknown --type 'bogus'; registered types: rfe, initiative-rhaistrat"
-    TRAILING = "--type requires a value; registered types: rfe, initiative-rhaistrat"
+    UNKNOWN = (
+        "unknown --type 'bogus'; registered types: rfe, initiative-rhaistrat, react-shopping-cart"
+    )
+    TRAILING = (
+        "--type requires a value; registered types: rfe, initiative-rhaistrat, react-shopping-cart"
+    )
 
     def test_pops_the_flag_and_value_wherever_they_sit(self):
         reg = _shipped()

@@ -87,9 +87,16 @@ scope gap the create step cannot repair, so the first review fails and the revis
 "Weak-draft cases" in `eval/README.md`; without them the `revision_coverage` gate never fires and
 passes vacuously), populated `expected_*` annotations, explicit `eval.thresholds`, the committed eval
 config, one QUICK_MODE run on the PR with `type=<name>`, and a seed for the tracker emulator.
+A demo type that ships no eval harness (e.g. `react-shopping-cart`) omits the descriptor's `eval`
+block and everything in this paragraph; `validate_types.py` and `generate_eval_config.py` skip it.
 
 Rules that are easy to trip:
 
+- **Context-source args are plain words.** Each `pipeline.context_sources[].args` item must
+  match `^(?!.*\.\.)[A-Za-z0-9._:/@=+-]+$`: no whitespace, quotes, shell metacharacters, braces
+  or `..`. A descriptor whose args do not fit fails `validate_types.py`. The fetch for an
+  application's own architecture docs is `--repo <url> --path <dir> --dest .context/<dir>`, and
+  omitting `context_sources` keeps the rubric bootstrap plus the default RHOAI fetch.
 - **The eval config is generated.** Never edit `eval.config` by hand: the shared structure and
   every check live in `eval/config/skeleton.yaml`, your type's prose in `eval/fragment.yaml`,
   the facts and thresholds in `type.yaml`. `generate_eval_config.py --check` (gate 1, `make lint`,

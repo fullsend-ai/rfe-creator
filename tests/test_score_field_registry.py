@@ -45,6 +45,7 @@ REGISTRY = type_registry.load(extra_roots=[], env={})
 EXPECTED_FIELDS = {
     "rfe": ["not_a_task", "open_to_how", "right_sized", "what", "why"],
     MEMBER: ["open_to_how", "right_sized", "scope", "what", "why"],
+    "react-shopping-cart": ["not_a_task", "open_to_how", "right_sized", "what", "why"],
 }
 
 TYPES = sorted(EXPECTED_FIELDS)

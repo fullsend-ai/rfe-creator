@@ -40,7 +40,8 @@ design-proposals/work-item-types-unified.md §3.3:
       resolved, every key used, valid YAML, checks compile, thresholds name
       judges); from the CLI the committed eval.config must also equal a fresh
       render (design §4.5 regenerate-and-diff gate; --no-eval-sync skips it,
-      the Python API defaults to eval_sync=False)
+      the Python API defaults to eval_sync=False). A descriptor without an
+      eval block (the block is optional: a demo type omits it) has no eval gate
     * cross-type invariants, evaluated on EFFECTIVE bindings (§3.2.1(b)):
       unique (tracker, project, issue_type); unique local_prefix,
       local_id_pattern, id_field; unique non-empty poll/state/report prefixes
@@ -336,6 +337,12 @@ class Report:
 
 
 # ─── Helpers ───────────────────────────────────────────────────────────────────
+
+
+def has_eval(desc):
+    """Whether the descriptor binds an eval harness (``eval`` is optional: a demo type omits it)."""
+    data = getattr(desc, "data", None)
+    return isinstance(data, dict) and "eval" in data
 
 
 def _opt(desc, dotted, default=None):
@@ -1043,7 +1050,9 @@ def per_type_findings(
     runs every rule on its own: a rule that trips over a shape the schema would have
     rejected becomes one message naming the rule, and the remaining rules still run, so a
     malformed dimension cannot hide a bad rubric pin. ``eval_gate=False`` (gate 3) leaves
-    out the eval gate: the eval pointers in the file references and the fragment rule."""
+    out the eval gate: the eval pointers in the file references and the fragment rule. A
+    descriptor without an ``eval`` block has no eval gate either."""
+    eval_gate = eval_gate and has_eval(desc)
     messages = []
     declared = desc.data.get("type") if isinstance(desc.data, dict) else None
     if declared != desc.name:
@@ -1141,13 +1150,16 @@ def _discriminator(binding):
 
 def member_messages(desc):
     """A member of a type family declares the MEMBER_OWN_KEYS itself and names its
-    ``snapshot.results_subdir`` after itself (its name already carries the project)."""
+    ``snapshot.results_subdir`` after itself (its name already carries the project). ``eval``
+    is optional: ``eval.config`` is member-own only when the merged member has an eval block."""
     family = getattr(desc, "family", None)
     if family is None:
         return []
     own = getattr(desc, "own", None) or {}
     messages = []
     for dotted in _member_own_keys(_opt(desc, "identity.tracker")):
+        if dotted == "eval.config" and not has_eval(desc):
+            continue
         if not _has_own(own, dotted):
             messages.append(
                 f"{dotted}: a member of family {family.name!r} declares its own value (inherited "

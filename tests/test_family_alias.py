@@ -314,7 +314,8 @@ class TestTypeArg:
         with pytest.raises(argparse.ArgumentTypeError) as exc:
             convert("bogus")
         assert str(exc.value) == (
-            "invalid choice: 'bogus' (choose from 'rfe', 'initiative-rhaistrat')"
+            "invalid choice: 'bogus' (choose from 'rfe', 'initiative-rhaistrat', "
+            "'react-shopping-cart')"
         )
 
 
@@ -590,7 +591,9 @@ class TestClassification:
             "classification", "--others", "rfe", root="types", extra_roots=FAMILIES_REL
         )
         assert (others.returncode, others.stderr) == (0, "")
-        assert others.stdout.startswith(f"TYPES: {MEMBER}, {OTHER}, {SHIPPED_FAMILY}\n")
+        assert others.stdout.startswith(
+            f"TYPES: {MEMBER}, {OTHER}, {SHIPPED_FAMILY}, react-shopping-cart\n"
+        )
         assert others.stdout.count(f"Family: {FAMILY} (members {roster})\n") == 2
 
     def test_a_sole_member_and_the_shipped_types_render_no_member_lines(self, single_root):
@@ -612,7 +615,7 @@ class TestClassification:
         self, combined_reg, single_reg
     ):
         rows = type_registry.classification_digest(combined_reg)
-        assert [r["type"] for r in rows] == ["rfe", FAMILY, "initiative"]
+        assert [r["type"] for r in rows] == ["rfe", FAMILY, "initiative", "react-shopping-cart"]
         assert type_registry.digest_label(single_reg, single_reg.get(MEMBER)) == FAMILY
         assert type_registry.digest_label(single_reg, single_reg.get(MEMBER)) != MEMBER
 
@@ -621,7 +624,7 @@ class TestClassification:
         """AISDLC-853: siblings are never "other types" — an item of one member filed under
         another is a project misfile, not a type misfile — so ``--others`` drops the member's
         whole family and accepts the family's name whatever its member count. On the fixture
-        root nothing is left; beside the shipped types the two standalone rows remain."""
+        root nothing is left; beside the shipped types the shipped rows remain."""
         result = _registry("classification", "--others", others, "--json")
         assert result.returncode == 0, result.stderr
         assert json.loads(result.stdout) == []
@@ -636,12 +639,18 @@ class TestClassification:
             "classification", "--others", others, "--json", root="types", extra_roots=FAMILIES_REL
         )
         assert combined.returncode == 0, combined.stderr
-        assert [r["type"] for r in json.loads(combined.stdout)] == ["rfe", "initiative"]
+        assert [r["type"] for r in json.loads(combined.stdout)] == [
+            "rfe",
+            "initiative",
+            "react-shopping-cart",
+        ]
         combined_text = _registry(
             "classification", "--others", others, root="types", extra_roots=FAMILIES_REL
         )
         # the blocks follow the TYPES line: never a whole-stdout ==
-        assert combined_text.stdout.startswith("TYPES: rfe, initiative\n\n## rfe (RFE)\n")
+        assert combined_text.stdout.startswith(
+            "TYPES: rfe, initiative, react-shopping-cart\n\n## rfe (RFE)\n"
+        )
         assert f"## {MEMBER} (" not in combined_text.stdout
         assert f"## {OTHER} (" not in combined_text.stdout
 
@@ -660,7 +669,7 @@ class TestClassification:
                 extra_roots=FAMILIES_REL,
                 env=env,
             )
-            assert beside.stdout.startswith("TYPES: rfe, initiative\n"), env
+            assert beside.stdout.startswith("TYPES: rfe, initiative, react-shopping-cart\n"), env
 
     def test_try_canonical_ignores_a_corrupted_stored_value(self, single_reg):
         # A list- or mapping-valued stored `type:` is never a name: the readers compare it as
@@ -676,7 +685,11 @@ class TestClassification:
             "classification", "--others", others, "--json", root="types", extra_roots=single_root
         )
         assert result.returncode == 0, result.stderr
-        assert [r["type"] for r in json.loads(result.stdout)] == ["rfe", "initiative"]
+        assert [r["type"] for r in json.loads(result.stdout)] == [
+            "rfe",
+            "initiative",
+            "react-shopping-cart",
+        ]
 
     def test_others_a_two_member_family_name_drops_the_same_rows_as_a_member(self):
         # `--others <family>` is no longer canonical()'s refusal: a family of any member count
@@ -689,7 +702,11 @@ class TestClassification:
             "classification", "--others", FAMILY, "--json", root="types", extra_roots=FAMILIES_REL
         )
         assert (beside.returncode, beside.stderr) == (0, "")
-        assert [r["type"] for r in json.loads(beside.stdout)] == ["rfe", "initiative"]
+        assert [r["type"] for r in json.loads(beside.stdout)] == [
+            "rfe",
+            "initiative",
+            "react-shopping-cart",
+        ]
 
     def test_others_unknown_keeps_the_registry_text(self, single_root):
         result = _registry("classification", "--others", "bogus", "--json", root=single_root)
@@ -1138,7 +1155,7 @@ class TestPipelineState:
         err = capsys.readouterr().err
         assert (
             "argument --type: invalid choice: 'bogus' (choose from 'rfe', 'brief-acme', "
-            "'initiative-rhaistrat')"
+            "'initiative-rhaistrat', 'react-shopping-cart')"
         ) in err
         assert not os.path.exists(ps.STATE_FILE)
 
@@ -1188,7 +1205,7 @@ class TestCloneResultsRepo:
             clone_results_repo.type_layouts([FAMILY])
         assert str(exc.value) == (
             "DATA_REPO_TYPES: unknown type 'brief' (registered: rfe, brief-acme, brief-globex, "
-            "initiative-rhaistrat)"
+            "initiative-rhaistrat, react-shopping-cart)"
         )
 
 
@@ -1242,7 +1259,7 @@ class TestBootstrapScript:
         assert (bogus.returncode, bogus.stdout) == (2, "")
         assert bogus.stderr == (
             "ERROR: unknown --type 'bogus' (registered types: rfe, brief-acme, "
-            "initiative-rhaistrat)\n"
+            "initiative-rhaistrat, react-shopping-cart)\n"
         )
 
     def test_registry_path_refuses_a_two_member_family(self, tmp_path):
@@ -1251,7 +1268,7 @@ class TestBootstrapScript:
         assert (result.returncode, result.stdout) == (2, "")
         assert result.stderr == (
             "ERROR: unknown --type 'brief' (registered types: rfe, brief-acme, brief-globex, "
-            "initiative-rhaistrat)\n"
+            "initiative-rhaistrat, react-shopping-cart)\n"
         )
 
     def test_no_python_fallback_canonicalises_the_family(self, single_root, tmp_path):
@@ -1405,7 +1422,8 @@ class TestWriters:
         without = self._run_without_jira(SNAPSHOT_BOOTSTRAP_SCRIPT, *args)
         assert (without.returncode, without.stdout) == (2, "")
         assert (
-            "argument --type: invalid choice: 'brief' (choose from 'rfe', 'initiative-rhaistrat')"
+            "argument --type: invalid choice: 'brief' (choose from 'rfe', 'initiative-rhaistrat', "
+            "'react-shopping-cart')"
         ) in without.stderr
 
     def test_read_revise_passes_compares_the_state_type_through_the_alias(
@@ -1502,6 +1520,10 @@ class TestDerivedTables:
                 "ids_file": "tmp/initiative-speedrun-all-ids.txt",
                 "reviews_dir": "artifacts/initiative-reviews",
             },
+            "react-shopping-cart": {
+                "ids_file": "tmp/rsc-speedrun-all-ids.txt",
+                "reviews_dir": "artifacts/react-shopping-cart-reviews",
+            },
         }
 
     def test_fast_poll_configs_are_state_prefix_times_the_interactive_stages(self, shipped_reg):
@@ -1518,6 +1540,9 @@ class TestDerivedTables:
             "tmp/initiative-review-config.yaml",
             "tmp/initiative-split-config.yaml",
             "tmp/initiative-speedrun-config.yaml",
+            "tmp/rsc-review-config.yaml",
+            "tmp/rsc-split-config.yaml",
+            "tmp/rsc-speedrun-config.yaml",
         )
 
     def test_compare_review_outputs_table_is_the_dirs_and_score_fields_projection(

@@ -100,14 +100,14 @@ class TestDefaultExclusions:
         result = subprocess.run(
             ["python3", SCRIPT, "--help"], capture_output=True, text=True, env=env, check=True
         )
-        assert f"{{rfe,docs,{MEMBER}}}" in result.stdout
+        assert f"{{rfe,docs,{MEMBER},react-shopping-cart}}" in result.stdout
 
 
 class TestCli:
     def test_project_choices_are_the_registry_choices(self):
         result = subprocess.run(["python3", SCRIPT, "--help"], capture_output=True, text=True)
         assert result.returncode == 0
-        assert f"{{rfe,{MEMBER}}}" in result.stdout
+        assert f"{{rfe,{MEMBER},react-shopping-cart}}" in result.stdout
 
     def test_unknown_project_is_an_argparse_error(self):
         result = subprocess.run(

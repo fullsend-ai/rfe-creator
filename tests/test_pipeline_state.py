@@ -3727,7 +3727,7 @@ class TestReassessFixupIds:
     the evidence went the other way.
     """
 
-    @pytest.mark.parametrize("ptype", ["rfe", MEMBER])
+    @pytest.mark.parametrize("ptype", ["rfe", MEMBER, "react-shopping-cart"])
     def test_fixup_rescans_the_whole_reassess_set(self, ptype):
         cfg = ps._build_phase_config(ptype)
         assert cfg["REASSESS_FIXUP"]["ids_file"] == "tmp/pipeline-reassess-ids.txt"
@@ -3924,7 +3924,7 @@ class TestNoShell:
         assert "SETUP: verify OK: 1 type(s) valid: rfe" in capsys.readouterr().out
         assert open(ps.DISPATCH_MARKER).read() == "SETUP"
 
-    @pytest.mark.parametrize("t", ["rfe", MEMBER])
+    @pytest.mark.parametrize("t", ["rfe", MEMBER, "react-shopping-cart"])
     def test_the_verify_command_is_the_registry_gate_for_the_run_type(self, tmp_dir, t):
         config = ps._get_config(make_state(phase="SETUP", type=t))["SETUP"]
         assert config["verify"] == f"python3 scripts/validate_types.py --verify --type {t}"
@@ -4278,12 +4278,12 @@ class TestStateValidatedBeforeDecisionScripts:
 class TestInitTypeChoices:
     def test_help_renders_the_registered_types(self, tmp_dir, capsys):
         """The choices come from the registry; the rendered help is byte-identical to the
-        literal list it replaced ({rfe,initiative} — rfe first, names() order)."""
+        literal list it replaced ({rfe,initiative,...} — rfe first, names() order)."""
         with pytest.raises(SystemExit) as exc_info:
             ps.cmd_init(["--help"])
         assert exc_info.value.code == 0
         out = capsys.readouterr().out
-        assert f"--type {{rfe,{MEMBER}}}" in out
+        assert f"--type {{rfe,{MEMBER},react-shopping-cart}}" in out
         assert "--type {" + ",".join(ps._TYPES.choices()) + "}" in out
 
     def test_unknown_type_exits_2_with_the_registered_list(self, tmp_dir, capsys):
@@ -4296,7 +4296,13 @@ class TestInitTypeChoices:
         assert not os.path.exists(ps.STATE_FILE)
 
     @pytest.mark.parametrize(
-        "ptype, persisted", [("rfe", "rfe"), ("initiative", MEMBER), (MEMBER, MEMBER)]
+        "ptype, persisted",
+        [
+            ("rfe", "rfe"),
+            ("initiative", MEMBER),
+            (MEMBER, MEMBER),
+            ("react-shopping-cart", "react-shopping-cart"),
+        ],
     )
     def test_registered_type_is_persisted(self, tmp_dir, ptype, persisted):
         """The state carries the REGISTERED name from the first write: `--type initiative` (the
@@ -4493,7 +4499,7 @@ class TestInitAndTheRegistry:
         from contextlib import redirect_stdout
 
         self._registry(monkeypatch, drop_in_root.memo())
-        assert list(ps.PIPELINE_TYPES) == ["rfe", MEMBER, "memo"]
+        assert list(ps.PIPELINE_TYPES) == ["rfe", MEMBER, "memo", "react-shopping-cart"]
         row = ps.PIPELINE_TYPES["memo"]
         assert row["tasks_dir"] == "artifacts/memo-tasks"
         assert row["reviews_dir"] == "artifacts/memo-reviews"
@@ -4517,6 +4523,22 @@ class TestInitAndTheRegistry:
         cfg = ps._build_phase_config("memo")
         assert cfg["ASSESS"]["parallel"] == []
         assert [k for k in cfg["REVIEW"]["vars"] if k.endswith("_PATH")] == ["ASSESS_PATH"]
+
+    def test_a_type_without_context_sources_keeps_the_legacy_setup(
+        self, tmp_dir, monkeypatch, drop_in_root
+    ):
+        # pipeline.context_sources is optional in the schema: a type that omits it keeps the
+        # SETUP every type ran before the key drove it (rubric bootstrap + RHOAI fetch), and
+        # the review body's ARCH_FETCH is the same default fetch.
+        drop_in_root.add("memo", overrides=_memo_overrides(), drop=("pipeline.context_sources",))
+        self._registry(monkeypatch, drop_in_root.path)
+        cfg = ps._build_phase_config("memo")
+        assert cfg["SETUP"]["commands"] == [
+            "bash scripts/bootstrap.sh --type memo",
+            "bash scripts/fetch-architecture-context.sh",
+        ]
+        arch = dict(ps.type_registry.launch_vars(ps._TYPES.get("memo"), "review"))["ARCH_FETCH"]
+        assert arch == "bash scripts/fetch-architecture-context.sh"
 
     def test_an_unregistered_name_exits_2_with_the_registered_list(
         self, tmp_dir, monkeypatch, drop_in_root

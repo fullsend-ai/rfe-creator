@@ -35,6 +35,13 @@ LAYOUT = {
         "INIT-001",
         "RHAISTRAT-12345",
     ),
+    "react-shopping-cart": (
+        "react-shopping-cart-tasks",
+        "react-shopping-cart-originals",
+        "rsc_id",
+        "RSC-001",
+        "TSTAPP-12",
+    ),
 }
 
 
@@ -127,13 +134,17 @@ class TestTypeConfigDerivesFromTheRegistry:
         assert check_conflicts._TYPE_CONFIG == {
             "rfe": {"originals_dir": "rfe-originals", "id_field": "rfe_id"},
             MEMBER: {"originals_dir": "initiative-originals", "id_field": "initiative_id"},
+            "react-shopping-cart": {
+                "originals_dir": "react-shopping-cart-originals",
+                "id_field": "rsc_id",
+            },
         }
-        assert list(check_conflicts._TYPE_CONFIG) == ["rfe", MEMBER]
+        assert list(check_conflicts._TYPE_CONFIG) == ["rfe", MEMBER, "react-shopping-cart"]
         for config in check_conflicts._TYPE_CONFIG.values():
             assert list(config) == ["originals_dir", "id_field"]
         assert not hasattr(check_conflicts, "_SCAN_FNS")
 
-    @pytest.mark.parametrize("type_name", ["rfe", MEMBER])
+    @pytest.mark.parametrize("type_name", ["rfe", MEMBER, "react-shopping-cart"])
     def test_main_scans_the_selected_type_through_the_generic(
         self, no_override, monkeypatch, tmp_path, type_name
     ):
@@ -170,7 +181,7 @@ class TestTypeConfigDerivesFromTheRegistry:
     def test_type_choices_are_the_registry_choices(self):
         result = subprocess.run(["python3", SCRIPT, "--help"], capture_output=True, text=True)
         assert result.returncode == 0
-        assert f"--type {{rfe,{MEMBER}}}" in result.stdout
+        assert f"--type {{rfe,{MEMBER},react-shopping-cart}}" in result.stdout
 
     def test_a_drop_in_type_is_offered_and_scanned(self, tmp_path):
         # A third registered type used to be refused (exit 2, "no task scanner is registered")
@@ -185,7 +196,7 @@ class TestTypeConfigDerivesFromTheRegistry:
         result = subprocess.run(
             ["python3", SCRIPT, "--help"], capture_output=True, text=True, env=env
         )
-        assert f"--type {{rfe,docs,{MEMBER}}}" in result.stdout
+        assert f"--type {{rfe,docs,{MEMBER},react-shopping-cart}}" in result.stdout
         result = subprocess.run(
             ["python3", SCRIPT, "--type", "docs", "--artifacts-dir", str(tmp_path)],
             capture_output=True,
@@ -295,7 +306,7 @@ class TestMain:
         assert code == 2
         assert "JIRA_SERVER, JIRA_USER, and JIRA_TOKEN env vars required" in capsys.readouterr().err
 
-    @pytest.mark.parametrize("type_name", ["rfe", MEMBER])
+    @pytest.mark.parametrize("type_name", ["rfe", MEMBER, "react-shopping-cart"])
     def test_no_jira_sourced_items(self, jira, monkeypatch, capsys, tmp_path, type_name):
         _, _, _, local_id, jira_id = LAYOUT[type_name]
         _task(tmp_path, type_name, local_id)  # local id: never checked
@@ -311,7 +322,7 @@ class TestMain:
         assert out.out == "CONFLICT_COUNT=0\nOK: no Jira-sourced items to check\n"
         assert out.err == f"TYPE RESOLVED: {type_name} (--type)\n"
 
-    @pytest.mark.parametrize("type_name", ["rfe", MEMBER])
+    @pytest.mark.parametrize("type_name", ["rfe", MEMBER, "react-shopping-cart"])
     def test_conflicts_are_reported_per_item(self, jira, monkeypatch, capsys, tmp_path, type_name):
         # Every fetch succeeds: one line per conflicting id, in scan order, with both conflict
         # reasons — a modified description and a binding mismatch — and an archived item is
@@ -354,7 +365,7 @@ class TestMain:
             (foreign, originals_dir, witnesses),
         ]
 
-    @pytest.mark.parametrize("type_name", ["rfe", MEMBER])
+    @pytest.mark.parametrize("type_name", ["rfe", MEMBER, "react-shopping-cart"])
     def test_a_fetch_failure_fails_closed(self, jira, monkeypatch, capsys, tmp_path, type_name):
         # A fetch that fails leaves its item unverified: the run stops there with the documented
         # API-failure exit — no CONFLICT_COUNT over the partial result (a caller reading 0 would

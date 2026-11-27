@@ -20,8 +20,8 @@ import check_autofix_complete as cac  # noqa: E402
 # `--type initiative` is the family alias, kept below as a CLI input.
 MEMBER = "initiative-rhaistrat"
 
-UNKNOWN = f"ERROR: unknown --type 'bogus'; registered types: rfe, {MEMBER}\n"
-TRAILING = f"ERROR: --type requires a value; registered types: rfe, {MEMBER}\n"
+UNKNOWN = f"ERROR: unknown --type 'bogus'; registered types: rfe, {MEMBER}, react-shopping-cart\n"
+TRAILING = f"ERROR: --type requires a value; registered types: rfe, {MEMBER}, react-shopping-cart\n"
 
 
 def _write_ids(path, ids):

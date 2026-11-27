@@ -30,6 +30,8 @@ class TestDetectSchemaType:
             ("rfe-tasks/", "rfe-task"),
             ("initiative-reviews/", f"{MEMBER}-review"),
             ("initiatives/", f"{MEMBER}-task"),
+            ("react-shopping-cart-reviews/", "react-shopping-cart-review"),
+            ("react-shopping-cart-tasks/", "react-shopping-cart-task"),
         ]
 
     @pytest.mark.parametrize(

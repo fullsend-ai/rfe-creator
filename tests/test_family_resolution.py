@@ -63,7 +63,7 @@ ALLOCATOR = "scripts/next_rfe_id.py"
 FAMILY, ACME, GLOBEX = "brief", "brief-acme", "brief-globex"
 MEMBER = "initiative-rhaistrat"
 PROJECTS = "brief-acme: ACME, brief-globex: GLOBEX"
-SHIPPED_PROJECTS = "rfe: RHAIRFE, initiative-rhaistrat: RHAISTRAT"
+SHIPPED_PROJECTS = "rfe: RHAIRFE, initiative-rhaistrat: RHAISTRAT, react-shopping-cart: TSTAPP"
 AMBIGUOUS_LINE = "TYPE AMBIGUOUS: brief-acme, brief-globex - pass --type\n"
 HEADLESS_LINE = (
     "ERROR: ambiguous type for --type brief: candidates brief-acme, brief-globex — pass --type "
@@ -1002,8 +1002,8 @@ class TestHeadless:
             1,
             "",
             "ERROR: no registered type owns id 'not-an-id' (registered types: rfe, "
-            "initiative-rhaistrat); a headless run never guesses — fix the id or pass --type "
-            "(PR-3 D5)\n",
+            "initiative-rhaistrat, react-shopping-cart); a headless run never guesses — fix the id "
+            "or pass --type (PR-3 D5)\n",
         )
 
     def test_the_interactive_line_is_unchanged(self):
@@ -1074,7 +1074,7 @@ SHIPPED_MATRIX = [
         ["resolve", "KONFLUX-5"],
         {},
         3,
-        "TYPE AMBIGUOUS: rfe, initiative-rhaistrat - pass --type\n",
+        "TYPE AMBIGUOUS: rfe, initiative-rhaistrat, react-shopping-cart - pass --type\n",
         "",
         id="ambiguous",
     ),
@@ -1083,14 +1083,15 @@ SHIPPED_MATRIX = [
         {},
         3,
         "",
-        "ERROR: ambiguous type for KONFLUX-5: candidates rfe, initiative-rhaistrat — pass --type\n",
+        "ERROR: ambiguous type for KONFLUX-5: candidates rfe, initiative-rhaistrat, "
+        "react-shopping-cart — pass --type\n",
         id="ambiguous-headless",
     ),
     pytest.param(
         ["candidates", "KONFLUX-5"],
         {},
         0,
-        "tracker_grammar (provisional): rfe initiative-rhaistrat\n",
+        "tracker_grammar (provisional): rfe initiative-rhaistrat react-shopping-cart\n",
         "",
         id="candidates",
     ),
@@ -1218,11 +1219,13 @@ class TestSingleMember:
         assert "TYPE_FLAG=--type initiative-rhaistrat\n" in result.stdout
 
     def test_the_shipped_digest(self):
-        assert _cli("classification").stdout.startswith("TYPES: rfe, initiative\n\n## rfe (RFE)\n")
+        assert _cli("classification").stdout.startswith(
+            "TYPES: rfe, initiative, react-shopping-cart\n\n## rfe (RFE)\n"
+        )
         others = _cli("classification", "--others", MEMBER)
-        assert others.stdout.startswith("TYPES: rfe\n\n## rfe (RFE)\n")
+        assert others.stdout.startswith("TYPES: rfe, react-shopping-cart\n\n## rfe (RFE)\n")
         rows = json.loads(_cli("--json", "classification", "--others", MEMBER).stdout)
-        assert [r["type"] for r in rows] == ["rfe"]
+        assert [r["type"] for r in rows] == ["rfe", "react-shopping-cart"]
 
     def test_the_shipped_batch_conflict_text(self, tmp_path):
         batch = _write_yaml(tmp_path / "b.yaml", {"type": "initiative", "items": ["RFE-1"]})

@@ -2009,8 +2009,13 @@ class TestBootstrapConfigDerivesFromTheRegistry:
                 "item_key": "per_initiative",
                 "type": MEMBER,
             },
+            "react-shopping-cart": {
+                "report_prefix": "rsc-run-",
+                "item_key": "per_shop_rfe",
+                "type": "react-shopping-cart",
+            },
         }
-        assert list(BOOTSTRAP_CONFIG) == ["rfe", MEMBER]
+        assert list(BOOTSTRAP_CONFIG) == ["rfe", MEMBER, "react-shopping-cart"]
         for config in BOOTSTRAP_CONFIG.values():
             assert list(config) == ["report_prefix", "item_key", "type"]
 
@@ -2027,7 +2032,7 @@ class TestBootstrapConfigDerivesFromTheRegistry:
             [sys.executable, SCRIPT, "--help"], capture_output=True, text=True, env=_clean_env()
         )
         assert result.returncode == 0
-        assert f"--type {{rfe,{MEMBER}}}" in result.stdout
+        assert f"--type {{rfe,{MEMBER},react-shopping-cart}}" in result.stdout
 
     def test_a_drop_in_type_is_offered_and_configured(self, tmp_path):
         root = _dropin_root(tmp_path)
@@ -2041,7 +2046,7 @@ class TestBootstrapConfigDerivesFromTheRegistry:
         result = subprocess.run(
             [sys.executable, SCRIPT, "--help"], capture_output=True, text=True, env=env
         )
-        assert f"--type {{rfe,docs,{MEMBER}}}" in result.stdout
+        assert f"--type {{rfe,docs,{MEMBER},react-shopping-cart}}" in result.stdout
         # Both per-type tables are indexed before the first Jira call; an empty results dir
         # stops the run at the offline gate right after, so this proves the drop-in type is
         # configured end to end without a server.

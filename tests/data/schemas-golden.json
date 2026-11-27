@@ -444,5 +444,228 @@
       ],
       "default": "not_assessed"
     }
+  },
+  "react-shopping-cart-task": {
+    "rsc_id": {
+      "type": "string",
+      "required": true,
+      "pattern": "^(RSC-\\d+|TSTAPP-\\d+)$"
+    },
+    "local_id": {
+      "type": "string",
+      "required": false,
+      "pattern": "^RSC-\\d+$",
+      "default": null
+    },
+    "type": {
+      "type": "string",
+      "required": false
+    },
+    "tracker_ref": {
+      "type": "string",
+      "required": false
+    },
+    "title": {
+      "type": "string",
+      "required": true
+    },
+    "priority": {
+      "type": "string",
+      "required": true,
+      "enum": [
+        "Blocker",
+        "Critical",
+        "Major",
+        "Normal",
+        "Minor",
+        "Undefined"
+      ]
+    },
+    "size": {
+      "type": "string",
+      "required": false,
+      "enum": [
+        "S",
+        "M",
+        "L",
+        "XL"
+      ],
+      "default": null
+    },
+    "status": {
+      "type": "string",
+      "required": true,
+      "enum": [
+        "Draft",
+        "Ready",
+        "Submitted",
+        "Archived"
+      ]
+    },
+    "parent_key": {
+      "type": "string",
+      "required": false,
+      "pattern": "^(RSC-\\d+|TSTAPP-\\d+)$",
+      "default": null
+    },
+    "original_labels": {
+      "type": "list",
+      "required": false,
+      "default": null
+    }
+  },
+  "react-shopping-cart-review": {
+    "rsc_id": {
+      "type": "string",
+      "required": true,
+      "pattern": "^(RSC-\\d+|TSTAPP-\\d+)$"
+    },
+    "local_id": {
+      "type": "string",
+      "required": false,
+      "pattern": "^RSC-\\d+$",
+      "default": null
+    },
+    "type": {
+      "type": "string",
+      "required": false
+    },
+    "tracker_ref": {
+      "type": "string",
+      "required": false
+    },
+    "score": {
+      "type": "int",
+      "required": true
+    },
+    "pass": {
+      "type": "bool",
+      "required": true
+    },
+    "recommendation": {
+      "type": "string",
+      "required": true,
+      "enum": [
+        "submit",
+        "revise",
+        "split",
+        "reject",
+        "autorevise_reject",
+        "reclassify"
+      ]
+    },
+    "feasibility": {
+      "type": "string",
+      "required": true,
+      "enum": [
+        "feasible",
+        "infeasible",
+        "indeterminate"
+      ]
+    },
+    "auto_revised": {
+      "type": "bool",
+      "required": true,
+      "default": false
+    },
+    "needs_attention": {
+      "type": "bool",
+      "required": true,
+      "default": false
+    },
+    "scores": {
+      "type": "dict",
+      "required": true,
+      "fields": {
+        "what": {
+          "type": "int",
+          "required": true
+        },
+        "why": {
+          "type": "int",
+          "required": true
+        },
+        "open_to_how": {
+          "type": "int",
+          "required": true
+        },
+        "not_a_task": {
+          "type": "int",
+          "required": true
+        },
+        "right_sized": {
+          "type": "int",
+          "required": true
+        }
+      }
+    },
+    "error": {
+      "type": "string",
+      "required": false,
+      "default": null
+    },
+    "before_score": {
+      "type": "int",
+      "required": false,
+      "default": null
+    },
+    "needs_attention_reason": {
+      "type": "string",
+      "required": false,
+      "default": null
+    },
+    "before_scores": {
+      "type": "dict",
+      "required": false,
+      "default": null,
+      "fields": {
+        "what": {
+          "type": "int",
+          "required": true
+        },
+        "why": {
+          "type": "int",
+          "required": true
+        },
+        "open_to_how": {
+          "type": "int",
+          "required": true
+        },
+        "not_a_task": {
+          "type": "int",
+          "required": true
+        },
+        "right_sized": {
+          "type": "int",
+          "required": true
+        }
+      }
+    },
+    "needs_attention_source": {
+      "type": "string",
+      "required": false,
+      "enum": [
+        "feasibility",
+        "alignment",
+        "rubric",
+        "classification",
+        "agent"
+      ]
+    },
+    "needs_attention_dimension": {
+      "type": "string",
+      "required": false,
+      "enum": [
+        "what",
+        "why",
+        "open_to_how",
+        "not_a_task",
+        "right_sized"
+      ]
+    },
+    "auto_revised_cycle": {
+      "type": "int",
+      "required": false
+    }
   }
 }

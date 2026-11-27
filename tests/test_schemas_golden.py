@@ -70,7 +70,14 @@ def test_golden_holds_no_stringified_values():
 
 def test_schema_key_order_is_types_times_task_review():
     """The dict order is observable: it is the `frontmatter.py schema` choices order."""
-    assert list(SCHEMAS) == ["rfe-task", "rfe-review", f"{MEMBER}-task", f"{MEMBER}-review"]
+    assert list(SCHEMAS) == [
+        "rfe-task",
+        "rfe-review",
+        f"{MEMBER}-task",
+        f"{MEMBER}-review",
+        "react-shopping-cart-task",
+        "react-shopping-cart-review",
+    ]
     assert list(json.loads(GOLDEN.read_text(encoding="utf-8"))) == list(SCHEMAS)
 
 

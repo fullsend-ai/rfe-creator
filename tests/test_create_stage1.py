@@ -83,7 +83,35 @@ INITIATIVE_BLOCK = (
     "- Federate the platform's model registries so one search spans every registered "
     "model\n"
 )
-SHIPPED_DIGEST = "TYPES: rfe, initiative\n\n" + RFE_BLOCK + "\n" + INITIATIVE_BLOCK
+# The Shop RFE (react-shopping-cart) is a standalone type registered after 0.5.0: its block is
+# appended in registry order and, being standalone, carries none of the member lines either.
+SHOP_BLOCK = (
+    "## react-shopping-cart (Shop RFE)\n"
+    "Summary: A change a store owner or merch team wants in the react-shopping-cart "
+    "storefront — the WHAT and WHY of one shopper-facing need, small enough to ship as "
+    "one pull request\n"
+    "Driver: the store owner or merch team running the react-shopping-cart demo store\n"
+    "Signals: names the shop, its catalog, a product, the product filter, sizes or the "
+    "shopping cart; a shopper cannot find, filter, compare or buy something in the store "
+    "today; a product the merch team wants listed, priced or presented differently; what "
+    "the shopper sees on the storefront once it ships\n"
+    "Counter-signals: an AI platform capability for customers deploying models, pipelines "
+    "or clusters; a store-wide relaunch, a new region or a program spanning several "
+    "quarters; exact catalog JSON, file paths or component code with no shopper need "
+    "behind it\n"
+    "Examples:\n"
+    "- Shoppers should see how close their cart is to free shipping\n"
+    "- The merch team wants accessories such as backpacks listed without a size\n"
+    "- Shoppers want to narrow the catalog to Red Hat branded products\n"
+)
+SHIPPED_DIGEST = (
+    "TYPES: rfe, initiative, react-shopping-cart\n\n"
+    + RFE_BLOCK
+    + "\n"
+    + INITIATIVE_BLOCK
+    + "\n"
+    + SHOP_BLOCK
+)
 MEMBER_LINES = ("Label: ", "Family: ", "Project: ", "Member signals: ")
 
 
@@ -153,10 +181,11 @@ class TestClassificationDigest:
         result = _cli("classification")
         assert result.returncode == 0, result.stderr
         out = result.stdout
-        assert out.startswith("TYPES: rfe, initiative\n\n## rfe (RFE)\n")
+        assert out.startswith("TYPES: rfe, initiative, react-shopping-cart\n\n## rfe (RFE)\n")
         assert "\n## initiative (Initiative)\n" in out
+        assert "\n## react-shopping-cart (Shop RFE)\n" in out
         for key in ("Summary:", "Driver:", "Signals:", "Counter-signals:", "Examples:\n- "):
-            assert out.count(key) == 2, key
+            assert out.count(key) == 3, key
         rfe = yaml.safe_load((TYPES_ROOT / "rfe" / "type.yaml").read_text())["classification"]
         assert f"Summary: {rfe['summary']}" in out
         assert "Signals: " + "; ".join(rfe["signals"]) in out
@@ -166,7 +195,7 @@ class TestClassificationDigest:
         result = _cli("--json", "classification")
         assert result.returncode == 0, result.stderr
         rows = json.loads(result.stdout)
-        assert [r["type"] for r in rows] == ["rfe", "initiative"]
+        assert [r["type"] for r in rows] == ["rfe", "initiative", "react-shopping-cart"]
         for row in rows:
             # the seven of AISDLC-190 plus the four member keys of AISDLC-853
             assert set(row) == {
@@ -188,7 +217,13 @@ class TestClassificationDigest:
         """AISDLC-853: a standalone type's ``own_signals`` are its signals and its label its
         entity; the family's sole member keeps the family's label and entity while its
         ``own_signals`` are the two phrases its own file declares (the domain signals)."""
-        rfe, initiative = json.loads(_cli("--json", "classification").stdout)
+        rfe, initiative, shop = json.loads(_cli("--json", "classification").stdout)
+        assert (shop["family"], shop["project"], shop["label"]) == (
+            None,
+            "TSTAPP",
+            "Shop RFE",
+        )
+        assert shop["own_signals"] == shop["signals"]
         assert (rfe["family"], rfe["project"], rfe["label"]) == (None, "RHAIRFE", "RFE")
         assert rfe["own_signals"] == rfe["signals"]
         assert (initiative["family"], initiative["project"], initiative["label"]) == (
@@ -207,12 +242,15 @@ class TestClassificationDigest:
         of the member lines appears in it."""
         assert _cli("classification").stdout == SHIPPED_DIGEST
         assert _cli("classification", "--others", "rfe").stdout == (
-            "TYPES: initiative\n\n" + INITIATIVE_BLOCK
+            "TYPES: initiative, react-shopping-cart\n\n" + INITIATIVE_BLOCK + "\n" + SHOP_BLOCK
         )
         for mine in ("initiative", "initiative-rhaistrat"):
             assert _cli("classification", "--others", mine).stdout == (
-                "TYPES: rfe\n\n" + RFE_BLOCK
+                "TYPES: rfe, react-shopping-cart\n\n" + RFE_BLOCK + "\n" + SHOP_BLOCK
             ), mine
+        assert _cli("classification", "--others", "react-shopping-cart").stdout == (
+            "TYPES: rfe, initiative\n\n" + RFE_BLOCK + "\n" + INITIATIVE_BLOCK
+        )
         for line in MEMBER_LINES:
             assert line not in SHIPPED_DIGEST, line
 
@@ -220,7 +258,7 @@ class TestClassificationDigest:
         extra = _drop_in(tmp_path / "extra")
         result = _cli("classification", "--extra-roots", str(extra))
         assert result.returncode == 0, result.stderr
-        assert result.stdout.startswith("TYPES: rfe, docs, initiative\n")
+        assert result.stdout.startswith("TYPES: rfe, docs, initiative, react-shopping-cart\n")
         assert "## docs (Doc)\nSummary: A request for product documentation" in result.stdout
 
     def test_a_type_without_the_block_or_the_create_stage_is_left_out(self, tmp_path):
@@ -229,7 +267,7 @@ class TestClassificationDigest:
             extra = _drop_in(root, **kwargs)
             result = _cli("classification", "--extra-roots", str(extra))
             assert result.returncode == 0, result.stderr
-            assert result.stdout.startswith("TYPES: rfe, initiative\n"), kwargs
+            assert result.stdout.startswith("TYPES: rfe, initiative, react-shopping-cart\n"), kwargs
             assert "docs" not in result.stdout, kwargs
 
     def test_headless_runs_get_no_digest(self):
@@ -255,7 +293,7 @@ class TestClassificationDigest:
     def test_python_api_matches_the_cli(self):
         reg = type_registry.load(root=TYPES_ROOT, extra_roots=[], env={})
         rows = type_registry.classification_digest(reg)
-        assert [r["type"] for r in rows] == ["rfe", "initiative"]
+        assert [r["type"] for r in rows] == ["rfe", "initiative", "react-shopping-cart"]
         assert type_registry.render_classification_digest(rows) == _cli("classification").stdout
         assert type_registry.render_classification_digest([]).startswith("TYPES: none")
 

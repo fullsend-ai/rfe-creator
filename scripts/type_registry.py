@@ -151,6 +151,7 @@ import copy
 import json
 import os
 import re
+import shlex
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -2345,6 +2346,7 @@ LAUNCH_KEYS = (
     "PROMPT_PATH",
     "RUBRIC_EXPORT",
     "BOOTSTRAP",
+    "ARCH_FETCH",
     "CREATE_GUIDANCE_PATH",
     "TEMPLATE_PATH",
     "RULES_PATH",
@@ -2434,6 +2436,34 @@ def _dimension_condition(dim):
     if "context_exists" in cond:
         return f"context_exists {cond['context_exists']}"
     return "always"
+
+
+# The architecture fetch every type got before pipeline.context_sources drove it: a descriptor
+# that omits the key keeps it (pipeline_state SETUP and ARCH_FETCH alike); one that declares the
+# list without an architecture-context entry opts out.
+DEFAULT_ARCH_FETCH = "bash scripts/fetch-architecture-context.sh"
+
+
+def _arch_fetch_command(pipe):
+    """The SETUP command of the type's ``architecture-context`` context source (its bootstrap
+    script and args), the RHOAI default when the type omits ``context_sources``, or ``none``
+    when its list declares no such entry — the ARCH_FETCH launch var the generic review body
+    runs in its setup step."""
+    if pipe.get("context_sources", None) is None:
+        return DEFAULT_ARCH_FETCH
+    for cs in pipe.get("context_sources", []) or []:
+        if cs.get("name") == "architecture-context":
+            return context_source_command(cs)
+    return "none"
+
+
+def context_source_command(cs):
+    """``bash <bootstrap> <args...>`` for one ``pipeline.context_sources`` entry — the one
+    projection pipeline_state's SETUP commands and the ARCH_FETCH launch var share. The words
+    are shell-quoted (the review body runs ARCH_FETCH through a shell); the schema already
+    limits each arg to a plain word with no ``..`` and no ``{}``, so the quoting is a second
+    line of defence and SETUP's ``format_map`` never meets a brace from descriptor data."""
+    return shlex.join(["bash", cs["bootstrap"], *(cs.get("args", []) or [])])
 
 
 def launch_vars(desc, stage):
@@ -2559,6 +2589,7 @@ def launch_vars(desc, stage):
         ("PROMPT_PATH", f"{CONTEXT_DIR}/{rubric['path']}"),
         ("RUBRIC_EXPORT", rubric.get("export") or "none"),
         ("BOOTSTRAP", f"bash scripts/bootstrap.sh --type {desc.name}"),
+        ("ARCH_FETCH", _arch_fetch_command(pipe)),
         ("CREATE_GUIDANCE_PATH", desc.launch_path(prompts.get("create_guidance", ""))),
         ("TEMPLATE_PATH", desc.launch_path(prompts.get("template", ""))),
         ("RULES_PATH", desc.launch_path(prompts.get("review_rules", ""))),

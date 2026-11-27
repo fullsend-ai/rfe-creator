@@ -555,11 +555,21 @@ def _build_phase_config(pipeline_type, reassess_cycle=0):
             "verify": f"python3 scripts/validate_types.py --verify --type {pipeline_type}",
             # Then run concurrently. Exit codes are logged but do not fail the phase:
             # the previous `a & b & wait` form returned wait's status, which is
-            # always 0, so this preserves behaviour.
-            "commands": [
-                f"bash scripts/bootstrap.sh --type {pipeline_type}",
-                "bash scripts/fetch-architecture-context.sh",
-            ],
+            # always 0, so this preserves behaviour. One command per
+            # pipeline.context_sources entry (the rubric bootstrap, the architecture fetch);
+            # the key is optional, and a type without it keeps the two commands every type
+            # ran before (its rubric bootstrap and the default RHOAI architecture fetch).
+            "commands": (
+                [
+                    type_registry.context_source_command(cs)
+                    for cs in _TYPES.get(pipeline_type).get("pipeline.context_sources")
+                ]
+                if _TYPES.get(pipeline_type).get("pipeline.context_sources", None) is not None
+                else [
+                    f"bash scripts/bootstrap.sh --type {pipeline_type}",
+                    type_registry.DEFAULT_ARCH_FETCH,
+                ]
+            ),
         },
         "ASSESS": {
             "type": "agent",

@@ -88,7 +88,7 @@ class TestRegistryDerivedConstants:
             "clarifying_context",
             "parent_key",
         }
-        assert list(validate_batch_input.KNOWN_FIELDS) == ["rfe", MEMBER]
+        assert list(validate_batch_input.KNOWN_FIELDS) == ["rfe", MEMBER, "react-shopping-cart"]
 
     def test_known_fields_are_base_plus_the_descriptors_batch_extra_fields(self):
         for name in REG.names():
@@ -132,7 +132,7 @@ class TestRegistryDerivedConstants:
     def test_type_choices_are_the_registry_choices(self):
         result = subprocess.run(["python3", SCRIPT, "--help"], capture_output=True, text=True)
         assert result.returncode == 0
-        assert f"--type {{rfe,{MEMBER}}}" in result.stdout
+        assert f"--type {{rfe,{MEMBER},react-shopping-cart}}" in result.stdout
 
     def test_a_drop_in_type_brings_its_own_batch_fields(self, tmp_path):
         root = tmp_path / "types"
@@ -436,7 +436,7 @@ class TestMappingForm:
         assert result.stdout == (
             "ERROR_COUNT=1\nWARNING_COUNT=0\n"
             f"ERROR: batch: unknown type 'epic' ({path} type:); registered types: rfe, "
-            "initiative-rhaistrat\n"
+            "initiative-rhaistrat, react-shopping-cart\n"
             "VALID=false\n"
         )
         assert result.stderr == ""

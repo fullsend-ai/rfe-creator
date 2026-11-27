@@ -18,10 +18,11 @@ import check_right_sized as crs  # noqa: E402
 # The registered Initiative type: the sole member of the `initiative` family (AISDLC-851);
 # `--type initiative` is the family alias, kept below as a CLI input.
 MEMBER = "initiative-rhaistrat"
+RSC = "react-shopping-cart"  # the Shop RFE type, registered after the member
 
-UNKNOWN = f"ERROR: unknown --type 'bogus'; registered types: rfe, {MEMBER}\n"
-TRAILING = f"ERROR: --type requires a value; registered types: rfe, {MEMBER}\n"
-USAGE = f"Usage: check_right_sized.py [--type rfe|{MEMBER}] ID1 [ID2 ...]\n"
+UNKNOWN = f"ERROR: unknown --type 'bogus'; registered types: rfe, {MEMBER}, {RSC}\n"
+TRAILING = f"ERROR: --type requires a value; registered types: rfe, {MEMBER}, {RSC}\n"
+USAGE = f"Usage: check_right_sized.py [--type rfe|{MEMBER}|{RSC}] ID1 [ID2 ...]\n"
 
 
 def _write_review(reviews_dir, item_id, right_sized, id_field="rfe_id", recommendation="revise"):
@@ -115,7 +116,7 @@ class TestTypeArg:
 
     def test_usage_choices_follow_the_registry(self):
         assert crs._TYPE_CHOICES == "|".join(crs._TYPES.choices())
-        assert crs._TYPE_CHOICES == f"rfe|{MEMBER}"
+        assert crs._TYPE_CHOICES == f"rfe|{MEMBER}|{RSC}"
 
     def test_unknown_type_exits_2_with_the_registered_list(self, workspace, monkeypatch, capsys):
         code, out, err = _main(monkeypatch, capsys, "--type", "bogus", "X")

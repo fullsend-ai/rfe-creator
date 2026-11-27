@@ -434,7 +434,7 @@ class TestDropInType:
             [sys.executable, SCRIPT, "--help"], capture_output=True, text=True, env=env
         )
         assert result.returncode == 0
-        assert f"--type {{rfe,docs,{MEMBER}}}" in result.stdout
+        assert f"--type {{rfe,docs,{MEMBER},react-shopping-cart}}" in result.stdout
 
 
 # ── post-fetch verification (design §5 self-describing artifacts, PR-3c D9) ─────────────────
@@ -1003,7 +1003,7 @@ class TestCli:
         )
         assert result.returncode == 0
         assert "--type {" + ",".join(REG.choices()) + "}" in result.stdout
-        assert f"--type {{rfe,{MEMBER}}}" in result.stdout
+        assert f"--type {{rfe,{MEMBER},react-shopping-cart}}" in result.stdout
         # The pre-registry --fetch-all sentence is byte-identical (argparse re-wraps it). Its
         # "(rfe-tasks, rfe-originals, comments)" wording is deliberately stale for
         # --type initiative: PR-2c keeps --help byte-identical apart from the new --type block.

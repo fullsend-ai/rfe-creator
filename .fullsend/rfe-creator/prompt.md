@@ -37,14 +37,18 @@ that relative path exactly. Do not expand it to an absolute path.
    `/rfe-speedrun` would reset `tmp/` and redo the whole batch. DONE is the
    end of the auto-fix pipeline, not necessarily of the task:
    - `/rfe-auto-fix`: the pipeline is the task; nothing remains.
-   - `/rfe-speedrun`: read `phase` in `tmp/speedrun-config.yaml`
-     (`tmp/initiative-speedrun-config.yaml` for Initiatives). `done` means
+   - `/rfe-speedrun`: read `phase` in `tmp/<state_prefix>speedrun-config.yaml`,
+     where `<state_prefix>` is `python3 scripts/type_registry.py get <type>
+     pipeline.state_prefix` (empty for `rfe`: `tmp/speedrun-config.yaml`;
+     `tmp/initiative-speedrun-config.yaml` for Initiatives,
+     `tmp/rsc-speedrun-config.yaml` for Shop RFEs). `done` means
      the speedrun finished. `autofix` (or no `phase` key) means its Phase 2
      verification (`check_autofix_complete.py`) is still owed, `submit` its
      Phase 3, `summary` its Phase 4: resume there, following the speedrun's
      SKILL.md with the flags in that file and the IDs in
-     `tmp/speedrun-all-ids.txt` (`tmp/initiative-speedrun-all-ids.txt` for
-     Initiatives), and skipping Step 0.
+     `tmp/<state_prefix>speedrun-all-ids.txt` (`tmp/speedrun-all-ids.txt`,
+     `tmp/initiative-speedrun-all-ids.txt`, `tmp/rsc-speedrun-all-ids.txt`),
+     and skipping Step 0.
    Then write the result file from `python3 scripts/pipeline_state.py status`
    and the newest run report under `artifacts/` (for `rfe`,
    `artifacts/auto-fix-runs/<run>.yaml`) as described under Output, validate
@@ -63,7 +67,8 @@ generate local artifacts but do not POST/PUT/DELETE against Jira.
 `/rfe-speedrun` (the dotted forms `/rfe.review` etc. are compatibility aliases).
 Every skill accepts `--type <name>` for any type in `python3
 scripts/type_registry.py list` (`rfe` by default; `initiative-rhaistrat` for RHAISTRAT
-Initiatives, which `--type initiative` also names) and, for a type family with several
+Initiatives, which `--type initiative` also names; `react-shopping-cart` for TSTAPP Shop RFEs)
+and, for a type family with several
 members, `--type <family> --project <KEY>` to name the member by its Jira project. When
 nothing decides the member of a family name, every skill but `/rfe-create` stops with
 exit 3 and no `TYPE RESOLVED:` line — `TYPE AMBIGUOUS: <a>, <b> - pass --type` on stdout,

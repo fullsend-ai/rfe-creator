@@ -60,7 +60,11 @@ MEMBER = "initiative-rhaistrat"
 FAMILY = "initiative"
 SHIPPED = ("rfe", MEMBER)  # registered names
 SHIPPED_DIRS = ("rfe", FAMILY, MEMBER)  # descriptor directories a copied root needs
-OK_LINE = "OK: 2 type(s) valid: rfe, initiative-rhaistrat; 1 family(ies) checked: initiative\n"
+RSC = "react-shopping-cart"  # the Shop RFE type, shipped beside the two above
+OK_LINE = (
+    "OK: 3 type(s) valid: rfe, initiative-rhaistrat, react-shopping-cart; "
+    "1 family(ies) checked: initiative\n"
+)
 
 RFE_RUBRIC = "skills/assess-rfe/scripts/agent_prompt.md"
 INITIATIVE_RUBRIC = "skills/assess-initiative/scripts/agent_prompt.md"
@@ -261,7 +265,7 @@ class TestShipped:
     def test_python_api_ok(self):
         report = _validate(TYPES_ROOT)
         assert report.ok, report.lines()
-        assert report.types == ["rfe", MEMBER]
+        assert report.types == ["rfe", MEMBER, RSC]
         assert report.findings == []
 
     def test_cli_exit_0_and_ok_line(self):
@@ -275,7 +279,7 @@ class TestShipped:
         assert result.returncode == 0
         assert json.loads(result.stdout) == {
             "ok": True,
-            "types": ["rfe", MEMBER],
+            "types": ["rfe", MEMBER, RSC],
             "families": [FAMILY],
             "errors": [],
         }
@@ -557,6 +561,28 @@ class TestPerTypeGate:
         report = _validate(types_copy)
         _assert_finding(report, "eval.dataset: path not found: eval/nope/cases", "rfe")
         _assert_finding(report, "eval.config: file not found: eval-nope.yaml", "rfe")
+
+    @pytest.mark.parametrize("arg", ["has space", "../up", ".context/a;rm", "{state}"])
+    def test_context_source_args_are_plain_words(self, types_copy, arg):
+        """A context-source arg reaches a shell (ARCH_FETCH) and SETUP's format_map, so the
+        schema allows one plain word: no whitespace, metacharacters, braces or '..'."""
+        _mutate(
+            types_copy,
+            "rfe",
+            lambda d: d["pipeline"]["context_sources"][1].__setitem__("args", ["--dest", arg]),
+        )
+        _assert_finding(_validate(types_copy), "does not match", "rfe")
+
+    def test_a_type_without_an_eval_block_has_no_eval_gate(self, types_copy):
+        """`eval` is optional (a demo type omits it): no schema finding, and the eval gate
+        (config, dataset, fragment, sync) is skipped for that type only."""
+        _mutate(types_copy, "rfe", lambda d: d.pop("eval"))
+        shutil.rmtree(types_copy / "rfe" / "eval")
+        report = _validate(types_copy, eval_sync=True)
+        assert report.ok, [f.message for f in report.findings]
+        assert not validate_types.has_eval(
+            type_registry.load(root=types_copy, extra_roots=[], env={}).get("rfe")
+        )
 
     def test_missing_eval_config_key_is_a_finding_not_a_crash(self, types_copy):
         """A descriptor without eval.config (a required field) fails through the report: the
@@ -1495,7 +1521,7 @@ class TestVerify:
         assert result.returncode == 1
         assert result.stdout == (
             "VERIFY FAILED: type 'nope' — unknown type 'nope' (available: rfe, "
-            "initiative-rhaistrat)\n"
+            "initiative-rhaistrat, react-shopping-cart)\n"
         )
 
     def test_verify_requires_type(self):
@@ -1655,6 +1681,7 @@ class TestMissingJsonschema:
         assert type_registry.load(root=TYPES_ROOT, extra_roots=[], env={}).names() == [
             "rfe",
             MEMBER,
+            RSC,
         ]
 
     # Gate 3 runs in the pipeline's sandbox, which has PyYAML and no dev dependency: the
@@ -2219,15 +2246,15 @@ class TestExtraTypes:
     def test_third_type_is_discovered_and_passes_gate_1(self, tmp_path):
         extra = _third_type(tmp_path / "extra")
         reg = type_registry.load(root=TYPES_ROOT, extra_roots=[extra], env={})
-        assert reg.names() == ["rfe", "docs", MEMBER]
+        assert reg.names() == ["rfe", "docs", MEMBER, RSC]
         report = _validate(TYPES_ROOT, extra_roots=[extra])
         assert report.ok, report.lines()
-        assert report.types == ["rfe", "docs", MEMBER]
+        assert report.types == ["rfe", "docs", MEMBER, RSC]
 
     def test_third_type_via_env_variable(self, tmp_path):
         extra = _third_type(tmp_path / "extra")
         env = {"RFE_CREATOR_EXTRA_TYPES": str(extra)}
-        assert type_registry.load(root=TYPES_ROOT, env=env).names() == ["rfe", "docs", MEMBER]
+        assert type_registry.load(root=TYPES_ROOT, env=env).names() == ["rfe", "docs", MEMBER, RSC]
         report = validate_all(root=TYPES_ROOT, env=env, repo_root=REPO_ROOT)
         assert report.ok, report.lines()
 
@@ -2236,7 +2263,8 @@ class TestExtraTypes:
         result = _cli(env={"RFE_CREATOR_EXTRA_TYPES": str(extra)})
         assert result.returncode == 0, result.stdout + result.stderr
         assert result.stdout == (
-            "OK: 3 type(s) valid: rfe, docs, initiative-rhaistrat; 1 family(ies) checked: "
+            "OK: 4 type(s) valid: rfe, docs, initiative-rhaistrat, react-shopping-cart; "
+            "1 family(ies) checked: "
             "initiative\n"
         )
 
@@ -2244,7 +2272,7 @@ class TestExtraTypes:
         extra = _third_type(tmp_path / "extra")
         result = _cli("--extra-roots", str(extra), "--json")
         assert result.returncode == 0, result.stdout + result.stderr
-        assert json.loads(result.stdout)["types"] == ["rfe", "docs", MEMBER]
+        assert json.loads(result.stdout)["types"] == ["rfe", "docs", MEMBER, RSC]
 
     def test_third_type_verify(self, tmp_path):
         extra = _third_type(tmp_path / "extra")
@@ -2258,12 +2286,12 @@ class TestExtraTypes:
         extra = _third_type(tmp_path / "extra")
         trailing = _cli("--extra-roots", str(extra) + os.pathsep, "--json")
         assert trailing.returncode == 0, trailing.stdout + trailing.stderr
-        assert json.loads(trailing.stdout)["types"] == ["rfe", "docs", MEMBER]
+        assert json.loads(trailing.stdout)["types"] == ["rfe", "docs", MEMBER, RSC]
         explicit_empty = _cli(
             "--extra-roots", "", "--json", env={"RFE_CREATOR_EXTRA_TYPES": str(extra)}
         )
         assert explicit_empty.returncode == 0, explicit_empty.stdout + explicit_empty.stderr
-        assert json.loads(explicit_empty.stdout)["types"] == ["rfe", MEMBER]
+        assert json.loads(explicit_empty.stdout)["types"] == ["rfe", MEMBER, RSC]
 
     def test_headless_gate_applies_to_the_validator(self, tmp_path):
         """PR1-05: under a CI marker the env seam is honoured only for allowlisted roots."""
@@ -2273,7 +2301,7 @@ class TestExtraTypes:
             env={"RFE_CREATOR_EXTRA_TYPES": str(extra), "CI": "true"},
             repo_root=REPO_ROOT,
         )
-        assert gated.ok and gated.types == ["rfe", MEMBER]
+        assert gated.ok and gated.types == ["rfe", MEMBER, RSC]
         allowed = validate_all(
             root=TYPES_ROOT,
             env={
@@ -2283,7 +2311,7 @@ class TestExtraTypes:
             },
             repo_root=REPO_ROOT,
         )
-        assert allowed.ok and allowed.types == ["rfe", "docs", MEMBER]
+        assert allowed.ok and allowed.types == ["rfe", "docs", MEMBER, RSC]
         cli = _cli(env={"RFE_CREATOR_EXTRA_TYPES": str(extra), "GITHUB_ACTIONS": "true"})
         assert cli.returncode == 0, cli.stdout + cli.stderr
         assert cli.stdout == OK_LINE
@@ -2306,9 +2334,9 @@ class TestExtraTypes:
 
     def test_drop_in_schema_findings_are_reported_under_its_name(self, tmp_path):
         extra = _third_type(tmp_path / "extra")
-        _mutate(extra, "docs", lambda d: d.pop("eval"))
+        _mutate(extra, "docs", lambda d: d.pop("index"))
         report = _validate(TYPES_ROOT, extra_roots=[extra])
-        _assert_finding(report, "'eval' is a required property", "docs")
+        _assert_finding(report, "'index' is a required property", "docs")
         assert _messages(report, "rfe") == []
         assert _messages(report, MEMBER) == []
 
