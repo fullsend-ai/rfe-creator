@@ -4310,6 +4310,24 @@ class TestInitTypeChoices:
         assert ps._load_state()["type"] == persisted
         assert buf.getvalue() == f"Initialized pipeline state: type={persisted} batch_size=50\n"
 
+    def test_set_phase_on_a_family_typed_state_leaves_the_file_unchanged(self, tmp_dir, capsys):
+        """``set-phase`` validates before it saves: a rejected phase change (a stored family
+        name, AISDLC-856, or any unregistered type) must not have moved the phase or reset the
+        wave count on disk."""
+        import yaml
+
+        os.makedirs(os.path.dirname(ps.STATE_FILE) or ".", exist_ok=True)
+        with open(ps.STATE_FILE, "w", encoding="utf-8") as fh:
+            yaml.safe_dump(make_state(type="initiative", phase="BATCH_START", wave_ordinal=3), fh)
+        with open(ps.STATE_FILE, "rb") as fh:
+            before = fh.read()
+        with pytest.raises(SystemExit) as exc_info:
+            ps.cmd_set_phase(["REVIEW"])
+        assert exc_info.value.code == 1
+        assert "[validate-state] refusing to run: type='initiative'" in capsys.readouterr().err
+        with open(ps.STATE_FILE, "rb") as fh:
+            assert fh.read() == before
+
     def test_pre_split_state_naming_the_family_is_left_as_written_and_refused(
         self, tmp_dir, capsys
     ):

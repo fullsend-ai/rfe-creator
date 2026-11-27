@@ -943,11 +943,14 @@ def _enter_phase(state, next_phase):
     """Move ``state`` to ``next_phase`` and save; stamp the entry time of an agent phase.
 
     Entering a phase restarts its wave count (``wave_ordinal``, bumped by each launch_wave).
+    The state is validated BEFORE anything is saved: a rejected ``set-phase`` (an unregistered
+    ``type:``, a stored family name since AISDLC-856) leaves the file as it was.
     """
+    config = _get_config(state)
     state["phase"] = next_phase
     state["wave_ordinal"] = 0
     _save_state(state)
-    if _get_config(state).get(next_phase, {}).get("type") == "agent":
+    if config.get(next_phase, {}).get("type") == "agent":
         _write_phase_entry(next_phase)
 
 
